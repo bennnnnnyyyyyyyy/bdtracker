@@ -40,3 +40,6 @@ next-env.d.ts
 # auth & credentials
 auth/token.json
 credentials.json
+
+# agents
+.agents/
