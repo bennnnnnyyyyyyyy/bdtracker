@@ -40,6 +40,8 @@ next-env.d.ts
 # auth & credentials
 auth/token.json
 credentials.json
+tribal-quest-484611-j3-a4a4f21e24ed.json
 
 # agents
 .agents/
+
