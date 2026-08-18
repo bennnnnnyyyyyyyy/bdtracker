@@ -19,9 +19,6 @@ let cachedData: CacheEntry<{
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-/**
- * Initializes Google Sheets API client using service account JSON or environment variables.
- */
 function getSheetsClient() {
   const saPath = path.join(process.cwd(), 'tribal-quest-484611-j3-a4a4f21e24ed.json');
   if (fs.existsSync(saPath)) {
@@ -53,19 +50,13 @@ function getSheetsClient() {
   return null;
 }
 
-/**
- * Fetches Call Logs and Agent Mappings from live Google Sheets.
- */
 export async function fetchCallDashboardData(): Promise<{
   calls: CallRecord[];
   agentMappings: AgentMapping[];
 }> {
   const sheets = getSheetsClient();
-  if (!sheets) {
-    throw new Error('Google Sheets API credentials not configured');
-  }
+  if (!sheets) throw new Error('Google Sheets API credentials not configured');
 
-  // 1. Fetch Agent Mapping
   const mappingRes = await sheets.spreadsheets.values.get({
     spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
     range: `${CONFIG.MAPPING_SHEET}!A2:B`
@@ -78,7 +69,6 @@ export async function fetchCallDashboardData(): Promise<{
       opener: String(row[1] || '').trim()
     }));
 
-  // 2. Fetch Call Logs
   const callLogRes = await sheets.spreadsheets.values.get({
     spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
     range: `${CONFIG.CALL_LOG_SHEET}!A2:O`
@@ -116,14 +106,9 @@ export async function fetchCallDashboardData(): Promise<{
   return { calls, agentMappings };
 }
 
-/**
- * Fetches pipeline stage row counts by Opener from the BD_MEETINGS Tracker live Google Sheets.
- */
 export async function fetchBDTrackerCounts(): Promise<Record<string, Record<string, number>>> {
   const sheets = getSheetsClient();
-  if (!sheets) {
-    throw new Error('Google Sheets API credentials not configured');
-  }
+  if (!sheets) throw new Error('Google Sheets API credentials not configured');
 
   const counts: Record<string, Record<string, number>> = {};
   const ranges = CONFIG.BD_TABS.map(tab => `'${tab}'!B2:B`);
@@ -139,9 +124,7 @@ export async function fetchBDTrackerCounts(): Promise<Record<string, Record<stri
     rows.forEach(r => {
       const opener = String(r[0] || '').trim();
       if (!opener) return;
-      if (!counts[opener]) {
-        counts[opener] = {};
-      }
+      if (!counts[opener]) counts[opener] = {};
       counts[opener][tabName] = (counts[opener][tabName] || 0) + 1;
     });
   });
@@ -149,9 +132,6 @@ export async function fetchBDTrackerCounts(): Promise<Record<string, Record<stri
   return counts;
 }
 
-/**
- * Loads actual local Excel data from the workspace repository.
- */
 function loadLocalActualData(): {
   calls: CallRecord[];
   trackerCounts: Record<string, Record<string, number>>;
@@ -169,31 +149,9 @@ function loadLocalActualData(): {
     { agent: 'Nora Atkins', opener: 'Nora' }
   ];
 
-  // 1. Read Agent Mapping from BD TRACKER (1).xlsx if present
-  const trackerXlsx = path.join(process.cwd(), 'BD TRACKER (1).xlsx');
-  if (fs.existsSync(trackerXlsx)) {
-    try {
-      const wb = xlsx.readFile(trackerXlsx);
-      if (wb.Sheets['Agent Mapping']) {
-        const rows: any[][] = xlsx.utils.sheet_to_json(wb.Sheets['Agent Mapping'], { header: 1 });
-        const maps: AgentMapping[] = [];
-        for (let i = 1; i < rows.length; i++) {
-          const r = rows[i];
-          if (r && r[0]) {
-            maps.push({ agent: String(r[0]).trim(), opener: String(r[1] || '').trim() });
-          }
-        }
-        if (maps.length > 0) agentMappings = maps;
-      }
-    } catch (e) {
-      console.warn('Error reading Agent Mapping sheet:', e);
-    }
-  }
-
-  // 2. Read BD Pipeline Tabs from BD MEETINGS 2026 (7).xlsx
-  const bdFiles = ['BD MEETINGS 2026 (7).xlsx', 'BD TRACKER (1).xlsx'];
+  const bdFiles = ['BD MEETINGS 2026 (7).xlsx', 'BD TRACKER (1).xlsx'].map(f => path.join(process.cwd(), 'data', f));
   for (const f of bdFiles) {
-    const p = path.join(process.cwd(), f);
+    const p = f;
     if (fs.existsSync(p)) {
       try {
         const wb = xlsx.readFile(p);
@@ -212,29 +170,21 @@ function loadLocalActualData(): {
         });
         break;
       } catch (err) {
-        console.warn('Error reading BD meetings Excel:', err);
+        console.warn('Error reading local BD meetings Excel:', err);
       }
     }
   }
 
-  // 3. Read Ultatel Call Logs from Call Details...xlsx or Call Logs sheet in BD TRACKER (1).xlsx
-  const callFiles = fs.readdirSync(process.cwd()).filter(f => f.startsWith('Call Details') && f.endsWith('.xlsx'));
-  let callWorkbook: xlsx.WorkBook | null = null;
-  let callSheetName = '';
-
+  const dataDir = path.join(process.cwd(), 'data');
+  const callFiles = fs.existsSync(dataDir)
+    ? fs.readdirSync(dataDir).filter(f => f.startsWith('Call Details') && f.endsWith('.xlsx'))
+    : [];
   if (callFiles.length > 0) {
-    callWorkbook = xlsx.readFile(path.join(process.cwd(), callFiles[0]));
-    callSheetName = callWorkbook.SheetNames[0];
-  } else if (fs.existsSync(trackerXlsx)) {
-    callWorkbook = xlsx.readFile(trackerXlsx);
-    if (callWorkbook.Sheets['Call Logs']) {
-      callSheetName = 'Call Logs';
-    }
-  }
-
-  if (callWorkbook && callSheetName && callWorkbook.Sheets[callSheetName]) {
+    const callFilePath = path.join(dataDir, callFiles[0]);
     try {
-      const rows: any[][] = xlsx.utils.sheet_to_json(callWorkbook.Sheets[callSheetName], { header: 1 });
+      const wb = xlsx.readFile(callFilePath);
+      const firstSheet = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
         if (!r || (!r[0] && !r[1])) continue;
@@ -268,17 +218,9 @@ function loadLocalActualData(): {
     }
   }
 
-  return {
-    calls,
-    trackerCounts,
-    agentMappings,
-    isMockData: false
-  };
+  return { calls, trackerCounts, agentMappings, isMockData: false };
 }
 
-/**
- * Master data fetcher with Live Sheets API -> Local Actual Team Data.
- */
 export async function getDashboardRawData(forceRefresh = false): Promise<{
   calls: CallRecord[];
   trackerCounts: Record<string, Record<string, number>>;
@@ -302,15 +244,9 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
       agentMappings: callData.agentMappings
     };
 
-    cachedData = {
-      data: result,
-      timestamp: now
-    };
-
+    cachedData = { data: result, timestamp: now };
     return { ...result, isMockData: false };
   } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    console.log(`Live Google Sheets API: ${errorMessage}. Serving actual team data from local repository.`);
     return loadLocalActualData();
   }
 }
