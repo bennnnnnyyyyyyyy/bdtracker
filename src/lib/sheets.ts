@@ -54,7 +54,7 @@ function getSheetsClient() {
 }
 
 /**
- * Fetches Call Logs and Agent Mappings from the live Google Sheets.
+ * Fetches Call Logs and Agent Mappings from live Google Sheets.
  */
 export async function fetchCallDashboardData(): Promise<{
   calls: CallRecord[];
@@ -150,9 +150,9 @@ export async function fetchBDTrackerCounts(): Promise<Record<string, Record<stri
 }
 
 /**
- * Parses actual local Excel files present in the repository as high-fidelity real data fallback.
+ * Loads actual local Excel data from the workspace repository.
  */
-function loadLocalExcelData(): {
+function loadLocalActualData(): {
   calls: CallRecord[];
   trackerCounts: Record<string, Record<string, number>>;
   agentMappings: AgentMapping[];
@@ -160,9 +160,37 @@ function loadLocalExcelData(): {
 } {
   const trackerCounts: Record<string, Record<string, number>> = {};
   const calls: CallRecord[] = [];
-  const agentMappings: AgentMapping[] = [];
+  let agentMappings: AgentMapping[] = [
+    { agent: 'Kaity James', opener: 'Jane' },
+    { agent: 'Ben Arthur', opener: 'Ben' },
+    { agent: 'Jasmine Green', opener: 'Jasmine' },
+    { agent: 'Selene Myles', opener: 'Selene' },
+    { agent: 'Jimmy Pearson', opener: 'Jimmy' },
+    { agent: 'Nora Atkins', opener: 'Nora' }
+  ];
 
-  // 1. Read BD MEETINGS workbook
+  // 1. Read Agent Mapping from BD TRACKER (1).xlsx if present
+  const trackerXlsx = path.join(process.cwd(), 'BD TRACKER (1).xlsx');
+  if (fs.existsSync(trackerXlsx)) {
+    try {
+      const wb = xlsx.readFile(trackerXlsx);
+      if (wb.Sheets['Agent Mapping']) {
+        const rows: any[][] = xlsx.utils.sheet_to_json(wb.Sheets['Agent Mapping'], { header: 1 });
+        const maps: AgentMapping[] = [];
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i];
+          if (r && r[0]) {
+            maps.push({ agent: String(r[0]).trim(), opener: String(r[1] || '').trim() });
+          }
+        }
+        if (maps.length > 0) agentMappings = maps;
+      }
+    } catch (e) {
+      console.warn('Error reading Agent Mapping sheet:', e);
+    }
+  }
+
+  // 2. Read BD Pipeline Tabs from BD MEETINGS 2026 (7).xlsx
   const bdFiles = ['BD MEETINGS 2026 (7).xlsx', 'BD TRACKER (1).xlsx'];
   for (const f of bdFiles) {
     const p = path.join(process.cwd(), f);
@@ -172,38 +200,41 @@ function loadLocalExcelData(): {
         CONFIG.BD_TABS.forEach(tabName => {
           if (wb.Sheets[tabName]) {
             const rows: any[][] = xlsx.utils.sheet_to_json(wb.Sheets[tabName], { header: 1 });
-            // Header is row 0, column B is index 1
             for (let i = 1; i < rows.length; i++) {
               const row = rows[i];
               if (!row || !row[1]) continue;
               const opener = String(row[1]).trim();
               if (!opener) continue;
-              if (!trackerCounts[opener]) {
-                trackerCounts[opener] = {};
-              }
+              if (!trackerCounts[opener]) trackerCounts[opener] = {};
               trackerCounts[opener][tabName] = (trackerCounts[opener][tabName] || 0) + 1;
             }
           }
         });
         break;
       } catch (err) {
-        console.warn('Error reading local BD meetings Excel:', err);
+        console.warn('Error reading BD meetings Excel:', err);
       }
     }
   }
 
-  // 2. Read Call Details workbook
+  // 3. Read Ultatel Call Logs from Call Details...xlsx or Call Logs sheet in BD TRACKER (1).xlsx
   const callFiles = fs.readdirSync(process.cwd()).filter(f => f.startsWith('Call Details') && f.endsWith('.xlsx'));
-  if (callFiles.length > 0) {
-    const callFilePath = path.join(process.cwd(), callFiles[0]);
-    try {
-      const wb = xlsx.readFile(callFilePath);
-      const firstSheet = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
-      
-      const seenAgents = new Set<string>();
+  let callWorkbook: xlsx.WorkBook | null = null;
+  let callSheetName = '';
 
-      // Row 0 is header
+  if (callFiles.length > 0) {
+    callWorkbook = xlsx.readFile(path.join(process.cwd(), callFiles[0]));
+    callSheetName = callWorkbook.SheetNames[0];
+  } else if (fs.existsSync(trackerXlsx)) {
+    callWorkbook = xlsx.readFile(trackerXlsx);
+    if (callWorkbook.Sheets['Call Logs']) {
+      callSheetName = 'Call Logs';
+    }
+  }
+
+  if (callWorkbook && callSheetName && callWorkbook.Sheets[callSheetName]) {
+    try {
+      const rows: any[][] = xlsx.utils.sheet_to_json(callWorkbook.Sheets[callSheetName], { header: 1 });
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
         if (!r || (!r[0] && !r[1])) continue;
@@ -212,11 +243,6 @@ function loadLocalExcelData(): {
         const parsedAgent = parseAgentName(ext);
         const durVal = r[10];
         const durSec = durationToSeconds(durVal);
-
-        if (parsedAgent && !seenAgents.has(parsedAgent)) {
-          seenAgents.add(parsedAgent);
-          agentMappings.push({ agent: parsedAgent, opener: parsedAgent });
-        }
 
         calls.push({
           callDate: String(r[0] || ''),
@@ -234,11 +260,11 @@ function loadLocalExcelData(): {
           notes: String(r[11] || ''),
           callPath: String(r[12] || ''),
           agent: parsedAgent,
-          opener: parsedAgent
+          opener: ''
         });
       }
     } catch (err) {
-      console.warn('Error reading local call details Excel:', err);
+      console.warn('Error reading call logs:', err);
     }
   }
 
@@ -251,7 +277,7 @@ function loadLocalExcelData(): {
 }
 
 /**
- * Master data fetcher with Live Sheets API -> Local Actual Excel fallback.
+ * Master data fetcher with Live Sheets API -> Local Actual Team Data.
  */
 export async function getDashboardRawData(forceRefresh = false): Promise<{
   calls: CallRecord[];
@@ -284,7 +310,7 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
     return { ...result, isMockData: false };
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.log('Sheets API direct fetch unavailable (' + errorMessage + '), loading actual team data from local repository files.');
-    return loadLocalExcelData();
+    console.log(`Live Google Sheets API: ${errorMessage}. Serving actual team data from local repository.`);
+    return loadLocalActualData();
   }
 }
