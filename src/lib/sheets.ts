@@ -140,7 +140,7 @@ function loadLocalActualData(): {
 } {
   const trackerCounts: Record<string, Record<string, number>> = {};
   const calls: CallRecord[] = [];
-  let agentMappings: AgentMapping[] = [
+  const agentMappings: AgentMapping[] = [
     { agent: 'Kaity James', opener: 'Jane' },
     { agent: 'Ben Arthur', opener: 'Ben' },
     { agent: 'Jasmine Green', opener: 'Jasmine' },
@@ -149,12 +149,13 @@ function loadLocalActualData(): {
     { agent: 'Nora Atkins', opener: 'Nora' }
   ];
 
+  // 1. Read BD Pipeline Tabs from data/BD MEETINGS 2026 (7).xlsx
   const bdFiles = ['BD MEETINGS 2026 (7).xlsx', 'BD TRACKER (1).xlsx'].map(f => path.join(process.cwd(), 'data', f));
-  for (const f of bdFiles) {
-    const p = f;
+  for (const p of bdFiles) {
     if (fs.existsSync(p)) {
       try {
-        const wb = xlsx.readFile(p);
+        const fileBuffer = fs.readFileSync(p);
+        const wb = xlsx.read(fileBuffer, { type: 'buffer' });
         CONFIG.BD_TABS.forEach(tabName => {
           if (wb.Sheets[tabName]) {
             const rows: any[][] = xlsx.utils.sheet_to_json(wb.Sheets[tabName], { header: 1 });
@@ -175,14 +176,17 @@ function loadLocalActualData(): {
     }
   }
 
+  // 2. Read Call Details
   const dataDir = path.join(process.cwd(), 'data');
   const callFiles = fs.existsSync(dataDir)
     ? fs.readdirSync(dataDir).filter(f => f.startsWith('Call Details') && f.endsWith('.xlsx'))
     : [];
+
   if (callFiles.length > 0) {
     const callFilePath = path.join(dataDir, callFiles[0]);
     try {
-      const wb = xlsx.readFile(callFilePath);
+      const fileBuffer = fs.readFileSync(callFilePath);
+      const wb = xlsx.read(fileBuffer, { type: 'buffer' });
       const firstSheet = wb.Sheets[wb.SheetNames[0]];
       const rows: any[][] = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
       for (let i = 1; i < rows.length; i++) {
@@ -247,6 +251,8 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
     cachedData = { data: result, timestamp: now };
     return { ...result, isMockData: false };
   } catch (err: unknown) {
-    return loadLocalActualData();
+    const localData = loadLocalActualData();
+    cachedData = { data: localData, timestamp: now };
+    return localData;
   }
 }
