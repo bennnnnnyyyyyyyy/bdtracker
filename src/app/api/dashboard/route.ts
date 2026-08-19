@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData } from '@/lib/sheets';
+import { getRawDataFromFirestore, saveRawDataToFirestore } from '@/lib/firestore';
 import { computeDashboardMetrics } from '@/lib/analytics';
 import { CONFIG } from '@/lib/config';
 import { DashboardResponse } from '@/types/dashboard';
@@ -12,10 +13,35 @@ export async function GET(request: NextRequest) {
     const selectedOpener = searchParams.get('opener') || undefined;
     const forceRefresh = searchParams.get('refresh') === 'true';
 
-    // 1. Fetch raw data from Google Sheets (or cache)
-    const rawData = await getDashboardRawData(forceRefresh);
+    let rawData: {
+      calls: any[];
+      meetings: any[];
+      trackerCounts: Record<string, Record<string, number>>;
+      agentMappings: any[];
+      lastUpdated?: string;
+      isMockData?: boolean;
+    } | null = null;
 
-    // 2. Compute metrics (with meetings and periodic breakdowns)
+    // 1. Try reading from Firestore if not forcing refresh
+    if (!forceRefresh) {
+      rawData = await getRawDataFromFirestore();
+    }
+
+    // 2. If no data in Firestore or forceRefresh requested, pull from Sheets & update Firestore
+    if (!rawData || forceRefresh) {
+      const sheetsData = await getDashboardRawData(forceRefresh);
+      rawData = sheetsData;
+
+      // Asynchronously update Firestore in the background
+      saveRawDataToFirestore({
+        calls: sheetsData.calls,
+        meetings: sheetsData.meetings,
+        trackerCounts: sheetsData.trackerCounts,
+        agentMappings: sheetsData.agentMappings,
+      }).catch((err) => console.warn('Background Firestore save warning:', err));
+    }
+
+    // 3. Compute metrics
     const { openers, totals, filteredCalls, dailyBreakdown, weeklyBreakdown, monthlyBreakdown } =
       computeDashboardMetrics(
         rawData.calls,
@@ -25,9 +51,8 @@ export async function GET(request: NextRequest) {
         { startDate, endDate, selectedOpener }
       );
 
-    // Filter openers if single opener selected
     const responseOpeners = selectedOpener && selectedOpener !== 'ALL'
-      ? openers.filter(o => o.opener.toLowerCase() === selectedOpener.toLowerCase())
+      ? openers.filter((o) => o.opener.toLowerCase() === selectedOpener.toLowerCase())
       : openers;
 
     const response: DashboardResponse = {
@@ -36,11 +61,11 @@ export async function GET(request: NextRequest) {
       calls: filteredCalls.slice(0, 500),
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: rawData.lastUpdated || new Date().toISOString(),
       dailyBreakdown,
       weeklyBreakdown,
       monthlyBreakdown,
-      isMockData: rawData.isMockData
+      isMockData: rawData.isMockData,
     };
 
     return NextResponse.json(response);
@@ -53,4 +78,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
