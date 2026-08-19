@@ -217,116 +217,127 @@ function loadLocalActualData(): {
     { agent: 'Nora Atkins', opener: 'Nora' }
   ].filter(m => !isExcludedAgent(m.agent) && !isExcludedAgent(m.opener));
 
-  // 1. Read BD Pipeline Tabs from data/BD MEETINGS 2026 (7).xlsx or BD TRACKER (1).xlsx
-  const bdFiles = ['BD MEETINGS 2026 (7).xlsx', 'BD TRACKER (1).xlsx'].map(f => path.join(process.cwd(), 'data', f));
-  for (const p of bdFiles) {
-    if (fs.existsSync(p)) {
-      try {
-        const fileBuffer = fs.readFileSync(p);
-        const wb = xlsx.read(fileBuffer, { type: 'buffer' });
-        CONFIG.BD_TABS.forEach(tabName => {
-          if (wb.Sheets[tabName]) {
-            const rows: any[][] = xlsx.utils.sheet_to_json(wb.Sheets[tabName], { header: 1 });
-            if (rows.length < 2) return;
+  // 1. Read BD Pipeline Tabs from local data files (Development only)
+  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    try {
+      const dataDir = path.join(process.cwd(), 'data');
+      if (fs.existsSync(dataDir)) {
+        const candidateFiles = ['BD MEETINGS 2026 (7).xlsx', 'BD TRACKER (1).xlsx'];
+        for (const fileName of candidateFiles) {
+          const filePath = path.join(dataDir, fileName);
+          if (fs.existsSync(filePath)) {
+            try {
+              const fileBuffer = fs.readFileSync(/* turbopackIgnore: true */ filePath);
+              const wb = xlsx.read(fileBuffer, { type: 'buffer' });
+              CONFIG.BD_TABS.forEach(tabName => {
+                if (wb.Sheets[tabName]) {
+                  const rows: any[][] = xlsx.utils.sheet_to_json(wb.Sheets[tabName], { header: 1 });
+                  if (rows.length < 2) return;
 
-            const headers = (rows[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
-            let openerIdx = headers.findIndex(h => h.includes('opener') || h === 'agent' || h === 'rep');
-            if (openerIdx === -1) openerIdx = 1;
+                  const headers = (rows[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
+                  let openerIdx = headers.findIndex(h => h.includes('opener') || h === 'agent' || h === 'rep');
+                  if (openerIdx === -1) openerIdx = 1;
 
-            let dateIdx = headers.findIndex(h => 
-              h.includes('date added') || h.includes('meeting date') || h.includes('date booked') || h === 'date' || h.includes('created') || h.includes('timestamp')
-            );
-            if (dateIdx === -1) {
-              dateIdx = headers.findIndex(h => h.includes('date'));
-            }
+                  let dateIdx = headers.findIndex(h => 
+                    h.includes('date added') || h.includes('meeting date') || h.includes('date booked') || h === 'date' || h.includes('created') || h.includes('timestamp')
+                  );
+                  if (dateIdx === -1) {
+                    dateIdx = headers.findIndex(h => h.includes('date'));
+                  }
 
-            let companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
-            let personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
+                  let companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
+                  let personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
 
-            for (let i = 1; i < rows.length; i++) {
-              const row = rows[i];
-              if (!row || row.length === 0) continue;
+                  for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row || row.length === 0) continue;
 
-              const opener = String(row[openerIdx] || '').trim();
-              if (!opener || isExcludedAgent(opener)) continue;
+                    const opener = String(row[openerIdx] || '').trim();
+                    if (!opener || isExcludedAgent(opener)) continue;
 
-              if (!trackerCounts[opener]) trackerCounts[opener] = {};
-              trackerCounts[opener][tabName] = (trackerCounts[opener][tabName] || 0) + 1;
+                    if (!trackerCounts[opener]) trackerCounts[opener] = {};
+                    trackerCounts[opener][tabName] = (trackerCounts[opener][tabName] || 0) + 1;
 
-              let dateAdded: string | null = null;
-              if (dateIdx !== -1 && row[dateIdx] !== undefined) {
-                dateAdded = parseDateToISO(row[dateIdx]);
-              }
-              if (!dateAdded) {
-                for (let c = 0; c < row.length; c++) {
-                  if (c === openerIdx) continue;
-                  const parsed = parseDateToISO(row[c]);
-                  if (parsed) {
-                    dateAdded = parsed;
-                    break;
+                    let dateAdded: string | null = null;
+                    if (dateIdx !== -1 && row[dateIdx] !== undefined) {
+                      dateAdded = parseDateToISO(row[dateIdx]);
+                    }
+                    if (!dateAdded) {
+                      for (let c = 0; c < row.length; c++) {
+                        if (c === openerIdx) continue;
+                        const parsed = parseDateToISO(row[c]);
+                        if (parsed) {
+                          dateAdded = parsed;
+                          break;
+                        }
+                      }
+                    }
+
+                    meetings.push({
+                      stage: tabName,
+                      opener,
+                      dateAdded: dateAdded || '',
+                      companyName: companyIdx !== -1 ? String(row[companyIdx] || '') : '',
+                      authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : ''
+                    });
                   }
                 }
-              }
-
-              meetings.push({
-                stage: tabName,
-                opener,
-                dateAdded: dateAdded || '',
-                companyName: companyIdx !== -1 ? String(row[companyIdx] || '') : '',
-                authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : ''
               });
+              break;
+            } catch (err) {
+              console.warn('Error reading local BD meetings Excel:', err);
             }
           }
-        });
-        break;
-      } catch (err) {
-        console.warn('Error reading local BD meetings Excel:', err);
+        }
       }
+    } catch (e) {
+      console.warn('Local BD meetings fallback skipped:', e);
     }
   }
 
-  // 2. Read Call Details
-  const dataDir = path.join(process.cwd(), 'data');
-  const callFiles = fs.existsSync(dataDir)
-    ? fs.readdirSync(dataDir).filter(f => f.startsWith('Call Details') && f.endsWith('.xlsx'))
-    : [];
-
-  if (callFiles.length > 0) {
-    const callFilePath = path.join(dataDir, callFiles[0]);
+  // 2. Read Call Details (Development only)
+  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     try {
-      const fileBuffer = fs.readFileSync(callFilePath);
-      const wb = xlsx.read(fileBuffer, { type: 'buffer' });
-      const firstSheet = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
-      for (let i = 1; i < rows.length; i++) {
-        const r = rows[i];
-        if (!r || (!r[0] && !r[1])) continue;
+      const dataDir = path.join(process.cwd(), 'data');
+      if (fs.existsSync(dataDir)) {
+        const callFiles = fs.readdirSync(dataDir).filter(f => f.startsWith('Call Details') && f.endsWith('.xlsx'));
+        if (callFiles.length > 0) {
+          const callFilePath = path.join(dataDir, callFiles[0]);
+          const fileBuffer = fs.readFileSync(/* turbopackIgnore: true */ callFilePath);
+          const wb = xlsx.read(fileBuffer, { type: 'buffer' });
+          const firstSheet = wb.Sheets[wb.SheetNames[0]];
+          const rows: any[][] = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
+          for (let i = 1; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r || (!r[0] && !r[1])) continue;
 
-        const ext = String(r[4] || '');
-        const parsedAgent = parseAgentName(ext);
-        if (isExcludedAgent(parsedAgent)) continue;
+            const ext = String(r[4] || '');
+            const parsedAgent = parseAgentName(ext);
+            if (isExcludedAgent(parsedAgent)) continue;
 
-        const durVal = r[10];
-        const durSec = durationToSeconds(durVal);
+            const durVal = r[10];
+            const durSec = durationToSeconds(durVal);
 
-        calls.push({
-          callDate: String(r[0] || ''),
-          callId: String(r[1] || `CALL-${i}`),
-          from: String(r[2] || ''),
-          to: String(r[3] || ''),
-          extension: ext,
-          department: String(r[5] || ''),
-          did: String(r[6] || ''),
-          description: String(r[7] || ''),
-          type: String(r[8] || 'OUT-Bound'),
-          outcome: String(r[9] || 'ANSWERED'),
-          duration: String(durVal || '0:00'),
-          durationSec: durSec,
-          notes: String(r[11] || ''),
-          callPath: String(r[12] || ''),
-          agent: parsedAgent,
-          opener: ''
-        });
+            calls.push({
+              callDate: String(r[0] || ''),
+              callId: String(r[1] || `CALL-${i}`),
+              from: String(r[2] || ''),
+              to: String(r[3] || ''),
+              extension: ext,
+              department: String(r[5] || ''),
+              did: String(r[6] || ''),
+              description: String(r[7] || ''),
+              type: String(r[8] || 'OUT-Bound'),
+              outcome: String(r[9] || 'ANSWERED'),
+              duration: String(durVal || '0:00'),
+              durationSec: durSec,
+              notes: String(r[11] || ''),
+              callPath: String(r[12] || ''),
+              agent: parsedAgent,
+              opener: ''
+            });
+          }
+        }
       }
     } catch (err) {
       console.warn('Error reading call logs:', err);

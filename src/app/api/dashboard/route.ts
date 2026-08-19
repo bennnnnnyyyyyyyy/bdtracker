@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData } from '@/lib/sheets';
-import { getRawDataFromFirestore, saveRawDataToFirestore } from '@/lib/firestore';
+import { getRawDataFromSupabase, saveRawDataToSupabase } from '@/lib/supabase';
 import { computeDashboardMetrics } from '@/lib/analytics';
 import { CONFIG } from '@/lib/config';
 import { DashboardResponse } from '@/types/dashboard';
@@ -22,23 +22,27 @@ export async function GET(request: NextRequest) {
       isMockData?: boolean;
     } | null = null;
 
-    // 1. Try reading from Firestore if not forcing refresh
+    // 1. Try reading from Supabase if not forcing refresh
     if (!forceRefresh) {
-      rawData = await getRawDataFromFirestore();
+      rawData = await getRawDataFromSupabase();
     }
 
-    // 2. If no data in Firestore or forceRefresh requested, pull from Sheets & update Firestore
+    // 2. If no data in Supabase or forceRefresh requested, pull from Sheets & update Supabase
     if (!rawData || forceRefresh) {
       const sheetsData = await getDashboardRawData(forceRefresh);
       rawData = sheetsData;
 
-      // Asynchronously update Firestore in the background
-      saveRawDataToFirestore({
+      // Asynchronously update Supabase in the background
+      saveRawDataToSupabase({
         calls: sheetsData.calls,
         meetings: sheetsData.meetings,
         trackerCounts: sheetsData.trackerCounts,
         agentMappings: sheetsData.agentMappings,
-      }).catch((err) => console.warn('Background Firestore save warning:', err));
+      }).catch((err) => console.warn('Background Supabase save warning:', err));
+    }
+
+    if (!rawData) {
+      throw new Error('Failed to retrieve dashboard data');
     }
 
     // 3. Compute metrics
