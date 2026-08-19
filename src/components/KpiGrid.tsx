@@ -40,7 +40,7 @@ const KpiCard: React.FC<KpiCardProps> = ({
   </div>
 );
 
-export const KpiGrid: React.FC<KpiGridProps> = ({ totals }) => {
+export const KpiGrid: React.FC<KpiGridProps> = React.memo(({ totals }) => {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       {/* 1. Calls */}
@@ -102,6 +102,9 @@ export const KpiGrid: React.FC<KpiGridProps> = ({ totals }) => {
       />
     </div>
   );
-};
+});
+
+KpiGrid.displayName = 'KpiGrid';
+
 
 

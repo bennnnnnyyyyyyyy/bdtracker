@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo, memo } from 'react';
+import { ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
 import { PeriodicGroupSummary } from '@/types/dashboard';
 import { formatPercent } from '@/lib/analytics';
 
 interface PeriodicBreakdownTableProps {
   data: PeriodicGroupSummary[];
   emptyLabel?: string;
+  pageSize?: number;
 }
 
 interface MetricCol {
@@ -28,8 +29,19 @@ const METRIC_COLS: MetricCol[] = [
 
 type MetricKey = string;
 
-export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = ({ data, emptyLabel = 'No data' }) => {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set([data[0]?.periodKey ?? '']));
+export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = memo(({
+  data,
+  emptyLabel = 'No data',
+  pageSize = 20
+}) => {
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set([data[0]?.periodKey ?? '']));
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.ceil(data.length / pageSize) || 1;
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return data.slice(start, start + pageSize);
+  }, [data, currentPage, pageSize]);
 
   if (!data || data.length === 0) {
     return (
@@ -73,7 +85,7 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = ({ 
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300">
-            {data.map(period => {
+            {paginatedData.map(period => {
               const isOpen = expanded.has(period.periodKey);
               return (
                 <React.Fragment key={period.periodKey}>
@@ -123,7 +135,36 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = ({ 
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Footer if > 1 page */}
+      {totalPages > 1 && (
+        <div className="p-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 bg-slate-900/60">
+          <span>
+            Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, data.length)} of {data.length} periods
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1 rounded bg-slate-800 border border-slate-700 disabled:opacity-30 hover:bg-slate-700 cursor-pointer"
+              aria-label="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span>Page {currentPage} of {totalPages}</span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1 rounded bg-slate-800 border border-slate-700 disabled:opacity-30 hover:bg-slate-700 cursor-pointer"
+              aria-label="Next Page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+});
 
+PeriodicBreakdownTable.displayName = 'PeriodicBreakdownTable';

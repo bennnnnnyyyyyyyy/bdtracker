@@ -98,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Top Row: Logo + Title + Refresh */}
         <div className="flex items-center justify-between gap-4 mb-3">
           <div className="flex items-center space-x-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold shrink-0">
+            <div className="h-9 w-9 rounded-xl bg-linear-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold shrink-0">
               <PhoneCall className="w-4 h-4" />
             </div>
             <div>

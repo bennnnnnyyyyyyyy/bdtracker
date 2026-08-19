@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { PhoneIncoming, PhoneOutgoing, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CallRecord } from '@/types/dashboard';
 
@@ -8,7 +8,7 @@ interface CallLogsViewProps {
   calls: CallRecord[];
 }
 
-export const CallLogsView: React.FC<CallLogsViewProps> = ({ calls }) => {
+export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [outcomeFilter, setOutcomeFilter] = useState('ALL');
@@ -98,27 +98,27 @@ export const CallLogsView: React.FC<CallLogsViewProps> = ({ calls }) => {
             {paginated.map((c, idx) => (
               <tr key={`${c.callId}-${idx}`} className="hover:bg-slate-800/40 transition-colors">
                 <td className="py-2.5 px-4 text-slate-400 font-mono text-[11px]">{c.callDate}</td>
-                <td className="py-2.5 px-3 font-mono text-slate-400 text-[11px]">{c.callId}</td>
-                <td className="py-2.5 px-3 font-medium text-white">{c.agent || '—'}</td>
-                <td className="py-2.5 px-3 text-slate-300">{c.opener}</td>
+                <td className="py-2.5 px-3 font-mono text-slate-300">{c.callId}</td>
+                <td className="py-2.5 px-3 font-medium text-slate-200">{c.agent || '—'}</td>
+                <td className="py-2.5 px-3 text-slate-400">{c.opener}</td>
                 <td className="py-2.5 px-3">
-                  <span className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                    c.type === 'OUT-Bound' ? 'bg-blue-950/60 text-blue-300' : 'bg-cyan-950/60 text-cyan-300'
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${
+                    c.type === 'OUT-Bound' ? 'bg-blue-500/10 text-blue-400' : 'bg-emerald-500/10 text-emerald-400'
                   }`}>
                     {c.type === 'OUT-Bound' ? <PhoneOutgoing className="w-2.5 h-2.5 mr-1" /> : <PhoneIncoming className="w-2.5 h-2.5 mr-1" />}
                     {c.type}
                   </span>
                 </td>
                 <td className="py-2.5 px-3">
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                    c.outcome === 'ANSWERED' ? 'bg-emerald-950/60 text-emerald-300' : 'bg-rose-950/60 text-rose-300'
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${
+                    c.outcome === 'ANSWERED' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
                   }`}>
                     {c.outcome}
                   </span>
                 </td>
-                <td className="py-2.5 px-3 text-right font-mono text-slate-200">{c.duration}</td>
-                <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px]">{c.from}</td>
-                <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px]">{c.to}</td>
+                <td className="py-2.5 px-3 text-right font-mono text-slate-300">{c.duration}</td>
+                <td className="py-2.5 px-3 text-slate-400 font-mono">{c.from}</td>
+                <td className="py-2.5 px-3 text-slate-400 font-mono">{c.to}</td>
               </tr>
             ))}
             {paginated.length === 0 && (
@@ -133,10 +133,8 @@ export const CallLogsView: React.FC<CallLogsViewProps> = ({ calls }) => {
       </div>
 
       {/* Pagination Footer */}
-      <div className="p-3 sm:px-6 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-        <div>
-          Showing page <strong className="text-slate-200">{currentPage}</strong> of <strong className="text-slate-200">{totalPages}</strong>
-        </div>
+      <div className="p-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+        <span>Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} entries</span>
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -156,4 +154,6 @@ export const CallLogsView: React.FC<CallLogsViewProps> = ({ calls }) => {
       </div>
     </div>
   );
-};
+});
+
+CallLogsView.displayName = 'CallLogsView';

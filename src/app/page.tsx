@@ -126,66 +126,56 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* Tab Content */}
-            {activeTab === 'summary' && (
+            {/* Tab Panels (Kept in DOM with CSS display toggling for 0ms lag-free tab switching) */}
+            <div className={activeTab === 'summary' || activeTab === 'table' ? 'block' : 'hidden'}>
               <OpenerTable openers={data.openers} totals={data.totals} />
-            )}
+            </div>
 
-            {activeTab === 'daily' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-semibold text-white">Daily Breakdown</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per day</p>
-                  </div>
-                  <span className="text-xs text-slate-500">{data.dailyBreakdown.length} days</span>
+            <div className={activeTab === 'daily' ? 'space-y-3' : 'hidden'}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-white">Daily Breakdown</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per day</p>
                 </div>
-                <PeriodicBreakdownTable
-                  data={data.dailyBreakdown}
-                  emptyLabel="No daily data in the selected date range."
-                />
+                <span className="text-xs text-slate-500">{data.dailyBreakdown.length} days</span>
               </div>
-            )}
+              <PeriodicBreakdownTable
+                data={data.dailyBreakdown}
+                emptyLabel="No daily data in the selected date range."
+              />
+            </div>
 
-            {activeTab === 'weekly' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-semibold text-white">Weekly Breakdown</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per week</p>
-                  </div>
-                  <span className="text-xs text-slate-500">{data.weeklyBreakdown.length} weeks</span>
+            <div className={activeTab === 'weekly' ? 'space-y-3' : 'hidden'}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-white">Weekly Breakdown</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per week</p>
                 </div>
-                <PeriodicBreakdownTable
-                  data={data.weeklyBreakdown}
-                  emptyLabel="No weekly data in the selected date range."
-                />
+                <span className="text-xs text-slate-500">{data.weeklyBreakdown.length} weeks</span>
               </div>
-            )}
+              <PeriodicBreakdownTable
+                data={data.weeklyBreakdown}
+                emptyLabel="No weekly data in the selected date range."
+              />
+            </div>
 
-            {activeTab === 'monthly' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-semibold text-white">Monthly Breakdown</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per month</p>
-                  </div>
-                  <span className="text-xs text-slate-500">{data.monthlyBreakdown.length} months</span>
+            <div className={activeTab === 'monthly' ? 'space-y-3' : 'hidden'}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-white">Monthly Breakdown</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per month</p>
                 </div>
-                <PeriodicBreakdownTable
-                  data={data.monthlyBreakdown}
-                  emptyLabel="No monthly data in the selected date range."
-                />
+                <span className="text-xs text-slate-500">{data.monthlyBreakdown.length} months</span>
               </div>
-            )}
+              <PeriodicBreakdownTable
+                data={data.monthlyBreakdown}
+                emptyLabel="No monthly data in the selected date range."
+              />
+            </div>
 
-            {activeTab === 'table' && (
-              <OpenerTable openers={data.openers} totals={data.totals} />
-            )}
-
-            {activeTab === 'calls' && (
+            <div className={activeTab === 'calls' ? 'block' : 'hidden'}>
               <CallLogsView calls={data.calls} />
-            )}
+            </div>
           </>
         ) : null}
       </main>
@@ -193,6 +183,7 @@ export default function DashboardPage() {
       <footer className="border-t border-slate-800/80 bg-slate-900/40 py-4 text-center text-xs text-slate-500">
         BD Call & Pipeline Dashboard · Google Sheets API v4
       </footer>
+
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { Download, Search, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { OpenerStats, OrgTotals } from '@/types/dashboard';
 import { CONFIG } from '@/lib/config';
@@ -13,7 +13,8 @@ interface OpenerTableProps {
 
 type SortField = keyof OpenerStats | string;
 
-export const OpenerTable: React.FC<OpenerTableProps> = ({ openers, totals }) => {
+export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }) => {
+
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('calls');
   const [sortAsc, setSortAsc] = useState(false);
@@ -279,4 +280,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = ({ openers, totals }) => 
       </div>
     </div>
   );
-};
+});
+
+OpenerTable.displayName = 'OpenerTable';
+
