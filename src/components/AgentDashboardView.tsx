@@ -1,51 +1,15 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { OpenerStats, PeriodicGroupSummary } from '@/types/dashboard';
-import { Phone, Calendar, TrendingUp, Award, CalendarDays, ChevronRight } from 'lucide-react';
+import React from 'react';
+import { OpenerStats, OrgTotals, FilterState } from '@/types/dashboard';
+import { Phone, Calendar, TrendingUp, Award, User } from 'lucide-react';
+import { formatPercent } from '@/lib/analytics';
 
 /* ─── Types ─────────────────────────────────────────────── */
-type Period = 'today' | 'week' | 'month' | 'custom';
-
 interface AgentDashboardViewProps {
   openers: OpenerStats[];
-  dailyBreakdown: PeriodicGroupSummary[];
-  weeklyBreakdown: PeriodicGroupSummary[];
-  monthlyBreakdown: PeriodicGroupSummary[];
-}
-
-interface AgentPeriodMetrics {
-  name: string;
-  calls: number;
-  booked: number;
-  showRate: number;
-  noShow: number;
-  attended: number;
-  onboarded: number;
-  answered: number;
-  connectionRate: number;
-}
-
-/* ─── Date helpers ───────────────────────────────────────── */
-function todayISO() {
-  return new Date().toISOString().split('T')[0];
-}
-
-function thisWeekKey() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const day = today.getDay();
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
-  const oneJan = new Date(year, 0, 1);
-  const dayOffset = Math.floor((monday.getTime() - oneJan.getTime()) / 86400000);
-  const weekNum = Math.ceil((dayOffset + oneJan.getDay() + 1) / 7);
-  return `${year}-W${String(weekNum).padStart(2, '0')}`;
-}
-
-function thisMonthKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  totals: OrgTotals;
+  filters: FilterState;
 }
 
 function fmtPct(r: number) {
@@ -53,66 +17,17 @@ function fmtPct(r: number) {
   return `${(r * 100).toFixed(0)}%`;
 }
 
-/* ─── Derive per-agent metrics ───────────────────────────── */
-function deriveMetrics(
-  period: Period,
-  daily: PeriodicGroupSummary[],
-  weekly: PeriodicGroupSummary[],
-  monthly: PeriodicGroupSummary[],
-  customStart: string,
-  customEnd: string,
-  allOpeners: OpenerStats[]
-): AgentPeriodMetrics[] {
-  let groups: PeriodicGroupSummary[] = [];
-
-  if (period === 'today') {
-    groups = daily.filter(g => g.periodKey === todayISO());
-  } else if (period === 'week') {
-    groups = weekly.filter(g => g.periodKey === thisWeekKey());
-  } else if (period === 'month') {
-    groups = monthly.filter(g => g.periodKey === thisMonthKey());
-  } else {
-    groups = customStart || customEnd
-      ? daily.filter(g => {
-          if (customStart && g.periodKey < customStart) return false;
-          if (customEnd && g.periodKey > customEnd) return false;
-          return true;
-        })
-      : daily;
+function getPeriodTitle(filters: FilterState): string {
+  if (filters.preset === 'today') {
+    return `Today · ${filters.startDate || new Date().toISOString().split('T')[0]}`;
   }
-
-  const agg: Record<string, { calls: number; booked: number; noShow: number; attended: number; onboarded: number; answered: number }> = {};
-
-  groups.forEach(g =>
-    g.agents.forEach(a => {
-      if (!agg[a.opener]) agg[a.opener] = { calls: 0, booked: 0, noShow: 0, attended: 0, onboarded: 0, answered: 0 };
-      agg[a.opener].calls    += a.calls;
-      agg[a.opener].booked   += a.meetings;
-      agg[a.opener].noShow   += a.noShow;
-      agg[a.opener].attended += a.attended;
-      agg[a.opener].onboarded += a.onboarded;
-      agg[a.opener].answered += a.answered;
-    })
-  );
-
-  return allOpeners
-    .filter(o => o.opener && o.opener !== 'undefined')
-    .map(o => {
-      const a = agg[o.opener] ?? { calls: 0, booked: 0, noShow: 0, attended: 0, onboarded: 0, answered: 0 };
-      return {
-        name: o.opener,
-        calls: a.calls,
-        booked: a.booked,
-        showRate: a.booked > 0 ? a.attended / a.booked : 0,
-        noShow: a.noShow,
-        attended: a.attended,
-        onboarded: a.onboarded,
-        answered: a.answered,
-        connectionRate: a.calls > 0 ? a.answered / a.calls : 0,
-      };
-    })
-    .filter(m => m.calls > 0 || m.booked > 0)
-    .sort((a, b) => b.calls - a.calls);
+  if (filters.preset === 'this_week') return 'This Week';
+  if (filters.preset === 'this_month') return 'This Month';
+  if (filters.preset === 'last_30_days') return 'Last 30 Days';
+  if (filters.startDate && filters.endDate) return `${filters.startDate} → ${filters.endDate}`;
+  if (filters.startDate) return `From ${filters.startDate}`;
+  if (filters.endDate) return `Until ${filters.endDate}`;
+  return 'All Time';
 }
 
 /* ─── Mini progress bar ──────────────────────────────────── */
@@ -134,14 +49,14 @@ function Chip({ value, good, ok }: { value: number; good: number; ok: number }) 
 
 /* ─── Agent card ─────────────────────────────────────────── */
 function AgentCard({ agent, rank, maxCalls, maxBooked }: {
-  agent: AgentPeriodMetrics;
+  agent: OpenerStats;
   rank: number;
   maxCalls: number;
   maxBooked: number;
 }) {
   const isTop = rank === 1;
-  const initials = agent.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-  const hue = (agent.name.charCodeAt(0) * 41 + (agent.name.charCodeAt(1) ?? 0) * 17) % 360;
+  const initials = agent.opener.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'AG';
+  const hue = (agent.opener.charCodeAt(0) * 41 + (agent.opener.charCodeAt(1) ?? 0) * 17) % 360;
 
   const showColor =
     agent.booked === 0 ? 'text-[#3f3f46]'
@@ -171,7 +86,7 @@ function AgentCard({ agent, rank, maxCalls, maxBooked }: {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-serif text-sm font-bold text-white truncate">{agent.name}</span>
+            <span className="font-serif text-sm font-bold text-white truncate">{agent.opener}</span>
             {isTop && <Award className="w-3.5 h-3.5 shrink-0 text-[#e8c56a]" />}
           </div>
           <div className="label-caps mt-0.5">#{rank} · Opener</div>
@@ -226,7 +141,7 @@ function AgentCard({ agent, rank, maxCalls, maxBooked }: {
       {/* Footer */}
       <div className="relative flex items-center justify-between px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <Chip value={agent.connectionRate} good={0.5} ok={0.3} />
+          <Chip value={agent.answerRate} good={0.5} ok={0.3} />
           <span className="label-caps">conn.</span>
         </div>
         <span className="label-caps">{agent.attended} showed · {agent.noShow} no-show</span>
@@ -235,113 +150,40 @@ function AgentCard({ agent, rank, maxCalls, maxBooked }: {
   );
 }
 
-/* ─── Period button ──────────────────────────────────────── */
-function PeriodBtn({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-      style={active
-        ? { background: '#ffffff', color: '#000000' }
-        : { color: '#71717a', background: 'transparent' }
-      }
-    >
-      {label}
-    </button>
-  );
-}
-
 /* ─── Main view ──────────────────────────────────────────── */
-export function AgentDashboardView({ openers, dailyBreakdown, weeklyBreakdown, monthlyBreakdown }: AgentDashboardViewProps) {
-  const [period, setPeriod] = useState<Period>('week');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+export function AgentDashboardView({ openers, totals, filters }: AgentDashboardViewProps) {
+  const activeOpeners = openers
+    .filter(o => o.opener && o.opener !== 'undefined')
+    .sort((a, b) => b.calls - a.calls || b.booked - a.booked);
 
-  const metrics = useMemo(
-    () => deriveMetrics(period, dailyBreakdown, weeklyBreakdown, monthlyBreakdown, customStart, customEnd, openers),
-    [period, dailyBreakdown, weeklyBreakdown, monthlyBreakdown, customStart, customEnd, openers]
-  );
-
-  const maxCalls  = Math.max(1, ...metrics.map(m => m.calls));
-  const maxBooked = Math.max(1, ...metrics.map(m => m.booked));
-
-  const totalCalls    = metrics.reduce((s, m) => s + m.calls, 0);
-  const totalBooked   = metrics.reduce((s, m) => s + m.booked, 0);
-  const totalAttended = metrics.reduce((s, m) => s + m.attended, 0);
-  const avgShow = totalBooked > 0 ? fmtPct(totalAttended / totalBooked) : '—';
-
-  const periodTitle =
-    period === 'today' ? todayISO()
-    : period === 'week' ? 'This Week'
-    : period === 'month' ? new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    : customStart && customEnd ? `${customStart} → ${customEnd}`
-    : 'All Time';
-
-  const PERIODS: { id: Period; label: string }[] = [
-    { id: 'today', label: 'Today' },
-    { id: 'week',  label: 'This Week' },
-    { id: 'month', label: 'This Month' },
-    { id: 'custom', label: 'Custom' },
-  ];
+  const maxCalls  = Math.max(1, ...activeOpeners.map(m => m.calls));
+  const maxBooked = Math.max(1, ...activeOpeners.map(m => m.booked));
+  const periodTitle = getPeriodTitle(filters);
 
   return (
     <div className="space-y-5">
-
       {/* Header row */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <div className="sec-tag mb-1">Agent Performance</div>
           <h2 className="font-serif text-xl font-bold text-white">{periodTitle}</h2>
         </div>
-
-        {/* Period toggle */}
-        <div
-          className="flex items-center gap-0.5 p-1 rounded-xl"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
-        >
-          {PERIODS.map(p => (
-            <PeriodBtn key={p.id} active={period === p.id} label={p.label} onClick={() => setPeriod(p.id)} />
-          ))}
+        <div className="flex items-center gap-2">
+          <span className="label-caps">{activeOpeners.length} Active {activeOpeners.length === 1 ? 'Agent' : 'Agents'}</span>
         </div>
       </div>
 
-      {/* Custom date range */}
-      {period === 'custom' && (
-        <div
-          className="flex items-center gap-3 flex-wrap px-4 py-3 rounded-xl"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-        >
-          <CalendarDays className="w-4 h-4 text-[#52525b]" />
-          <span className="label-caps">From</span>
-          <input
-            type="date"
-            value={customStart}
-            onChange={e => setCustomStart(e.target.value)}
-            className="font-num rounded-lg px-3 py-1.5 outline-none"
-            style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.1)', color: '#f4f4f5', fontSize: 11 }}
-          />
-          <ChevronRight className="w-3.5 h-3.5 text-[#52525b]" />
-          <span className="label-caps">To</span>
-          <input
-            type="date"
-            value={customEnd}
-            onChange={e => setCustomEnd(e.target.value)}
-            className="font-num rounded-lg px-3 py-1.5 outline-none"
-            style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.1)', color: '#f4f4f5', fontSize: 11 }}
-          />
-        </div>
-      )}
-
       {/* Team summary strip */}
-      {metrics.length > 0 && (
+      {activeOpeners.length > 0 && (
         <div
-          className="grid grid-cols-3 gap-px rounded-xl overflow-hidden"
+          className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-xl overflow-hidden"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
         >
           {[
-            { label: 'Total Calls',      value: totalCalls.toLocaleString() },
-            { label: 'Meetings Booked',  value: totalBooked.toLocaleString() },
-            { label: 'Avg Show Rate',    value: avgShow },
+            { label: 'Total Calls',     value: totals.calls.toLocaleString() },
+            { label: 'Meetings Booked', value: totals.booked.toLocaleString() },
+            { label: 'Avg Show Rate',   value: formatPercent(totals.showRate) },
+            { label: 'Onboarded',       value: totals.onboarded.toLocaleString() },
           ].map(stat => (
             <div key={stat.label} className="flex flex-col gap-1.5 px-5 py-4 bg-[#17171a]">
               <span className="label-caps">{stat.label}</span>
@@ -352,19 +194,19 @@ export function AgentDashboardView({ openers, dailyBreakdown, weeklyBreakdown, m
       )}
 
       {/* Cards grid or empty state */}
-      {metrics.length === 0 ? (
+      {activeOpeners.length === 0 ? (
         <div
           className="flex flex-col items-center justify-center py-20 rounded-xl"
           style={{ background: '#17171a', border: '1px solid rgba(255,255,255,0.06)' }}
         >
           <Phone className="w-8 h-8 mb-3 text-[#3f3f46]" />
-          <p className="label-caps text-text-faint">No activity in this period</p>
+          <p className="label-caps text-text-faint">No agent activity found in this period</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {metrics.map((agent, i) => (
+          {activeOpeners.map((agent, i) => (
             <AgentCard
-              key={agent.name}
+              key={agent.opener}
               agent={agent}
               rank={i + 1}
               maxCalls={maxCalls}
@@ -373,7 +215,7 @@ export function AgentDashboardView({ openers, dailyBreakdown, weeklyBreakdown, m
           ))}
         </div>
       )}
-
     </div>
   );
 }
+

@@ -45,7 +45,14 @@ export default function DashboardPage() {
 
       const res = await fetch(`/api/dashboard?${params.toString()}`);
       if (!res.ok) {
-        throw new Error(`Failed to load dashboard data: ${res.statusText}`);
+        let errDetail = res.statusText;
+        try {
+          const errBody = await res.json();
+          if (errBody?.error) errDetail = errBody.error;
+        } catch {
+          // ignore json parse error
+        }
+        throw new Error(errDetail || 'Failed to load dashboard data');
       }
       const json: DashboardResponse = await res.json();
       setData(json);
@@ -133,9 +140,8 @@ export default function DashboardPage() {
             <div className={activeTab === 'agents' ? 'block' : 'hidden'}>
               <AgentDashboardView
                 openers={data.openers}
-                dailyBreakdown={data.dailyBreakdown}
-                weeklyBreakdown={data.weeklyBreakdown}
-                monthlyBreakdown={data.monthlyBreakdown}
+                totals={data.totals}
+                filters={filters}
               />
             </div>
             <div className={activeTab === 'table' ? 'block' : 'hidden'}>

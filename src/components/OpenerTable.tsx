@@ -159,10 +159,10 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
 
       {/* Table Content */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs whitespace-nowrap">
-          <thead className="bg-slate-800/80 text-slate-400 border-b border-slate-700/80 uppercase font-semibold">
+        <table className="w-full text-left text-xs whitespace-nowrap font-num">
+          <thead className="bg-[#111113] text-[#71717a] border-b border-[rgba(255,255,255,0.07)] font-medium">
             <tr>
-              <th onClick={() => handleSort('opener')} className="py-3 px-4 cursor-pointer hover:text-white sticky left-0 bg-slate-800/95 z-10">
+              <th onClick={() => handleSort('opener')} className="py-3 px-4 cursor-pointer hover:text-white sticky left-0 bg-[#111113] z-10 font-serif">
                 Opener {renderSortIcon('opener')}
               </th>
               <th onClick={() => handleSort('calls')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
@@ -189,19 +189,19 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
               <th onClick={() => handleSort('avgCallSec')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
                 Avg Call {renderSortIcon('avgCallSec')}
               </th>
-              <th onClick={() => handleSort('booked')} className="py-3 px-3 cursor-pointer hover:text-white text-right bg-blue-950/20 text-blue-300">
+              <th onClick={() => handleSort('booked')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#e8c56a]">
                 Booked {renderSortIcon('booked')}
               </th>
-              <th onClick={() => handleSort('noShow')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-amber-300">
+              <th onClick={() => handleSort('noShow')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#f87171]">
                 No-Show {renderSortIcon('noShow')}
               </th>
-              <th onClick={() => handleSort('attended')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
+              <th onClick={() => handleSort('attended')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#4ade80]">
                 Attended {renderSortIcon('attended')}
               </th>
               <th onClick={() => handleSort('showRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
                 Show Rate {renderSortIcon('showRate')}
               </th>
-              <th onClick={() => handleSort('onboarded')} className="py-3 px-3 cursor-pointer hover:text-white text-right bg-purple-950/20 text-purple-300">
+              <th onClick={() => handleSort('onboarded')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#c9a84c]">
                 Onboarded {renderSortIcon('onboarded')}
               </th>
               <th onClick={() => handleSort('closeRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
@@ -211,41 +211,41 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
                 Calls / Mtg {renderSortIcon('callsPerMeeting')}
               </th>
               {CONFIG.BD_TABS.map(tab => (
-                <th key={tab} onClick={() => handleSort(tab)} className="py-3 px-3 cursor-pointer hover:text-white text-right text-slate-400">
+                <th key={tab} onClick={() => handleSort(tab)} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#71717a]">
                   {tab} {renderSortIcon(tab)}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800 text-slate-300">
+          <tbody className="divide-y divide-[rgba(255,255,255,0.05)] text-[#d4d4d8]">
             {sorted.map((o) => (
-              <tr key={o.opener} className="hover:bg-slate-800/40 transition-colors">
-                <td className="py-2.5 px-4 font-medium text-white sticky left-0 bg-slate-900/95 z-10 border-r border-slate-800">
+              <tr key={o.opener} className="hover:bg-[rgba(255,255,255,0.03)] transition-colors">
+                <td className="py-2.5 px-4 font-serif font-medium text-white sticky left-0 bg-[#17171a] z-10 border-r border-[rgba(255,255,255,0.06)]">
                   {o.opener}
                 </td>
-                <td className="py-2.5 px-3 text-right font-semibold text-slate-100">{o.calls.toLocaleString()}</td>
-                <td className="py-2.5 px-3 text-right text-slate-400">{o.outbound}</td>
-                <td className="py-2.5 px-3 text-right text-slate-400">{o.inbound}</td>
-                <td className="py-2.5 px-3 text-right text-emerald-400">{o.answered}</td>
-                <td className="py-2.5 px-3 text-right text-slate-500">{o.noAnswer}</td>
+                <td className="py-2.5 px-3 text-right font-semibold text-white">{o.calls.toLocaleString()}</td>
+                <td className="py-2.5 px-3 text-right text-[#71717a]">{o.outbound}</td>
+                <td className="py-2.5 px-3 text-right text-[#71717a]">{o.inbound}</td>
+                <td className="py-2.5 px-3 text-right text-[#4ade80]">{o.answered}</td>
+                <td className="py-2.5 px-3 text-right text-[#52525b]">{o.noAnswer}</td>
                 <td className="py-2.5 px-3 text-right">
                   <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                    o.answerRate >= 0.5 ? 'bg-emerald-950/60 text-emerald-300' : 'text-slate-300'
+                    o.answerRate >= 0.5 ? 'pill-success' : 'text-[#a1a1aa]'
                   }`}>
                     {formatPercent(o.answerRate)}
                   </span>
                 </td>
-                <td className="py-2.5 px-3 text-right text-slate-300">{formatMinutes(o.totalTalkSec)}</td>
-                <td className="py-2.5 px-3 text-right text-slate-400">{o.avgCallSec}s</td>
-                <td className="py-2.5 px-3 text-right font-bold text-blue-400 bg-blue-950/10">{o.booked}</td>
-                <td className="py-2.5 px-3 text-right text-amber-400">{o.noShow}</td>
-                <td className="py-2.5 px-3 text-right text-slate-200">{o.attended}</td>
-                <td className="py-2.5 px-3 text-right font-medium text-indigo-400">{formatPercent(o.showRate)}</td>
-                <td className="py-2.5 px-3 text-right font-bold text-purple-400 bg-purple-950/10">{o.onboarded}</td>
-                <td className="py-2.5 px-3 text-right font-medium text-purple-300">{formatPercent(o.closeRate)}</td>
-                <td className="py-2.5 px-3 text-right font-mono text-amber-300">{o.callsPerMeeting}</td>
+                <td className="py-2.5 px-3 text-right text-[#a1a1aa]">{formatMinutes(o.totalTalkSec)}</td>
+                <td className="py-2.5 px-3 text-right text-[#71717a]">{o.avgCallSec}s</td>
+                <td className="py-2.5 px-3 text-right font-bold text-[#e8c56a]">{o.booked}</td>
+                <td className="py-2.5 px-3 text-right text-[#f87171]">{o.noShow}</td>
+                <td className="py-2.5 px-3 text-right text-[#4ade80]">{o.attended}</td>
+                <td className="py-2.5 px-3 text-right font-medium text-[#e8c56a]">{formatPercent(o.showRate)}</td>
+                <td className="py-2.5 px-3 text-right font-bold text-[#c9a84c]">{o.onboarded}</td>
+                <td className="py-2.5 px-3 text-right font-medium text-[#c9a84c]">{formatPercent(o.closeRate)}</td>
+                <td className="py-2.5 px-3 text-right text-[#e8c56a]">{o.callsPerMeeting}</td>
                 {CONFIG.BD_TABS.map(tab => (
-                  <td key={tab} className="py-2.5 px-3 text-right text-slate-400">
+                  <td key={tab} className="py-2.5 px-3 text-right text-[#71717a]">
                     {o.stageCounts[tab] || 0}
                   </td>
                 ))}
@@ -253,28 +253,28 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
             ))}
           </tbody>
           {/* Totals Footer Row */}
-          <tfoot className="bg-slate-800/90 text-white font-bold border-t-2 border-slate-700">
+          <tfoot className="bg-[#111113] text-white font-bold border-t-2 border-[rgba(255,255,255,0.12)]">
             <tr>
-              <td className="py-3 px-4 sticky left-0 bg-slate-800/95 z-10 border-r border-slate-700">
+              <td className="py-3 px-4 font-serif sticky left-0 bg-[#111113] z-10 border-r border-[rgba(255,255,255,0.12)]">
                 TOTAL ({openers.length} Openers)
               </td>
               <td className="py-3 px-3 text-right text-white">{totals.calls.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-slate-300">{totals.outbound.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-slate-300">{totals.inbound.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-emerald-400">{totals.answered.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-slate-400">{totals.noAnswer.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-emerald-300">{formatPercent(totals.answerRate)}</td>
-              <td className="py-3 px-3 text-right text-slate-200">{formatMinutes(totals.totalTalkSec)}</td>
-              <td className="py-3 px-3 text-right text-slate-300">{totals.avgCallSec}s</td>
-              <td className="py-3 px-3 text-right text-blue-400 bg-blue-950/30">{totals.booked.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-amber-400">{totals.noShow.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-white">{totals.attended.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-indigo-300">{formatPercent(totals.showRate)}</td>
-              <td className="py-3 px-3 text-right text-purple-400 bg-purple-950/30">{totals.onboarded.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-purple-300">{formatPercent(totals.closeRate)}</td>
-              <td className="py-3 px-3 text-right text-amber-300">{totals.callsPerMeeting}</td>
+              <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.outbound.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.inbound.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#4ade80]">{totals.answered.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#52525b]">{totals.noAnswer.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#4ade80]">{formatPercent(totals.answerRate)}</td>
+              <td className="py-3 px-3 text-right text-[#d4d4d8]">{formatMinutes(totals.totalTalkSec)}</td>
+              <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.avgCallSec}s</td>
+              <td className="py-3 px-3 text-right text-[#e8c56a]">{totals.booked.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#f87171]">{totals.noShow.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#4ade80]">{totals.attended.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#e8c56a]">{formatPercent(totals.showRate)}</td>
+              <td className="py-3 px-3 text-right text-[#c9a84c]">{totals.onboarded.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#c9a84c]">{formatPercent(totals.closeRate)}</td>
+              <td className="py-3 px-3 text-right text-[#e8c56a]">{totals.callsPerMeeting}</td>
               {CONFIG.BD_TABS.map(tab => (
-                <td key={tab} className="py-3 px-3 text-right text-slate-300">
+                <td key={tab} className="py-3 px-3 text-right text-[#a1a1aa]">
                   {(totals.stageCounts[tab] || 0).toLocaleString()}
                 </td>
               ))}

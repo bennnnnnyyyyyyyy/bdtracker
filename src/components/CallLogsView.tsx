@@ -84,8 +84,8 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs whitespace-nowrap">
-          <thead className="bg-slate-800/80 text-slate-400 border-b border-slate-700/80 uppercase font-semibold">
+        <table className="w-full text-left text-xs whitespace-nowrap font-num">
+          <thead className="bg-[#111113] text-[#71717a] border-b border-[rgba(255,255,255,0.07)] font-medium">
             <tr>
               <th className="py-2.5 px-4">Date</th>
               <th className="py-2.5 px-3">Call ID</th>
@@ -98,36 +98,36 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
               <th className="py-2.5 px-3">To</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800 text-slate-300">
+          <tbody className="divide-y divide-[rgba(255,255,255,0.05)] text-[#d4d4d8]">
             {paginated.map((c, idx) => (
-              <tr key={`${c.callId}-${idx}`} className="hover:bg-slate-800/40 transition-colors">
-                <td className="py-2.5 px-4 text-slate-400 font-mono text-[11px]">{c.callDate}</td>
-                <td className="py-2.5 px-3 font-mono text-slate-300">{c.callId}</td>
-                <td className="py-2.5 px-3 font-medium text-slate-200">{c.agent || '—'}</td>
-                <td className="py-2.5 px-3 text-slate-400">{c.opener}</td>
+              <tr key={`${c.callId}-${idx}`} className="hover:bg-[rgba(255,255,255,0.03)] transition-colors">
+                <td className="py-2.5 px-4 text-[#71717a] text-[11px]">{c.callDate}</td>
+                <td className="py-2.5 px-3 text-[#a1a1aa]">{c.callId}</td>
+                <td className="py-2.5 px-3 font-medium text-white">{c.agent || '—'}</td>
+                <td className="py-2.5 px-3 text-[#a1a1aa]">{c.opener}</td>
                 <td className="py-2.5 px-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${
-                    c.type === 'OUT-Bound' ? 'bg-blue-500/10 text-blue-400' : 'bg-emerald-500/10 text-emerald-400'
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    c.type === 'OUT-Bound' ? 'pill-warn' : 'pill-success'
                   }`}>
                     {c.type === 'OUT-Bound' ? <PhoneOutgoing className="w-2.5 h-2.5 mr-1" /> : <PhoneIncoming className="w-2.5 h-2.5 mr-1" />}
                     {c.type}
                   </span>
                 </td>
                 <td className="py-2.5 px-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${
-                    c.outcome === 'ANSWERED' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    c.outcome === 'ANSWERED' ? 'pill-success' : 'pill-danger'
                   }`}>
                     {c.outcome}
                   </span>
                 </td>
-                <td className="py-2.5 px-3 text-right font-mono text-slate-300">{c.duration}</td>
-                <td className="py-2.5 px-3 text-slate-400 font-mono">{c.from}</td>
-                <td className="py-2.5 px-3 text-slate-400 font-mono">{c.to}</td>
+                <td className="py-2.5 px-3 text-right text-[#f4f4f5]">{c.duration}</td>
+                <td className="py-2.5 px-3 text-[#71717a]">{c.from}</td>
+                <td className="py-2.5 px-3 text-[#71717a]">{c.to}</td>
               </tr>
             ))}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-slate-500 text-sm">
+                <td colSpan={9} className="py-12 text-center text-[#52525b] text-sm">
                   No call logs match the selected filters.
                 </td>
               </tr>
@@ -137,20 +137,20 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
       </div>
 
       {/* Pagination Footer */}
-      <div className="p-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+      <div className="p-3 border-t border-[rgba(255,255,255,0.07)] flex items-center justify-between text-xs text-[#71717a] font-num">
         <span>Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} entries</span>
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage === 1}
-            className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300"
+            className="p-1 rounded-lg bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] disabled:opacity-30 text-[#f4f4f5] cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
-            className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300"
+            className="p-1 rounded-lg bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] disabled:opacity-30 text-[#f4f4f5] cursor-pointer"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
