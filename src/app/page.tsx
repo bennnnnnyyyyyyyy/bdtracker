@@ -5,17 +5,14 @@ import { Header } from '@/components/Header';
 import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
 import { CallLogsView } from '@/components/CallLogsView';
-import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
+import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FilterState, DashboardResponse } from '@/types/dashboard';
-import { AlertCircle, RefreshCw, BarChart3, CalendarDays, CalendarRange, CalendarCheck2, Table as TableIcon, PhoneCall } from 'lucide-react';
+import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall } from 'lucide-react';
 
-type ActiveTab = 'summary' | 'daily' | 'weekly' | 'monthly' | 'table' | 'calls';
+type ActiveTab = 'agents' | 'table' | 'calls';
 
 const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'summary', label: 'Summary', icon: <BarChart3 className="w-4 h-4" /> },
-  { id: 'daily', label: 'Daily', icon: <CalendarDays className="w-4 h-4" /> },
-  { id: 'weekly', label: 'Weekly', icon: <CalendarRange className="w-4 h-4" /> },
-  { id: 'monthly', label: 'Monthly', icon: <CalendarCheck2 className="w-4 h-4" /> },
+  { id: 'agents', label: 'Agents', icon: <LayoutGrid className="w-4 h-4" /> },
   { id: 'table', label: 'Full Table', icon: <TableIcon className="w-4 h-4" /> },
   { id: 'calls', label: 'Call Logs', icon: <PhoneCall className="w-4 h-4" /> },
 ];
@@ -32,7 +29,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('summary');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('agents');
 
   const fetchData = useCallback(async (forceRefresh = false) => {
     setLoading(true);
@@ -97,7 +94,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Loading skeleton */}
+        {/* Loading */}
         {loading && !data ? (
           <div className="flex flex-col items-center justify-center py-24 space-y-4">
             <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
@@ -116,7 +113,7 @@ export default function DashboardPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`pb-3 pt-1 px-4 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap ${
                     activeTab === tab.id
-                      ? 'border-blue-500 text-blue-400 font-semibold'
+                      ? 'border-amber-500 text-amber-400 font-semibold'
                       : 'border-transparent text-slate-400 hover:text-slate-200'
                   }`}
                 >
@@ -126,51 +123,18 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* Tab Panels (Kept in DOM with CSS display toggling for 0ms lag-free tab switching) */}
-            <div className={activeTab === 'summary' || activeTab === 'table' ? 'block' : 'hidden'}>
+            {/* Tab Panels */}
+            <div className={activeTab === 'agents' ? 'block' : 'hidden'}>
+              <AgentDashboardView
+                openers={data.openers}
+                dailyBreakdown={data.dailyBreakdown}
+                weeklyBreakdown={data.weeklyBreakdown}
+                monthlyBreakdown={data.monthlyBreakdown}
+              />
+            </div>
+
+            <div className={activeTab === 'table' ? 'block' : 'hidden'}>
               <OpenerTable openers={data.openers} totals={data.totals} />
-            </div>
-
-            <div className={activeTab === 'daily' ? 'space-y-3' : 'hidden'}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-semibold text-white">Daily Breakdown</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per day</p>
-                </div>
-                <span className="text-xs text-slate-500">{data.dailyBreakdown.length} days</span>
-              </div>
-              <PeriodicBreakdownTable
-                data={data.dailyBreakdown}
-                emptyLabel="No daily data in the selected date range."
-              />
-            </div>
-
-            <div className={activeTab === 'weekly' ? 'space-y-3' : 'hidden'}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-semibold text-white">Weekly Breakdown</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per week</p>
-                </div>
-                <span className="text-xs text-slate-500">{data.weeklyBreakdown.length} weeks</span>
-              </div>
-              <PeriodicBreakdownTable
-                data={data.weeklyBreakdown}
-                emptyLabel="No weekly data in the selected date range."
-              />
-            </div>
-
-            <div className={activeTab === 'monthly' ? 'space-y-3' : 'hidden'}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-semibold text-white">Monthly Breakdown</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Calls, meetings, show rate & close rate per agent per month</p>
-                </div>
-                <span className="text-xs text-slate-500">{data.monthlyBreakdown.length} months</span>
-              </div>
-              <PeriodicBreakdownTable
-                data={data.monthlyBreakdown}
-                emptyLabel="No monthly data in the selected date range."
-              />
             </div>
 
             <div className={activeTab === 'calls' ? 'block' : 'hidden'}>
@@ -181,11 +145,8 @@ export default function DashboardPage() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-900/40 py-4 text-center text-xs text-slate-500">
-        BD Call & Pipeline Dashboard · Google Sheets API v4
+        BD Call &amp; Pipeline Dashboard · Google Sheets API v4
       </footer>
-
     </div>
   );
 }
-
-
