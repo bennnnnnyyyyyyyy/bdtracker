@@ -232,9 +232,7 @@ export default function DashboardPage() {
       if (filters.selectedOpener && filters.selectedOpener !== 'ALL') {
         params.set('opener', filters.selectedOpener);
       }
-      // Date-specific views must validate against the live call log instead of
-      // relying on a potentially stale Supabase snapshot.
-      if (forceRefresh || filters.startDate || filters.endDate) params.set('refresh', 'true');
+      if (forceRefresh) params.set('refresh', 'true');
 
       const res = await fetch('/api/dashboard?' + params.toString());
       if (!res.ok) {

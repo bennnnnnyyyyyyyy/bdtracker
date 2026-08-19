@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData } from '@/lib/sheets';
-import { getRawDataFromSupabase, saveRawDataToSupabase } from '@/lib/supabase';
+import { saveRawDataToSupabase } from '@/lib/supabase';
+import { getRawDataFromFirestore, saveRawDataToFirestore } from '@/lib/firestore';
 import { computeDashboardMetrics } from '@/lib/analytics';
 import { CONFIG } from '@/lib/config';
 import { DashboardResponse } from '@/types/dashboard';
@@ -12,8 +13,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate') || undefined;
     const selectedOpener = searchParams.get('opener') || undefined;
     const forceRefresh = searchParams.get('refresh') === 'true';
-    const dateFilterActive = Boolean(startDate || endDate);
-    const shouldRefreshSource = forceRefresh || dateFilterActive;
+    const shouldRefreshSource = forceRefresh;
 
     let rawData: {
       calls: any[];
@@ -24,23 +24,33 @@ export async function GET(request: NextRequest) {
       isMockData?: boolean;
     } | null = null;
 
-    // 1. Try reading from Supabase if not forcing refresh
+    // Firestore is the canonical dashboard store. Sheets is only used for an
+    // explicit refresh or when Firestore has not been initialized yet.
     if (!shouldRefreshSource) {
-      rawData = await getRawDataFromSupabase();
+      rawData = await getRawDataFromFirestore();
     }
 
-    // 2. If no data in Supabase or forceRefresh requested, pull from Sheets & update Supabase
-    if (!rawData || forceRefresh) {
-      const sheetsData = await getDashboardRawData(shouldRefreshSource);
-      rawData = sheetsData;
+    if (!rawData || shouldRefreshSource) {
+      const sheetsData = await getDashboardRawData(true);
+      const syncedAt = new Date().toISOString();
 
-      // Asynchronously update Supabase in the background
+      // Complete the Firestore sync before serving the new dataset.
+      await saveRawDataToFirestore({
+        calls: sheetsData.calls,
+        meetings: sheetsData.meetings,
+        trackerCounts: sheetsData.trackerCounts,
+        agentMappings: sheetsData.agentMappings,
+      });
+
+      // Keep the existing Supabase mirror aligned with Firestore.
       saveRawDataToSupabase({
         calls: sheetsData.calls,
         meetings: sheetsData.meetings,
         trackerCounts: sheetsData.trackerCounts,
         agentMappings: sheetsData.agentMappings,
-      }).catch((err) => console.warn('Background Supabase save warning:', err));
+      }).catch((err) => console.warn('Background Supabase mirror warning:', err));
+
+      rawData = { ...sheetsData, lastUpdated: syncedAt };
     }
 
     if (!rawData) {

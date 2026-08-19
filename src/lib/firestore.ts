@@ -62,6 +62,23 @@ export async function saveRawDataToFirestore(data: {
   const db = getFirestoreClient();
   if (!db) throw new Error('Firestore client could not be initialized.');
 
+  const clearCollection = async (collectionName: string) => {
+    while (true) {
+      const snapshot = await db.collection(collectionName).limit(400).get();
+      if (snapshot.empty) break;
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+    }
+  };
+
+  // Replace each mirrored collection so Firestore exactly matches the Sheets snapshot.
+  await Promise.all([
+    clearCollection('agent_mappings'),
+    clearCollection('meetings'),
+    clearCollection('calls'),
+  ]);
+
   const timestamp = new Date().toISOString();
 
   // 1. Save Agent Mappings

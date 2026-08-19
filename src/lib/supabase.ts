@@ -72,6 +72,7 @@ export async function saveRawDataToSupabase(data: {
     }
 
     // 4. Sync Calls
+    await supabase.from('calls').delete().neq('id', 0);
     if (data.calls.length > 0) {
       const callsRows = data.calls.map((c, idx) => ({
         call_id: c.callId || `call_${idx}`,
