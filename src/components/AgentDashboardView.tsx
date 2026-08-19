@@ -5,6 +5,14 @@ import { OpenerStats, OrgTotals, FilterState } from '@/types/dashboard';
 import { Phone, Calendar, TrendingUp, Award, User } from 'lucide-react';
 import { formatPercent } from '@/lib/analytics';
 
+function formatLocalDateYMD(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+
 /* ─── Types ─────────────────────────────────────────────── */
 interface AgentDashboardViewProps {
   openers: OpenerStats[];
@@ -19,7 +27,7 @@ function fmtPct(r: number) {
 
 function getPeriodTitle(filters: FilterState): string {
   if (filters.preset === 'today') {
-    return `Today · ${filters.startDate || new Date().toISOString().split('T')[0]}`;
+    return `Today · ${filters.startDate || formatLocalDateYMD(new Date())}`;
   }
   if (filters.preset === 'this_week') return 'This Week';
   if (filters.preset === 'this_month') return 'This Month';

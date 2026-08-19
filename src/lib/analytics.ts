@@ -52,9 +52,9 @@ export function parseDateToISO(val: unknown): string | null {
     if (val > 30000 && val < 60000) {
       const jsDate = new Date(Math.round((val - 25569) * 86400 * 1000));
       if (!isNaN(jsDate.getTime())) {
-        const year = jsDate.getUTCFullYear();
-        const month = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(jsDate.getUTCDate()).padStart(2, '0');
+        const year = jsDate.getFullYear();
+        const month = String(jsDate.getMonth() + 1).padStart(2, '0');
+        const day = String(jsDate.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       }
     }
@@ -355,7 +355,8 @@ export function computeDashboardMetrics(
     if (iso) distinctDays.add(iso);
   });
   filteredMeetings.forEach(m => {
-    if (m.dateAdded) distinctDays.add(m.dateAdded);
+    const iso = parseDateToISO(m.dateAdded);
+    if (iso) distinctDays.add(iso);
   });
   const daysCount = Math.max(1, distinctDays.size);
   const weeksCount = Math.max(1, Math.ceil(daysCount / 7));

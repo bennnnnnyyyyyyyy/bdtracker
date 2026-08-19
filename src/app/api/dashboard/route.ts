@@ -12,6 +12,8 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate') || undefined;
     const selectedOpener = searchParams.get('opener') || undefined;
     const forceRefresh = searchParams.get('refresh') === 'true';
+    const dateFilterActive = Boolean(startDate || endDate);
+    const shouldRefreshSource = forceRefresh || dateFilterActive;
 
     let rawData: {
       calls: any[];
@@ -23,13 +25,13 @@ export async function GET(request: NextRequest) {
     } | null = null;
 
     // 1. Try reading from Supabase if not forcing refresh
-    if (!forceRefresh) {
+    if (!shouldRefreshSource) {
       rawData = await getRawDataFromSupabase();
     }
 
     // 2. If no data in Supabase or forceRefresh requested, pull from Sheets & update Supabase
     if (!rawData || forceRefresh) {
-      const sheetsData = await getDashboardRawData(forceRefresh);
+      const sheetsData = await getDashboardRawData(shouldRefreshSource);
       rawData = sheetsData;
 
       // Asynchronously update Supabase in the background
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
     const response: DashboardResponse = {
       openers: responseOpeners,
       totals,
-      calls: filteredCalls.slice(0, 500),
+      calls: filteredCalls,
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,
       lastUpdated: rawData.lastUpdated || new Date().toISOString(),

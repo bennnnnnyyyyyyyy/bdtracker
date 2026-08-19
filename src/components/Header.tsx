@@ -22,7 +22,7 @@ interface PresetOption {
   getRange: () => { startDate: string; endDate: string };
 }
 
-function toYMD(d: Date): string {
+function formatLocalDateYMD(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -33,7 +33,7 @@ const PRESETS: PresetOption[] = [
   {
     label: 'Today',
     value: 'today',
-    getRange: () => { const t = toYMD(new Date()); return { startDate: t, endDate: t }; }
+    getRange: () => { const t = formatLocalDateYMD(new Date()); return { startDate: t, endDate: t }; }
   },
   {
     label: 'This Week',
@@ -45,7 +45,7 @@ const PRESETS: PresetOption[] = [
       mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
       const sun = new Date(mon);
       sun.setDate(mon.getDate() + 6);
-      return { startDate: toYMD(mon), endDate: toYMD(sun) };
+      return { startDate: formatLocalDateYMD(mon), endDate: formatLocalDateYMD(sun) };
     }
   },
   {
@@ -55,7 +55,7 @@ const PRESETS: PresetOption[] = [
       const now = new Date();
       const first = new Date(now.getFullYear(), now.getMonth(), 1);
       const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return { startDate: toYMD(first), endDate: toYMD(last) };
+      return { startDate: formatLocalDateYMD(first), endDate: formatLocalDateYMD(last) };
     }
   },
   {
@@ -64,7 +64,7 @@ const PRESETS: PresetOption[] = [
     getRange: () => {
       const now = new Date();
       const s = new Date(now); s.setDate(now.getDate() - 29);
-      return { startDate: toYMD(s), endDate: toYMD(now) };
+      return { startDate: formatLocalDateYMD(s), endDate: formatLocalDateYMD(now) };
     }
   },
   { label: 'All Time', value: 'all_time', getRange: () => ({ startDate: '', endDate: '' }) },
