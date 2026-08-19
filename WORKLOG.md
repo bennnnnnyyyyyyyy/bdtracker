@@ -46,10 +46,13 @@ This document chronicles the major engineering iterations, architecture decision
 - Redesigned [`Header.tsx`](file:///c:/Users/ben.arthur/Desktop/bd%20tracker/src/components/Header.tsx):
   - Added 1-click preset filter buttons: **Today**, **This Week**, **This Month**, **Last 30 Days**, **All Time**.
 
-#### E. Quality & Accessibility Audit (`/audit`)
-- Added keyboard navigation (`Enter` / `Space`), `role="button"`, `tabIndex={0}`, and `aria-expanded` to table accordions.
-- Added explicit `aria-label` tags to the agent filter and date range inputs.
-- Verified responsive layout and dark mode theming tokens.
+#### F. Apps Script In-Sheet Backend Refactor (`/javascript-pro`)
+- Refactored [`apps-script/Code.js`](file:///c:/Users/ben.arthur/Desktop/bd%20tracker/apps-script/Code.js) to modern ES2020+ standards (V8 runtime):
+  - Removed duplicate config properties.
+  - Implemented `EXCLUDED_AGENTS` & `isExcludedAgent_` filter to permanently ignore `Russ`, `George`, and `Caroline` in in-sheet calculations.
+  - Added dynamic Opener column detection (`opener`, `agent`, `rep`) across all BD tabs.
+  - Recomputed summary table to spotlight: Calls Made, Connection Rate, Meetings Booked, Show Rate, and Closing Rate.
+  - Added polished in-sheet styling (slate navy header `#1e293b`, zebra striping, percentage formatting, custom chart palettes).
 
 ---
 
