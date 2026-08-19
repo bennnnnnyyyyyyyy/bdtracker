@@ -1,13 +1,12 @@
 /**
- * @fileoverview BD Call & Pipeline Dashboard — Google Apps Script Backend
- * Connects Ultatel call exports with BD Meetings Tracker tabs.
+ * @fileoverview BD Call & Pipeline Tracker — In-Sheet Data Intake & Report Mirror
  * 
- * Features:
- * - Automated staging, deduping, and backfilling of Ultatel call logs.
- * - Dynamic column detection across BD Pipeline tabs.
- * - Full exclusion of specified agents (Russ, George, Caroline).
- * - Multi-metric calculation: Calls, Connection Rate, Meetings, Show Rate, Close Rate.
- * - In-sheet formatted executive summary table & visual charts.
+ * Role:
+ * - Log Intake: Allows team members to paste raw Ultatel call exports via a temporary staging tab.
+ * - Deduplication: Skips existing calls and deletes the staging tab once saved to 'Call Logs'.
+ * - In-Sheet Mirror: Renders a summary table in 'BD Dashboard' for spreadsheet viewers.
+ * 
+ * Note: The actual web application and backend are hosted on Vercel backed by Supabase PostgreSQL.
  */
 
 /**
@@ -79,10 +78,11 @@ function isExcludedAgent_(name) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('BD Call Dashboard')
-    .addItem('1. Setup / Reset Tabs', 'setupTabs')
+    .addItem('1. Prepare / Open Staging Tab', 'createStagingTab')
     .addItem('2. Process Staged Call Import', 'processStagingImport')
     .addItem('3. Refresh BD Dashboard', 'refreshDashboard')
     .addSeparator()
+    .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
     .addItem('Debug BD Connection & Tabs', 'debugBDConnection')
     .addToUi();
@@ -142,8 +142,30 @@ function writeHeaderIfEmpty_(sheet, headers) {
 // ==========================================
 
 /**
- * Processes rows from Import Staging into Call Logs, deduping by Call ID,
- * parsing Agent names and duration in seconds, and registering new agents in Agent Mapping.
+ * Creates or resets the Import Staging tab with headers ready for pasting.
+ */
+function createStagingTab() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let staging = ss.getSheetByName(CONFIG.STAGING_SHEET);
+  if (!staging) {
+    staging = ss.insertSheet(CONFIG.STAGING_SHEET);
+  } else {
+    staging.clear();
+  }
+  staging.getRange(1, 1, 1, CONFIG.RAW_HEADERS.length).setValues([CONFIG.RAW_HEADERS]).setFontWeight('bold');
+  staging.setFrozenRows(1);
+  ss.setActiveSheet(staging);
+  SpreadsheetApp.getUi().alert(
+    `"${CONFIG.STAGING_SHEET}" is ready.\n\nPaste your raw Ultatel call export starting at row 2, then click "Process Staged Call Import".`
+  );
+}
+
+/**
+ * Processes rows from Import Staging into Call Logs:
+ * 1. Checks for duplicates by Call ID (and compound key fallback) against existing logs.
+ * 2. Deduplicates intra-batch rows.
+ * 3. Appends only new records to Call Logs.
+ * 4. Deletes the Import Staging tab completely after completion.
  */
 function processStagingImport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -151,8 +173,15 @@ function processStagingImport() {
   const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
   const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
 
-  if (!staging || !callLog || !mapping) {
+  if (!callLog || !mapping) {
     SpreadsheetApp.getUi().alert('Required tabs missing. Please run "1. Setup / Reset Tabs" first.');
+    return;
+  }
+
+  if (!staging) {
+    SpreadsheetApp.getUi().alert(
+      `"${CONFIG.STAGING_SHEET}" tab not found.\n\nClick "BD Call Dashboard > 1. Create / Open Staging Tab" to prepare an import tab.`
+    );
     return;
   }
 
@@ -164,13 +193,21 @@ function processStagingImport() {
 
   const rawRows = staging.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length).getValues();
 
-  // Cache existing call IDs for deduplication
+  // Cache existing call IDs and compound keys for deduplication
   const existingLastRow = callLog.getLastRow();
   const existingIds = new Set();
+  const existingCompoundKeys = new Set();
+
   if (existingLastRow > 1) {
-    const existingIdValues = callLog.getRange(2, 2, existingLastRow - 1, 1).getValues();
-    existingIdValues.forEach(r => {
-      if (r[0]) existingIds.add(String(r[0]));
+    const existingData = callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length).getValues();
+    existingData.forEach(r => {
+      const id = String(r[1] ?? '').trim().toLowerCase();
+      if (id) {
+        existingIds.add(id);
+      }
+      // Compound key fallback: Date|From|To|Duration|Extension
+      const compoundKey = `${String(r[0] ?? '').trim()}|${String(r[2] ?? '').trim()}|${String(r[3] ?? '').trim()}|${String(r[10] ?? '').trim()}|${String(r[4] ?? '').trim()}`.toLowerCase();
+      existingCompoundKeys.add(compoundKey);
     });
   }
 
@@ -186,21 +223,44 @@ function processStagingImport() {
 
   const toAppend = [];
   const newAgents = new Set();
+  let duplicateCount = 0;
 
   rawRows.forEach(r => {
+    const callDate = String(r[0] ?? '').trim();
     const callId = String(r[1] ?? '').trim();
-    if (!callId || existingIds.has(callId)) return;
+    const fromNum = String(r[2] ?? '').trim();
+    const toNum = String(r[3] ?? '').trim();
+    const extension = String(r[4] ?? '').trim();
+    const duration = String(r[10] ?? '').trim();
 
-    const extension = String(r[4] ?? '');
+    // Skip empty rows
+    if (!callDate && !callId && !fromNum && !toNum) return;
+
+    const normalizedId = callId.toLowerCase();
+    const compoundKey = `${callDate}|${fromNum}|${toNum}|${duration}|${extension}`.toLowerCase();
+
+    // Check duplicate by Call ID or compound key
+    const isDuplicate = (normalizedId && existingIds.has(normalizedId)) ||
+                        (!normalizedId && existingCompoundKeys.has(compoundKey));
+
+    if (isDuplicate) {
+      duplicateCount++;
+      return;
+    }
+
     const agent = parseAgentName_(extension);
     const durationSec = durationToSeconds_(r[10]);
 
     if (agent && !isExcludedAgent_(agent) && !knownAgents.has(agent)) {
       newAgents.add(agent);
+      knownAgents.add(agent);
     }
 
     toAppend.push([...r, agent, durationSec]);
-    existingIds.add(callId);
+
+    // Prevent intra-batch duplicates
+    if (normalizedId) existingIds.add(normalizedId);
+    existingCompoundKeys.add(compoundKey);
   });
 
   // Batch insert new call rows
@@ -214,13 +274,23 @@ function processStagingImport() {
     mapping.getRange(mapping.getLastRow() + 1, 1, newMappingRows.length, 2).setValues(newMappingRows);
   }
 
-  // Clear staging table
-  staging.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length).clearContent();
-
-  let message = `${toAppend.length} call(s) imported into Call Logs.`;
-  if (newAgents.size > 0) {
-    message += `\n${newAgents.size} new agent(s) added to Agent Mapping. Please assign their Opener names.`;
+  // Delete the staging tab completely after finishing
+  try {
+    ss.deleteSheet(staging);
+  } catch (err) {
+    console.warn('Could not delete staging sheet, clearing content instead:', err);
+    staging.clear();
   }
+
+  let message = `✅ Import Complete:\n• ${toAppend.length} new call(s) imported into Call Logs.`;
+  if (duplicateCount > 0) {
+    message += `\n• ${duplicateCount} duplicate call(s) detected and skipped.`;
+  }
+  if (newAgents.size > 0) {
+    message += `\n• ${newAgents.size} new agent(s) added to Agent Mapping. Please assign their Opener names.`;
+  }
+  message += `\n• Staging tab removed.`;
+
   SpreadsheetApp.getUi().alert(message);
 
   refreshDashboard();
