@@ -52,7 +52,10 @@ export function parseDateToISO(val: unknown): string | null {
     if (val > 30000 && val < 60000) {
       const jsDate = new Date(Math.round((val - 25569) * 86400 * 1000));
       if (!isNaN(jsDate.getTime())) {
-        return jsDate.toISOString().split('T')[0];
+        const year = jsDate.getUTCFullYear();
+        const month = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(jsDate.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
       }
     }
     return null;
@@ -60,13 +63,16 @@ export function parseDateToISO(val: unknown): string | null {
 
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return null;
-    return val.toISOString().split('T')[0];
+    const year = val.getFullYear();
+    const month = String(val.getMonth() + 1).padStart(2, '0');
+    const day = String(val.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   const s = String(val).trim();
   if (!s) return null;
 
-  // 1. Try ISO YYYY-MM-DD
+  // 1. Try ISO YYYY-MM-DD (with optional time)
   const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
   if (isoMatch) {
     const yyyy = isoMatch[1];
@@ -96,7 +102,10 @@ export function parseDateToISO(val: unknown): string | null {
   // 3. Try standard Date.parse
   const d = new Date(s);
   if (!isNaN(d.getTime())) {
-    return d.toISOString().split('T')[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   return null;
@@ -246,34 +255,18 @@ export function computeDashboardMetrics(
     filteredCalls.push({ ...c, agent: rawAgent, opener });
   });
 
-  // Date filtering for calls
-  let startTimestamp: number | null = null;
-  let endTimestamp: number | null = null;
+  // Date filtering for calls & meetings using strict ISO string bounds
+  const startISO = filter?.startDate ? parseDateToISO(filter.startDate) : null;
+  const endISO = filter?.endDate ? parseDateToISO(filter.endDate) : null;
+  const isDateFiltered = Boolean(startISO || endISO);
 
-  if (filter?.startDate) {
-    const s = new Date(filter.startDate + 'T00:00:00').getTime();
-    if (!isNaN(s)) startTimestamp = s;
-  }
-  if (filter?.endDate) {
-    const e = new Date(filter.endDate + 'T23:59:59').getTime();
-    if (!isNaN(e)) endTimestamp = e;
-  }
-
-  if (startTimestamp !== null) {
+  if (isDateFiltered) {
     filteredCalls = filteredCalls.filter(c => {
-      const iso = parseDateToISO(c.callDate);
-      if (!iso) return true;
-      const t = new Date(iso + 'T00:00:00').getTime();
-      return isNaN(t) || t >= startTimestamp!;
-    });
-  }
-
-  if (endTimestamp !== null) {
-    filteredCalls = filteredCalls.filter(c => {
-      const iso = parseDateToISO(c.callDate);
-      if (!iso) return true;
-      const t = new Date(iso + 'T23:59:59').getTime();
-      return isNaN(t) || t <= endTimestamp!;
+      const callISO = parseDateToISO(c.callDate);
+      if (!callISO) return false;
+      if (startISO && callISO < startISO) return false;
+      if (endISO && callISO > endISO) return false;
+      return true;
     });
   }
 
@@ -285,25 +278,19 @@ export function computeDashboardMetrics(
     filteredMeetings.push({ ...m, opener });
   });
 
-  if (startTimestamp !== null) {
+  if (isDateFiltered) {
     filteredMeetings = filteredMeetings.filter(m => {
-      if (!m.dateAdded) return true;
-      const t = new Date(m.dateAdded + 'T00:00:00').getTime();
-      return isNaN(t) || t >= startTimestamp!;
-    });
-  }
-
-  if (endTimestamp !== null) {
-    filteredMeetings = filteredMeetings.filter(m => {
-      if (!m.dateAdded) return true;
-      const t = new Date(m.dateAdded + 'T23:59:59').getTime();
-      return isNaN(t) || t <= endTimestamp!;
+      const meetingISO = parseDateToISO(m.dateAdded);
+      if (!meetingISO) return false;
+      if (startISO && meetingISO < startISO) return false;
+      if (endISO && meetingISO > endISO) return false;
+      return true;
     });
   }
 
   // Calculate normalized tracker counts per canonical opener
   const dynamicTrackerCounts: Record<string, Record<string, number>> = {};
-  if (startTimestamp !== null || endTimestamp !== null) {
+  if (isDateFiltered) {
     filteredMeetings.forEach(m => {
       if (!m.opener) return;
       if (!dynamicTrackerCounts[m.opener]) dynamicTrackerCounts[m.opener] = {};

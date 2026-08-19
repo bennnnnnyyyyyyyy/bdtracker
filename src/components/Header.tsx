@@ -23,7 +23,10 @@ interface PresetOption {
 }
 
 function toYMD(d: Date): string {
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 const PRESETS: PresetOption[] = [
@@ -37,9 +40,12 @@ const PRESETS: PresetOption[] = [
     value: 'this_week',
     getRange: () => {
       const now = new Date();
+      const day = now.getDay();
       const mon = new Date(now);
-      mon.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1));
-      return { startDate: toYMD(mon), endDate: toYMD(now) };
+      mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      return { startDate: toYMD(mon), endDate: toYMD(sun) };
     }
   },
   {
@@ -47,7 +53,9 @@ const PRESETS: PresetOption[] = [
     value: 'this_month',
     getRange: () => {
       const now = new Date();
-      return { startDate: toYMD(new Date(now.getFullYear(), now.getMonth(), 1)), endDate: toYMD(now) };
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return { startDate: toYMD(first), endDate: toYMD(last) };
     }
   },
   {
