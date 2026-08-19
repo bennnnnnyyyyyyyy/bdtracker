@@ -66,7 +66,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen flex flex-col" style={{ background: '#09090b', color: '#f4f4f5' }}>
       <Header
         filters={filters}
         onFilterChange={handleFilterChange}
@@ -80,14 +80,18 @@ export default function DashboardPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
         {/* Error Banner */}
         {error && (
-          <div className="bg-rose-950/50 border border-rose-800/80 rounded-xl p-4 flex items-center justify-between text-rose-300 text-sm">
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="w-5 h-5 text-rose-400" />
+          <div
+            className="rounded-xl p-4 flex items-center justify-between text-sm"
+            style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#fca5a5' }}
+          >
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" style={{ color: '#f87171' }} />
               <span>{error}</span>
             </div>
             <button
               onClick={() => fetchData(true)}
-              className="text-xs bg-rose-900/80 hover:bg-rose-800 text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+              className="font-num text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+              style={{ background: 'rgba(248,113,113,0.12)', color: '#fca5a5' }}
             >
               Retry
             </button>
@@ -96,26 +100,29 @@ export default function DashboardPage() {
 
         {/* Loading */}
         {loading && !data ? (
-          <div className="flex flex-col items-center justify-center py-24 space-y-4">
-            <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
-            <p className="text-slate-400 text-sm">Syncing live data from Google Sheets...</p>
+          <div className="flex flex-col items-center justify-center py-24 gap-4">
+            <RefreshCw className="w-7 h-7 animate-spin" style={{ color: '#c9a84c' }} />
+            <p className="label-caps">Syncing from Google Sheets…</p>
           </div>
         ) : data ? (
           <>
-            {/* KPI Cards — always visible */}
             <KpiGrid totals={data.totals} />
 
-            {/* Tab Navigation */}
-            <div className="flex border-b border-slate-800 gap-1 text-sm font-medium overflow-x-auto">
+            {/* Tabs */}
+            <div
+              className="flex gap-0 text-sm font-medium overflow-x-auto"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}
+            >
               {TABS.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`pb-3 pt-1 px-4 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap ${
+                  className="pb-3 pt-1 px-4 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap"
+                  style={
                     activeTab === tab.id
-                      ? 'border-amber-500 text-amber-400 font-semibold'
-                      : 'border-transparent text-slate-400 hover:text-slate-200'
-                  }`}
+                      ? { borderColor: '#c9a84c', color: '#e8c56a', fontWeight: 600 }
+                      : { borderColor: 'transparent', color: '#71717a' }
+                  }
                 >
                   {tab.icon}
                   {tab.label}
@@ -123,7 +130,6 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* Tab Panels */}
             <div className={activeTab === 'agents' ? 'block' : 'hidden'}>
               <AgentDashboardView
                 openers={data.openers}
@@ -132,11 +138,9 @@ export default function DashboardPage() {
                 monthlyBreakdown={data.monthlyBreakdown}
               />
             </div>
-
             <div className={activeTab === 'table' ? 'block' : 'hidden'}>
               <OpenerTable openers={data.openers} totals={data.totals} />
             </div>
-
             <div className={activeTab === 'calls' ? 'block' : 'hidden'}>
               <CallLogsView calls={data.calls} />
             </div>
@@ -144,7 +148,10 @@ export default function DashboardPage() {
         ) : null}
       </main>
 
-      <footer className="border-t border-slate-800/80 bg-slate-900/40 py-4 text-center text-xs text-slate-500">
+      <footer
+        className="py-4 text-center label-caps"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+      >
         BD Call &amp; Pipeline Dashboard · Google Sheets API v4
       </footer>
     </div>

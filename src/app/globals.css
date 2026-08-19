@@ -1,26 +1,165 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ═══════════════════════════════════════════════════════
+   BD TRACKER — Unified Design System
+   Palette: Prime AD · Near-black · Dark gold
+   ═══════════════════════════════════════════════════════ */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Fonts */
+  --font-sans:     var(--font-geist-sans);
+  --font-mono:     var(--font-geist-mono);
+  --font-serif:    var(--font-playfair);
+  --font-display:  var(--font-jetbrains);
+
+  /* Surface scale */
+  --color-base:      #09090b;
+  --color-surface:   #111113;
+  --color-card:      #17171a;
+  --color-elevated:  #1e1e23;
+  --color-hover:     #25252b;
+
+  /* Borders */
+  --color-border:        rgba(255,255,255,0.07);
+  --color-border-mid:    rgba(255,255,255,0.12);
+  --color-border-strong: rgba(255,255,255,0.20);
+
+  /* Text scale */
+  --color-text-white:   #ffffff;
+  --color-text-primary: #f4f4f5;
+  --color-text-muted:   #a1a1aa;
+  --color-text-dim:     #71717a;
+  --color-text-faint:   #3f3f46;
+
+  /* Gold accent */
+  --color-gold:       #c9a84c;
+  --color-gold-light: #e8c56a;
+  --color-gold-dim:   rgba(201,168,76,0.12);
+  --color-gold-border:rgba(201,168,76,0.25);
+
+  /* Semantic status */
+  --color-success:        #4ade80;
+  --color-success-dim:    rgba(74,222,128,0.08);
+  --color-success-border: rgba(74,222,128,0.18);
+
+  --color-warn:        #e8c56a;
+  --color-warn-dim:    rgba(232,197,106,0.08);
+  --color-warn-border: rgba(232,197,106,0.18);
+
+  --color-danger:        #f87171;
+  --color-danger-dim:    rgba(248,113,113,0.08);
+  --color-danger-border: rgba(248,113,113,0.15);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ── Base reset ──────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { height: 100%; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #09090b;
+  color: #f4f4f5;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100%;
 }
+
+/* ── Number / mono elements ──────────────────────────── */
+.font-num {
+  font-family: var(--font-jetbrains), 'JetBrains Mono', monospace;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.02em;
+}
+
+.font-serif {
+  font-family: var(--font-playfair), 'Playfair Display', Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+.label-caps {
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #71717a;
+}
+
+/* ── Card base ───────────────────────────────────────── */
+.card {
+  background: #17171a;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgba(255,255,255,0.13);
+}
+
+.card-gold {
+  background: linear-gradient(160deg, #1a1608 0%, #17171a 55%);
+  border-color: rgba(201,168,76,0.28);
+  box-shadow: 0 0 0 1px rgba(201,168,76,0.1), 0 16px 40px rgba(0,0,0,0.45);
+}
+
+/* ── Pill / badge ────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.pill-success { color: #4ade80; background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.18); }
+.pill-warn    { color: #e8c56a; background: rgba(232,197,106,0.08); border: 1px solid rgba(232,197,106,0.18); }
+.pill-danger  { color: #f87171; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.15); }
+
+/* ── Separator bar ───────────────────────────────────── */
+.bar-track {
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.6s cubic-bezier(0.16,1,0.3,1);
+}
+.bar-fill-white { background: linear-gradient(90deg, #3a3a3f, #d4d4d8); }
+.bar-fill-gold  { background: linear-gradient(90deg, #b8922a, #e8c56a); }
+
+/* ── Section tag ─────────────────────────────────────── */
+.sec-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #52525b;
+}
+.sec-tag::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  background: #52525b;
+}
+
+/* ── Input (date picker) ─────────────────────────────── */
+input[type="date"] {
+  color-scheme: dark;
+}
+
+/* ── Scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #09090b; }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }

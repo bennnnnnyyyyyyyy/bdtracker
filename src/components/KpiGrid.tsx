@@ -5,106 +5,70 @@ import { Phone, CalendarCheck, CheckCircle, TrendingUp, Zap } from 'lucide-react
 import { OrgTotals } from '@/types/dashboard';
 import { formatPercent } from '@/lib/analytics';
 
-interface KpiGridProps {
-  totals: OrgTotals;
-}
-
 interface KpiCardProps {
   icon: React.ReactNode;
   label: string;
   value: string;
-  subValue?: string;
-  subLabel?: string;
-  accentColor: string;
-  iconBg: string;
-  valueColor?: string;
+  sub?: string;
+  valueClass?: string;
 }
 
-const KpiCard: React.FC<KpiCardProps> = ({
-  icon, label, value, subValue, subLabel, accentColor, iconBg, valueColor = 'text-white'
-}) => (
-  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-    <div className={`absolute top-0 left-0 h-1 w-full ${accentColor} rounded-t-xl`} />
-    <div className="flex items-center justify-between mb-3">
-      <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">{label}</span>
-      <div className={`p-2 rounded-lg ${iconBg}`}>
+const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, sub, valueClass = 'text-white' }) => (
+  <div className="card relative overflow-hidden p-5 flex flex-col gap-3">
+    {/* top accent line — gold */}
+    <div className="absolute top-0 inset-x-0 h-px bg-linear-to-r from-transparent via-[#c9a84c]/50 to-transparent" />
+
+    <div className="flex items-center justify-between">
+      <span className="label-caps">{label}</span>
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
         {icon}
       </div>
     </div>
-    <div className={`text-3xl font-bold tracking-tight ${valueColor}`}>{value}</div>
-    {subValue && subLabel && (
-      <div className="mt-1.5 text-xs text-slate-400">
-        {subLabel}: <span className="text-slate-200 font-medium">{subValue}</span>
-      </div>
+
+    <div className={`font-num text-3xl font-bold ${valueClass}`}>{value}</div>
+
+    {sub && (
+      <div className="text-[11px] text-[#71717a] font-num">{sub}</div>
     )}
   </div>
 );
 
-export const KpiGrid: React.FC<KpiGridProps> = React.memo(({ totals }) => {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-      {/* 1. Calls */}
-      <KpiCard
-        label="Total Calls"
-        value={totals.calls.toLocaleString()}
-        subValue={`${totals.outbound.toLocaleString()} out · ${totals.inbound.toLocaleString()} in`}
-        subLabel="Volume"
-        icon={<Phone className="w-4 h-4 text-blue-400" />}
-        iconBg="bg-blue-500/10"
-        accentColor="bg-blue-500"
-      />
-
-      {/* 2. Connection (Answer) Rate */}
-      <KpiCard
-        label="Connection Rate"
-        value={formatPercent(totals.connectionRate)}
-        subValue={`${totals.answered.toLocaleString()} answered`}
-        subLabel="of"
-        icon={<Zap className="w-4 h-4 text-cyan-400" />}
-        iconBg="bg-cyan-500/10"
-        accentColor="bg-cyan-500"
-        valueColor="text-cyan-400"
-      />
-
-      {/* 3. Meetings */}
-      <KpiCard
-        label="Meetings Booked"
-        value={totals.booked.toLocaleString()}
-        subValue={`${totals.attended} attended`}
-        subLabel="Showed up"
-        icon={<CalendarCheck className="w-4 h-4 text-indigo-400" />}
-        iconBg="bg-indigo-500/10"
-        accentColor="bg-indigo-500"
-      />
-
-      {/* 4. Show Rate */}
-      <KpiCard
-        label="Show Rate"
-        value={formatPercent(totals.showRate)}
-        subValue={`${totals.noShow} no-shows`}
-        subLabel="Out of"
-        icon={<TrendingUp className="w-4 h-4 text-emerald-400" />}
-        iconBg="bg-emerald-500/10"
-        accentColor="bg-emerald-500"
-        valueColor="text-emerald-400"
-      />
-
-      {/* 5. Closing Rate */}
-      <KpiCard
-        label="Closing Rate"
-        value={formatPercent(totals.closeRate)}
-        subValue={`${totals.onboarded} onboarded`}
-        subLabel="Closed"
-        icon={<CheckCircle className="w-4 h-4 text-purple-400" />}
-        iconBg="bg-purple-500/10"
-        accentColor="bg-purple-500"
-        valueColor="text-purple-400"
-      />
-    </div>
-  );
-});
+export const KpiGrid: React.FC<{ totals: OrgTotals }> = React.memo(({ totals }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+    <KpiCard
+      label="Total Calls"
+      value={totals.calls.toLocaleString()}
+      sub={`${totals.outbound.toLocaleString()} out · ${totals.inbound.toLocaleString()} in`}
+      icon={<Phone className="w-3.5 h-3.5 text-[#a1a1aa]" />}
+    />
+    <KpiCard
+      label="Connection Rate"
+      value={formatPercent(totals.connectionRate)}
+      sub={`${totals.answered.toLocaleString()} answered`}
+      icon={<Zap className="w-3.5 h-3.5 text-[#e8c56a]" />}
+      valueClass="text-[#e8c56a]"
+    />
+    <KpiCard
+      label="Meetings Booked"
+      value={totals.booked.toLocaleString()}
+      sub={`${totals.attended} attended`}
+      icon={<CalendarCheck className="w-3.5 h-3.5 text-[#a1a1aa]" />}
+    />
+    <KpiCard
+      label="Show Rate"
+      value={formatPercent(totals.showRate)}
+      sub={`${totals.noShow} no-shows`}
+      icon={<TrendingUp className="w-3.5 h-3.5 text-[#4ade80]" />}
+      valueClass="text-[#4ade80]"
+    />
+    <KpiCard
+      label="Closing Rate"
+      value={formatPercent(totals.closeRate)}
+      sub={`${totals.onboarded} onboarded`}
+      icon={<CheckCircle className="w-3.5 h-3.5 text-[#c9a84c]" />}
+      valueClass="text-[#c9a84c]"
+    />
+  </div>
+));
 
 KpiGrid.displayName = 'KpiGrid';
-
-
-
