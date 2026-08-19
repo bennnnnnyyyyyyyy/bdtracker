@@ -166,6 +166,57 @@ export function getIsoMonthKey(dateStr: string): { key: string; label: string } 
 }
 
 /**
+ * Canonical agent / opener normalizer.
+ * Matches full names, first names, and custom mappings to a consistent Opener name.
+ * Drops system extensions (numbers, IVR, etc.) and excluded agents.
+ */
+export function resolveOpener(
+  rawName: string | undefined | null,
+  agentMappings: AgentMapping[]
+): string | null {
+  if (!rawName) return null;
+  const clean = String(rawName).trim();
+  if (!clean || isExcludedAgent(clean)) return null;
+
+  // Ignore numeric extensions, system names, and unassigned channels
+  if (/^\d+$/.test(clean) || /^(front desk|conference|support|ivr|unmapped|main line|fax|unknown)/i.test(clean)) {
+    return null;
+  }
+
+  const cleanLower = clean.toLowerCase();
+
+  // 1. Direct case-insensitive match against Agent Mapping
+  for (const m of agentMappings) {
+    if (m.agent && m.agent.toLowerCase() === cleanLower) {
+      const target = (m.opener || m.agent).trim();
+      return isExcludedAgent(target) ? null : target;
+    }
+    if (m.opener && m.opener.toLowerCase() === cleanLower) {
+      return isExcludedAgent(m.opener) ? null : m.opener.trim();
+    }
+  }
+
+  // 2. First-name or Prefix matching against known Openers
+  const firstName = clean.split(/\s+/)[0].toLowerCase();
+  for (const m of agentMappings) {
+    if (m.opener && m.opener.toLowerCase() === firstName) {
+      return isExcludedAgent(m.opener) ? null : m.opener.trim();
+    }
+    if (m.agent && m.agent.toLowerCase().startsWith(firstName)) {
+      const target = (m.opener || m.agent).trim();
+      return isExcludedAgent(target) ? null : target;
+    }
+  }
+
+  // 3. Fallback: Capitalized clean name if valid person name
+  if (/^[a-zA-Z\s.-]+$/.test(clean)) {
+    return clean;
+  }
+
+  return null;
+}
+
+/**
  * Computes all opener stats, org totals, and daily/weekly/monthly breakdowns.
  */
 export function computeDashboardMetrics(
@@ -186,21 +237,14 @@ export function computeDashboardMetrics(
   weeklyBreakdown: PeriodicGroupSummary[];
   monthlyBreakdown: PeriodicGroupSummary[];
 } {
-  // Build agent to opener mapping (excluding ignored agents)
-  const agentToOpener: Record<string, string> = {};
-  agentMappings.forEach(m => {
-    if (m.agent && !isExcludedAgent(m.agent) && !isExcludedAgent(m.opener)) {
-      agentToOpener[m.agent.trim()] = (m.opener || '').trim();
-    }
+  // Normalize and map calls to canonical openers
+  let filteredCalls: CallRecord[] = [];
+  rawCalls.forEach(c => {
+    const rawAgent = c.agent || parseAgentName(c.extension);
+    const opener = resolveOpener(rawAgent, agentMappings);
+    if (!opener || isExcludedAgent(opener)) return;
+    filteredCalls.push({ ...c, agent: rawAgent, opener });
   });
-
-  // Filter and map calls
-  let filteredCalls = rawCalls
-    .map(c => {
-      const opener = agentToOpener[c.agent] || c.agent || 'Unmapped';
-      return { ...c, opener };
-    })
-    .filter(c => !isExcludedAgent(c.agent) && !isExcludedAgent(c.opener));
 
   // Date filtering for calls
   let startTimestamp: number | null = null;
@@ -233,8 +277,13 @@ export function computeDashboardMetrics(
     });
   }
 
-  // Filter meetings by date range and excluded agents
-  let filteredMeetings = rawMeetings.filter(m => !isExcludedAgent(m.opener));
+  // Normalize and filter meetings
+  let filteredMeetings: MeetingRecord[] = [];
+  rawMeetings.forEach(m => {
+    const opener = resolveOpener(m.opener, agentMappings);
+    if (!opener || isExcludedAgent(opener)) return;
+    filteredMeetings.push({ ...m, opener });
+  });
 
   if (startTimestamp !== null) {
     filteredMeetings = filteredMeetings.filter(m => {
@@ -252,7 +301,7 @@ export function computeDashboardMetrics(
     });
   }
 
-  // If date filters are active, calculate tracker counts dynamically from filteredMeetings
+  // Calculate normalized tracker counts per canonical opener
   const dynamicTrackerCounts: Record<string, Record<string, number>> = {};
   if (startTimestamp !== null || endTimestamp !== null) {
     filteredMeetings.forEach(m => {
@@ -261,20 +310,25 @@ export function computeDashboardMetrics(
       dynamicTrackerCounts[m.opener][m.stage] = (dynamicTrackerCounts[m.opener][m.stage] || 0) + 1;
     });
   } else {
-    // Use full tracker counts but filter out excluded agents
-    Object.keys(trackerCounts).forEach(op => {
-      if (!isExcludedAgent(op)) {
-        dynamicTrackerCounts[op] = { ...trackerCounts[op] };
-      }
+    // Re-map raw tracker counts to canonical openers
+    Object.keys(trackerCounts).forEach(rawOpener => {
+      const canonical = resolveOpener(rawOpener, agentMappings);
+      if (!canonical || isExcludedAgent(canonical)) return;
+      if (!dynamicTrackerCounts[canonical]) dynamicTrackerCounts[canonical] = {};
+      
+      CONFIG.BD_TABS.forEach(tab => {
+        const count = trackerCounts[rawOpener]?.[tab] || 0;
+        dynamicTrackerCounts[canonical][tab] = (dynamicTrackerCounts[canonical][tab] || 0) + count;
+      });
     });
   }
 
-  // Aggregate call metrics per opener
+  // Aggregate call metrics per canonical opener
   const stats: Record<string, { calls: number; out: number; in: number; answered: number; noAnswer: number; totalSec: number }> = {};
 
   filteredCalls.forEach(r => {
-    const opener = r.opener || 'Unmapped';
-    if (isExcludedAgent(opener)) return;
+    const opener = r.opener;
+    if (!opener || isExcludedAgent(opener)) return;
     if (!stats[opener]) {
       stats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, totalSec: 0 };
     }
@@ -289,13 +343,15 @@ export function computeDashboardMetrics(
     s.totalSec += r.durationSec || 0;
   });
 
-  // Active openers set (excluding excluded agents)
+  // Collect all verified active canonical openers
   const allOpeners = new Set<string>();
   Object.keys(stats).forEach(op => { if (!isExcludedAgent(op)) allOpeners.add(op); });
   Object.keys(dynamicTrackerCounts).forEach(op => { if (!isExcludedAgent(op)) allOpeners.add(op); });
   agentMappings.forEach(m => {
-    if (m.opener && !isExcludedAgent(m.opener)) allOpeners.add(m.opener);
+    const canonical = resolveOpener(m.opener || m.agent, agentMappings);
+    if (canonical && !isExcludedAgent(canonical)) allOpeners.add(canonical);
   });
+
 
   // Calculate unique days, weeks, months for averages
   const distinctDays = new Set<string>();
