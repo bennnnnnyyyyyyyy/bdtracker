@@ -53,15 +53,22 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = ({ 
     return isRate ? formatPercent(v) : v.toLocaleString();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent, key: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle(key);
+    }
+  };
+
   return (
     <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full text-xs whitespace-nowrap">
           <thead className="bg-slate-800/80 text-slate-400 uppercase font-semibold border-b border-slate-700/80">
             <tr>
-              <th className="py-3 px-4 text-left sticky left-0 bg-slate-800/95 z-10">Period / Agent</th>
+              <th scope="col" className="py-3 px-4 text-left sticky left-0 bg-slate-800/95 z-10">Period / Agent</th>
               {METRIC_COLS.map(c => (
-                <th key={c.key} className={`py-3 px-3 text-right ${c.color}`}>{c.label}</th>
+                <th key={c.key} scope="col" className={`py-3 px-3 text-right ${c.color}`}>{c.label}</th>
               ))}
             </tr>
           </thead>
@@ -72,14 +79,19 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = ({ 
                 <React.Fragment key={period.periodKey}>
                   {/* Period header row */}
                   <tr
-                    className="cursor-pointer hover:bg-slate-800/50 transition-colors bg-slate-800/30"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isOpen}
+                    aria-label={`Toggle ${period.periodLabel} breakdown`}
+                    className="cursor-pointer hover:bg-slate-800/50 focus:bg-slate-800/60 focus:outline-none transition-colors bg-slate-800/30"
                     onClick={() => toggle(period.periodKey)}
+                    onKeyDown={(e) => handleKeyDown(e, period.periodKey)}
                   >
                     <td className="py-3 px-4 font-semibold text-white sticky left-0 bg-slate-800/60 z-10 border-r border-slate-700">
                       <div className="flex items-center gap-2">
                         {isOpen
-                          ? <ChevronDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                          : <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          ? <ChevronDown className="w-3.5 h-3.5 text-blue-400 shrink-0" aria-hidden="true" />
+                          : <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
                         }
                         <span className="text-slate-100">{period.periodLabel}</span>
                         <span className="text-slate-500 font-normal text-[10px]">({period.agents.length} agents)</span>
@@ -114,3 +126,4 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = ({ 
     </div>
   );
 };
+

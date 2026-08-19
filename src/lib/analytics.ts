@@ -46,35 +46,62 @@ export function durationToSeconds(val: unknown): number {
  */
 export function parseDateToISO(val: unknown): string | null {
   if (val === null || val === undefined || val === '') return null;
+
   if (typeof val === 'number') {
-    // Excel serial date to JS Date
-    const jsDate = new Date((val - 25569) * 86400 * 1000);
-    if (isNaN(jsDate.getTime())) return null;
-    return jsDate.toISOString().split('T')[0];
+    // Excel serial dates: e.g. 40000 - 60000 corresponds to 2009 - 2064
+    if (val > 30000 && val < 60000) {
+      const jsDate = new Date(Math.round((val - 25569) * 86400 * 1000));
+      if (!isNaN(jsDate.getTime())) {
+        return jsDate.toISOString().split('T')[0];
+      }
+    }
+    return null;
   }
+
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return null;
     return val.toISOString().split('T')[0];
   }
+
   const s = String(val).trim();
-  // Handle MM-DD-YYYY or MM/DD/YYYY or YYYY-MM-DD
-  const parts = s.split(/[T\s]/)[0];
-  if (/^\d{4}-\d{2}-\d{2}$/.test(parts)) {
-    return parts;
-  }
-  const matchMDY = parts.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (matchMDY) {
-    const mm = matchMDY[1].padStart(2, '0');
-    const dd = matchMDY[2].padStart(2, '0');
-    const yyyy = matchMDY[3];
+  if (!s) return null;
+
+  // 1. Try ISO YYYY-MM-DD
+  const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    const yyyy = isoMatch[1];
+    const mm = isoMatch[2].padStart(2, '0');
+    const dd = isoMatch[3].padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   }
+
+  // 2. Try MM/DD/YYYY or MM/DD/YY or DD/MM/YYYY
+  const mdyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+  if (mdyMatch) {
+    const p1 = parseInt(mdyMatch[1], 10);
+    const p2 = parseInt(mdyMatch[2], 10);
+    let yr = parseInt(mdyMatch[3], 10);
+    if (yr < 100) yr += 2000;
+
+    let mm = p1;
+    let dd = p2;
+    if (p1 > 12 && p2 <= 12) {
+      // European format DD/MM/YYYY
+      dd = p1;
+      mm = p2;
+    }
+    return `${yr}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+  }
+
+  // 3. Try standard Date.parse
   const d = new Date(s);
   if (!isNaN(d.getTime())) {
     return d.toISOString().split('T')[0];
   }
+
   return null;
 }
+
 
 export function formatSeconds(totalSec: number): string {
   const m = Math.floor(totalSec / 60);

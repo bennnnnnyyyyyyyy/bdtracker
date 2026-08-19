@@ -108,6 +108,14 @@ export async function fetchCallDashboardData(): Promise<{
   return { calls, agentMappings };
 }
 
+let cachedLocalData: {
+  calls: CallRecord[];
+  meetings: MeetingRecord[];
+  trackerCounts: Record<string, Record<string, number>>;
+  agentMappings: AgentMapping[];
+  isMockData: boolean;
+} | null = null;
+
 export async function fetchBDTrackerData(): Promise<{
   meetings: MeetingRecord[];
   trackerCounts: Record<string, Record<string, number>>;
@@ -117,7 +125,9 @@ export async function fetchBDTrackerData(): Promise<{
 
   const counts: Record<string, Record<string, number>> = {};
   const meetings: MeetingRecord[] = [];
-  const ranges = CONFIG.BD_TABS.map(tab => `'${tab}'!B2:F`);
+  
+  // Pull A1:Z for each BD tab in one single batch request
+  const ranges = CONFIG.BD_TABS.map(tab => `'${tab}'!A1:Z`);
   const batchRes = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: CONFIG.BD_TRACKER_SHEET_ID,
     ranges
@@ -126,22 +136,59 @@ export async function fetchBDTrackerData(): Promise<{
   const valueRanges = batchRes.data.valueRanges || [];
 
   CONFIG.BD_TABS.forEach((tabName, idx) => {
-    const rows = valueRanges[idx]?.values || [];
-    rows.forEach(r => {
-      const opener = String(r[0] || '').trim();
-      if (!opener || isExcludedAgent(opener)) return;
+    const rawRows = valueRanges[idx]?.values || [];
+    if (rawRows.length < 2) return;
+
+    // Detect column indices from header row
+    const headers = (rawRows[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
+    
+    let openerIdx = headers.findIndex(h => h.includes('opener') || h === 'agent' || h === 'rep');
+    if (openerIdx === -1) openerIdx = 1; // Default Col B (0-indexed 1)
+
+    let dateIdx = headers.findIndex(h => 
+      h.includes('date added') || h.includes('meeting date') || h.includes('date booked') || h === 'date' || h.includes('created') || h.includes('timestamp')
+    );
+    if (dateIdx === -1) {
+      dateIdx = headers.findIndex(h => h.includes('date'));
+    }
+
+    let companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
+    let personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
+
+    for (let r = 1; r < rawRows.length; r++) {
+      const row = rawRows[r];
+      if (!row || row.length === 0) continue;
+
+      const opener = String(row[openerIdx] || '').trim();
+      if (!opener || isExcludedAgent(opener)) continue;
+
       if (!counts[opener]) counts[opener] = {};
       counts[opener][tabName] = (counts[opener][tabName] || 0) + 1;
 
-      const dateAdded = parseDateToISO(r[2]);
+      // Extract date with primary index or fallback row scan
+      let dateAdded: string | null = null;
+      if (dateIdx !== -1 && row[dateIdx] !== undefined) {
+        dateAdded = parseDateToISO(row[dateIdx]);
+      }
+      if (!dateAdded) {
+        for (let c = 0; c < row.length; c++) {
+          if (c === openerIdx) continue;
+          const parsed = parseDateToISO(row[c]);
+          if (parsed) {
+            dateAdded = parsed;
+            break;
+          }
+        }
+      }
+
       meetings.push({
         stage: tabName,
         opener,
         dateAdded: dateAdded || '',
-        companyName: String(r[3] || ''),
-        authorizedPerson: String(r[4] || '')
+        companyName: companyIdx !== -1 ? String(row[companyIdx] || '') : '',
+        authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : ''
       });
-    });
+    }
   });
 
   return { meetings, trackerCounts: counts };
@@ -154,6 +201,10 @@ function loadLocalActualData(): {
   agentMappings: AgentMapping[];
   isMockData: boolean;
 } {
+  if (cachedLocalData) {
+    return cachedLocalData;
+  }
+
   const trackerCounts: Record<string, Record<string, number>> = {};
   const meetings: MeetingRecord[] = [];
   const calls: CallRecord[] = [];
@@ -166,7 +217,7 @@ function loadLocalActualData(): {
     { agent: 'Nora Atkins', opener: 'Nora' }
   ].filter(m => !isExcludedAgent(m.agent) && !isExcludedAgent(m.opener));
 
-  // 1. Read BD Pipeline Tabs from data/BD MEETINGS 2026 (7).xlsx
+  // 1. Read BD Pipeline Tabs from data/BD MEETINGS 2026 (7).xlsx or BD TRACKER (1).xlsx
   const bdFiles = ['BD MEETINGS 2026 (7).xlsx', 'BD TRACKER (1).xlsx'].map(f => path.join(process.cwd(), 'data', f));
   for (const p of bdFiles) {
     if (fs.existsSync(p)) {
@@ -176,21 +227,53 @@ function loadLocalActualData(): {
         CONFIG.BD_TABS.forEach(tabName => {
           if (wb.Sheets[tabName]) {
             const rows: any[][] = xlsx.utils.sheet_to_json(wb.Sheets[tabName], { header: 1 });
+            if (rows.length < 2) return;
+
+            const headers = (rows[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
+            let openerIdx = headers.findIndex(h => h.includes('opener') || h === 'agent' || h === 'rep');
+            if (openerIdx === -1) openerIdx = 1;
+
+            let dateIdx = headers.findIndex(h => 
+              h.includes('date added') || h.includes('meeting date') || h.includes('date booked') || h === 'date' || h.includes('created') || h.includes('timestamp')
+            );
+            if (dateIdx === -1) {
+              dateIdx = headers.findIndex(h => h.includes('date'));
+            }
+
+            let companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
+            let personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
+
             for (let i = 1; i < rows.length; i++) {
               const row = rows[i];
-              if (!row || !row[1]) continue;
-              const opener = String(row[1]).trim();
+              if (!row || row.length === 0) continue;
+
+              const opener = String(row[openerIdx] || '').trim();
               if (!opener || isExcludedAgent(opener)) continue;
+
               if (!trackerCounts[opener]) trackerCounts[opener] = {};
               trackerCounts[opener][tabName] = (trackerCounts[opener][tabName] || 0) + 1;
 
-              const dateAdded = parseDateToISO(row[3]);
+              let dateAdded: string | null = null;
+              if (dateIdx !== -1 && row[dateIdx] !== undefined) {
+                dateAdded = parseDateToISO(row[dateIdx]);
+              }
+              if (!dateAdded) {
+                for (let c = 0; c < row.length; c++) {
+                  if (c === openerIdx) continue;
+                  const parsed = parseDateToISO(row[c]);
+                  if (parsed) {
+                    dateAdded = parsed;
+                    break;
+                  }
+                }
+              }
+
               meetings.push({
                 stage: tabName,
                 opener,
                 dateAdded: dateAdded || '',
-                companyName: String(row[4] || ''),
-                authorizedPerson: String(row[5] || '')
+                companyName: companyIdx !== -1 ? String(row[companyIdx] || '') : '',
+                authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : ''
               });
             }
           }
@@ -250,7 +333,8 @@ function loadLocalActualData(): {
     }
   }
 
-  return { calls, meetings, trackerCounts, agentMappings, isMockData: false };
+  cachedLocalData = { calls, meetings, trackerCounts, agentMappings, isMockData: false };
+  return cachedLocalData;
 }
 
 export async function getDashboardRawData(forceRefresh = false): Promise<{
@@ -266,10 +350,17 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
   }
 
   try {
-    const [callData, bdData] = await Promise.all([
+    // 6-second timeout race on live Google Sheets API
+    const liveFetchPromise = Promise.all([
       fetchCallDashboardData(),
       fetchBDTrackerData()
     ]);
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Google Sheets API request timed out')), 6000)
+    );
+
+    const [callData, bdData] = await Promise.race([liveFetchPromise, timeoutPromise]);
 
     const result = {
       calls: callData.calls,
@@ -279,11 +370,14 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
     };
 
     cachedData = { data: result, timestamp: now };
+    console.log(`[Google Sheets] Live pull complete: ${result.calls.length} calls, ${result.meetings.length} meetings loaded.`);
     return { ...result, isMockData: false };
   } catch (err: unknown) {
+    console.warn('[Google Sheets] Live pull fallback to local cache:', err instanceof Error ? err.message : err);
     const localData = loadLocalActualData();
     cachedData = { data: localData, timestamp: now };
     return localData;
   }
 }
+
 

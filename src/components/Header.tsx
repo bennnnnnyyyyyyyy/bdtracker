@@ -152,11 +152,12 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Opener Filter */}
           <div className="flex items-center bg-slate-800/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-sm gap-2">
-            <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <User className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
             <select
               value={filters.selectedOpener}
               onChange={(e) => onFilterChange({ selectedOpener: e.target.value })}
               className="bg-transparent text-slate-200 focus:outline-none cursor-pointer text-xs"
+              aria-label="Filter by Agent"
             >
               <option value="ALL" className="bg-slate-900">All Agents</option>
               {openers.map((o) => (
@@ -167,13 +168,14 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Custom Date Range */}
           <div className="flex items-center bg-slate-800/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 gap-2 text-xs">
-            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
             <input
               type="date"
               value={filters.startDate}
               onChange={(e) => onFilterChange({ startDate: e.target.value, preset: 'custom' })}
               className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
               title="Start Date"
+              aria-label="Start Date"
             />
             <span className="text-slate-500">to</span>
             <input
@@ -182,8 +184,10 @@ export const Header: React.FC<HeaderProps> = ({
               onChange={(e) => onFilterChange({ endDate: e.target.value, preset: 'custom' })}
               className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
               title="End Date"
+              aria-label="End Date"
             />
           </div>
+
 
           {/* Reset Button */}
           {hasActiveFilter && (
