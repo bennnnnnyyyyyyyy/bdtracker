@@ -21,7 +21,7 @@ let cachedData: CacheEntry<{
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function getSheetsClient() {
-  const saPath = path.join(process.cwd(), 'tribal-quest-484611-j3-a4a4f21e24ed.json');
+  const saPath = path.join(process.cwd(), 'google2.json');
   if (fs.existsSync(saPath)) {
     try {
       const saKey = JSON.parse(fs.readFileSync(saPath, 'utf8'));
