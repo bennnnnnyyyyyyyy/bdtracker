@@ -38,5 +38,19 @@ export const CONFIG = {
     'Notes',
     'Call Path'
   ],
-  CALL_LOG_EXTRA: ['Agent', 'Duration (sec)']
+  CALL_LOG_EXTRA: ['Agent', 'Duration (sec)'],
+
+  // Agents/Openers to completely exclude from dashboard
+  EXCLUDED_AGENTS: ['russ', 'george', 'caroline', 'caroline richards']
 };
+
+/**
+ * Checks if a given agent or opener name should be excluded from the dashboard.
+ */
+export function isExcludedAgent(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const clean = name.trim().toLowerCase();
+  if (!clean) return false;
+  return CONFIG.EXCLUDED_AGENTS.some(excluded => clean === excluded || clean.startsWith(excluded) || clean.endsWith(excluded));
+}
+

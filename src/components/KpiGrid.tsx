@@ -1,119 +1,107 @@
 'use client';
 
 import React from 'react';
-import { Phone, CalendarCheck, CheckCircle, Clock, TrendingUp, PhoneForwarded } from 'lucide-react';
+import { Phone, CalendarCheck, CheckCircle, TrendingUp, Zap } from 'lucide-react';
 import { OrgTotals } from '@/types/dashboard';
-import { formatMinutes, formatPercent } from '@/lib/analytics';
+import { formatPercent } from '@/lib/analytics';
 
 interface KpiGridProps {
   totals: OrgTotals;
 }
 
+interface KpiCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  subValue?: string;
+  subLabel?: string;
+  accentColor: string;
+  iconBg: string;
+  valueColor?: string;
+}
+
+const KpiCard: React.FC<KpiCardProps> = ({
+  icon, label, value, subValue, subLabel, accentColor, iconBg, valueColor = 'text-white'
+}) => (
+  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-slate-700 transition-all">
+    <div className={`absolute top-0 left-0 h-1 w-full ${accentColor} rounded-t-xl`} />
+    <div className="flex items-center justify-between mb-3">
+      <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">{label}</span>
+      <div className={`p-2 rounded-lg ${iconBg}`}>
+        {icon}
+      </div>
+    </div>
+    <div className={`text-3xl font-bold tracking-tight ${valueColor}`}>{value}</div>
+    {subValue && subLabel && (
+      <div className="mt-1.5 text-xs text-slate-400">
+        {subLabel}: <span className="text-slate-200 font-medium">{subValue}</span>
+      </div>
+    )}
+  </div>
+);
+
 export const KpiGrid: React.FC<KpiGridProps> = ({ totals }) => {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-      {/* 1. Total Calls */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Calls Made</span>
-          <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-            <Phone className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <div className="text-2xl font-bold text-white tracking-tight">
-            {totals.calls.toLocaleString()}
-          </div>
-          <div className="flex items-center text-xs text-slate-400 mt-1 space-x-2">
-            <span>Out: <strong className="text-slate-200">{totals.outbound.toLocaleString()}</strong></span>
-            <span>•</span>
-            <span>In: <strong className="text-slate-200">{totals.inbound.toLocaleString()}</strong></span>
-          </div>
-        </div>
-        <div className="absolute top-0 left-0 h-1 w-full bg-blue-500 rounded-t-xl" />
-      </div>
+      {/* 1. Calls */}
+      <KpiCard
+        label="Total Calls"
+        value={totals.calls.toLocaleString()}
+        subValue={`${totals.outbound.toLocaleString()} out · ${totals.inbound.toLocaleString()} in`}
+        subLabel="Volume"
+        icon={<Phone className="w-4 h-4 text-blue-400" />}
+        iconBg="bg-blue-500/10"
+        accentColor="bg-blue-500"
+      />
 
-      {/* 2. Answer Rate & Talk Time */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Answer Rate</span>
-          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-            <PhoneForwarded className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <div className="text-2xl font-bold text-emerald-400 tracking-tight">
-            {formatPercent(totals.answerRate)}
-          </div>
-          <div className="flex items-center text-xs text-slate-400 mt-1 space-x-2">
-            <span>Talk: <strong className="text-slate-200">{formatMinutes(totals.totalTalkSec)}</strong></span>
-            <span>•</span>
-            <span>Avg: <strong className="text-slate-200">{totals.avgCallSec}s</strong></span>
-          </div>
-        </div>
-        <div className="absolute top-0 left-0 h-1 w-full bg-emerald-500 rounded-t-xl" />
-      </div>
+      {/* 2. Connection (Answer) Rate */}
+      <KpiCard
+        label="Connection Rate"
+        value={formatPercent(totals.connectionRate)}
+        subValue={`${totals.answered.toLocaleString()} answered`}
+        subLabel="of"
+        icon={<Zap className="w-4 h-4 text-cyan-400" />}
+        iconBg="bg-cyan-500/10"
+        accentColor="bg-cyan-500"
+        valueColor="text-cyan-400"
+      />
 
-      {/* 3. Meetings Booked & Show Rate */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Meetings Booked</span>
-          <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
-            <CalendarCheck className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <div className="text-2xl font-bold text-white tracking-tight">
-            {totals.booked.toLocaleString()}
-          </div>
-          <div className="flex items-center text-xs text-slate-400 mt-1 space-x-2">
-            <span>Attended: <strong className="text-slate-200">{totals.attended}</strong></span>
-            <span>•</span>
-            <span className="text-indigo-400 font-medium">Show: {formatPercent(totals.showRate)}</span>
-          </div>
-        </div>
-        <div className="absolute top-0 left-0 h-1 w-full bg-indigo-500 rounded-t-xl" />
-      </div>
+      {/* 3. Meetings */}
+      <KpiCard
+        label="Meetings Booked"
+        value={totals.booked.toLocaleString()}
+        subValue={`${totals.attended} attended`}
+        subLabel="Showed up"
+        icon={<CalendarCheck className="w-4 h-4 text-indigo-400" />}
+        iconBg="bg-indigo-500/10"
+        accentColor="bg-indigo-500"
+      />
 
-      {/* 4. Onboarded & Close Rate */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Onboarded / Closed</span>
-          <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
-            <CheckCircle className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <div className="text-2xl font-bold text-purple-400 tracking-tight">
-            {totals.onboarded.toLocaleString()}
-          </div>
-          <div className="flex items-center text-xs text-slate-400 mt-1 space-x-2">
-            <span>No-Shows: <strong className="text-amber-400">{totals.noShow}</strong></span>
-            <span>•</span>
-            <span className="text-purple-400 font-medium">Close: {formatPercent(totals.closeRate)}</span>
-          </div>
-        </div>
-        <div className="absolute top-0 left-0 h-1 w-full bg-purple-500 rounded-t-xl" />
-      </div>
+      {/* 4. Show Rate */}
+      <KpiCard
+        label="Show Rate"
+        value={formatPercent(totals.showRate)}
+        subValue={`${totals.noShow} no-shows`}
+        subLabel="Out of"
+        icon={<TrendingUp className="w-4 h-4 text-emerald-400" />}
+        iconBg="bg-emerald-500/10"
+        accentColor="bg-emerald-500"
+        valueColor="text-emerald-400"
+      />
 
-      {/* 5. Calls Per Meeting (Efficiency) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-slate-700 transition-all">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Calls / Meeting</span>
-          <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
-            <TrendingUp className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <div className="text-2xl font-bold text-amber-400 tracking-tight">
-            {totals.callsPerMeeting || 0}
-          </div>
-          <div className="text-xs text-slate-400 mt-1">
-            Calls required per booked meeting
-          </div>
-        </div>
-        <div className="absolute top-0 left-0 h-1 w-full bg-amber-500 rounded-t-xl" />
-      </div>
+      {/* 5. Closing Rate */}
+      <KpiCard
+        label="Closing Rate"
+        value={formatPercent(totals.closeRate)}
+        subValue={`${totals.onboarded} onboarded`}
+        subLabel="Closed"
+        icon={<CheckCircle className="w-4 h-4 text-purple-400" />}
+        iconBg="bg-purple-500/10"
+        accentColor="bg-purple-500"
+        valueColor="text-purple-400"
+      />
     </div>
   );
 };
+
+

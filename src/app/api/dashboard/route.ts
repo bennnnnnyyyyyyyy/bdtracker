@@ -15,13 +15,15 @@ export async function GET(request: NextRequest) {
     // 1. Fetch raw data from Google Sheets (or cache)
     const rawData = await getDashboardRawData(forceRefresh);
 
-    // 2. Compute metrics
-    const { openers, totals, filteredCalls } = computeDashboardMetrics(
-      rawData.calls,
-      rawData.trackerCounts,
-      rawData.agentMappings,
-      { startDate, endDate, selectedOpener }
-    );
+    // 2. Compute metrics (with meetings and periodic breakdowns)
+    const { openers, totals, filteredCalls, dailyBreakdown, weeklyBreakdown, monthlyBreakdown } =
+      computeDashboardMetrics(
+        rawData.calls,
+        rawData.meetings,
+        rawData.trackerCounts,
+        rawData.agentMappings,
+        { startDate, endDate, selectedOpener }
+      );
 
     // Filter openers if single opener selected
     const responseOpeners = selectedOpener && selectedOpener !== 'ALL'
@@ -31,10 +33,13 @@ export async function GET(request: NextRequest) {
     const response: DashboardResponse = {
       openers: responseOpeners,
       totals,
-      calls: filteredCalls.slice(0, 500), // Return sample/recent calls for drill-down table
+      calls: filteredCalls.slice(0, 500),
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,
       lastUpdated: new Date().toISOString(),
+      dailyBreakdown,
+      weeklyBreakdown,
+      monthlyBreakdown,
       isMockData: rawData.isMockData
     };
 
@@ -48,3 +53,4 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+

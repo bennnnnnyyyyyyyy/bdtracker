@@ -1,5 +1,13 @@
-import { CONFIG } from './config';
-import { CallRecord, OpenerStats, OrgTotals, AgentMapping } from '../types/dashboard';
+import { CONFIG, isExcludedAgent } from './config';
+import {
+  CallRecord,
+  MeetingRecord,
+  OpenerStats,
+  OrgTotals,
+  AgentMapping,
+  PeriodicGroupSummary,
+  PeriodicAgentMetrics
+} from '../types/dashboard';
 
 /**
  * Extracts agent name from Ultatel extension cell.
@@ -17,7 +25,6 @@ export function parseAgentName(extensionCell: string): string {
 export function durationToSeconds(val: unknown): number {
   if (val === null || val === undefined || val === '') return 0;
   if (typeof val === 'number') {
-    // If it's a small decimal (fraction of a day in Sheets, e.g. 0.001157), convert to seconds
     if (val < 1 && val > 0) {
       return Math.round(val * 86400);
     }
@@ -32,6 +39,41 @@ export function durationToSeconds(val: unknown): number {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   return 0;
+}
+
+/**
+ * Parses date from Excel serial number, Date object, or date string into YYYY-MM-DD format.
+ */
+export function parseDateToISO(val: unknown): string | null {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'number') {
+    // Excel serial date to JS Date
+    const jsDate = new Date((val - 25569) * 86400 * 1000);
+    if (isNaN(jsDate.getTime())) return null;
+    return jsDate.toISOString().split('T')[0];
+  }
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
+    return val.toISOString().split('T')[0];
+  }
+  const s = String(val).trim();
+  // Handle MM-DD-YYYY or MM/DD/YYYY or YYYY-MM-DD
+  const parts = s.split(/[T\s]/)[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(parts)) {
+    return parts;
+  }
+  const matchMDY = parts.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (matchMDY) {
+    const mm = matchMDY[1].padStart(2, '0');
+    const dd = matchMDY[2].padStart(2, '0');
+    const yyyy = matchMDY[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().split('T')[0];
+  }
+  return null;
 }
 
 export function formatSeconds(totalSec: number): string {
@@ -51,10 +93,57 @@ export function formatPercent(rate: number): string {
 }
 
 /**
- * Computes all opener stats and org totals based on calls and BD Tracker pipeline counts.
+ * Returns ISO week key (e.g., "2026-W33") and readable range label.
+ */
+export function getIsoWeekKey(dateStr: string): { key: string; label: string } {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return { key: 'Unknown', label: 'Unknown' };
+
+  // Calculate Monday of this week
+  const day = d.getDay();
+  const diffToMonday = (day === 0 ? -6 : 1) - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const year = monday.getFullYear();
+  // Approximate week number
+  const oneJan = new Date(year, 0, 1);
+  const numberOfDays = Math.floor((monday.getTime() - oneJan.getTime()) / (24 * 60 * 60 * 1000));
+  const weekNum = Math.ceil((numberOfDays + oneJan.getDay() + 1) / 7);
+
+  const monLabel = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const sunLabel = sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  return {
+    key: `${year}-W${String(weekNum).padStart(2, '0')}`,
+    label: `${monLabel} – ${sunLabel}`
+  };
+}
+
+/**
+ * Returns ISO month key (e.g. "2026-08") and formatted label.
+ */
+export function getIsoMonthKey(dateStr: string): { key: string; label: string } {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return { key: 'Unknown', label: 'Unknown' };
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  return {
+    key: `${year}-${month}`,
+    label
+  };
+}
+
+/**
+ * Computes all opener stats, org totals, and daily/weekly/monthly breakdowns.
  */
 export function computeDashboardMetrics(
   rawCalls: CallRecord[],
+  rawMeetings: MeetingRecord[],
   trackerCounts: Record<string, Record<string, number>>,
   agentMappings: AgentMapping[],
   filter?: {
@@ -62,36 +151,94 @@ export function computeDashboardMetrics(
     endDate?: string;
     selectedOpener?: string;
   }
-): { openers: OpenerStats[]; totals: OrgTotals; filteredCalls: CallRecord[] } {
-  // Build lookup mapping
+): {
+  openers: OpenerStats[];
+  totals: OrgTotals;
+  filteredCalls: CallRecord[];
+  dailyBreakdown: PeriodicGroupSummary[];
+  weeklyBreakdown: PeriodicGroupSummary[];
+  monthlyBreakdown: PeriodicGroupSummary[];
+} {
+  // Build agent to opener mapping (excluding ignored agents)
   const agentToOpener: Record<string, string> = {};
   agentMappings.forEach(m => {
-    if (m.agent) {
+    if (m.agent && !isExcludedAgent(m.agent) && !isExcludedAgent(m.opener)) {
       agentToOpener[m.agent.trim()] = (m.opener || '').trim();
     }
   });
 
-  // Filter calls by date range if provided
-  let filteredCalls = rawCalls.map(c => {
-    const opener = agentToOpener[c.agent] || c.agent || 'Unmapped';
-    return { ...c, opener };
-  });
+  // Filter and map calls
+  let filteredCalls = rawCalls
+    .map(c => {
+      const opener = agentToOpener[c.agent] || c.agent || 'Unmapped';
+      return { ...c, opener };
+    })
+    .filter(c => !isExcludedAgent(c.agent) && !isExcludedAgent(c.opener));
+
+  // Date filtering for calls
+  let startTimestamp: number | null = null;
+  let endTimestamp: number | null = null;
 
   if (filter?.startDate) {
-    const start = new Date(filter.startDate).getTime();
+    const s = new Date(filter.startDate + 'T00:00:00').getTime();
+    if (!isNaN(s)) startTimestamp = s;
+  }
+  if (filter?.endDate) {
+    const e = new Date(filter.endDate + 'T23:59:59').getTime();
+    if (!isNaN(e)) endTimestamp = e;
+  }
+
+  if (startTimestamp !== null) {
     filteredCalls = filteredCalls.filter(c => {
-      if (!c.callDate) return true;
-      const d = new Date(c.callDate).getTime();
-      return isNaN(d) || d >= start;
+      const iso = parseDateToISO(c.callDate);
+      if (!iso) return true;
+      const t = new Date(iso + 'T00:00:00').getTime();
+      return isNaN(t) || t >= startTimestamp!;
     });
   }
 
-  if (filter?.endDate) {
-    const end = new Date(filter.endDate).getTime() + 86400000; // end of day
+  if (endTimestamp !== null) {
     filteredCalls = filteredCalls.filter(c => {
-      if (!c.callDate) return true;
-      const d = new Date(c.callDate).getTime();
-      return isNaN(d) || d <= end;
+      const iso = parseDateToISO(c.callDate);
+      if (!iso) return true;
+      const t = new Date(iso + 'T23:59:59').getTime();
+      return isNaN(t) || t <= endTimestamp!;
+    });
+  }
+
+  // Filter meetings by date range and excluded agents
+  let filteredMeetings = rawMeetings.filter(m => !isExcludedAgent(m.opener));
+
+  if (startTimestamp !== null) {
+    filteredMeetings = filteredMeetings.filter(m => {
+      if (!m.dateAdded) return true;
+      const t = new Date(m.dateAdded + 'T00:00:00').getTime();
+      return isNaN(t) || t >= startTimestamp!;
+    });
+  }
+
+  if (endTimestamp !== null) {
+    filteredMeetings = filteredMeetings.filter(m => {
+      if (!m.dateAdded) return true;
+      const t = new Date(m.dateAdded + 'T23:59:59').getTime();
+      return isNaN(t) || t <= endTimestamp!;
+    });
+  }
+
+  // If date filters are active, calculate tracker counts dynamically from filteredMeetings
+  const dynamicTrackerCounts: Record<string, Record<string, number>> = {};
+  if (startTimestamp !== null || endTimestamp !== null) {
+    filteredMeetings.forEach(m => {
+      if (!m.opener) return;
+      if (!dynamicTrackerCounts[m.opener]) dynamicTrackerCounts[m.opener] = {};
+      dynamicTrackerCounts[m.opener][m.stage] = (dynamicTrackerCounts[m.opener][m.stage] || 0) + 1;
+    });
+  } else {
+    // Use full tracker counts but filter out excluded agents
+    Object.keys(trackerCounts).forEach(op => {
+      if (!isExcludedAgent(op)) {
+        dynamicTrackerCounts[op] = { ...trackerCounts[op] };
+      }
     });
   }
 
@@ -100,6 +247,7 @@ export function computeDashboardMetrics(
 
   filteredCalls.forEach(r => {
     const opener = r.opener || 'Unmapped';
+    if (isExcludedAgent(opener)) return;
     if (!stats[opener]) {
       stats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, totalSec: 0 };
     }
@@ -114,15 +262,33 @@ export function computeDashboardMetrics(
     s.totalSec += r.durationSec || 0;
   });
 
-  // Union of openers seen in call logs or tracker pipeline
-  const allOpeners = new Set([...Object.keys(stats), ...Object.keys(trackerCounts)]);
+  // Active openers set (excluding excluded agents)
+  const allOpeners = new Set<string>();
+  Object.keys(stats).forEach(op => { if (!isExcludedAgent(op)) allOpeners.add(op); });
+  Object.keys(dynamicTrackerCounts).forEach(op => { if (!isExcludedAgent(op)) allOpeners.add(op); });
+  agentMappings.forEach(m => {
+    if (m.opener && !isExcludedAgent(m.opener)) allOpeners.add(m.opener);
+  });
+
+  // Calculate unique days, weeks, months for averages
+  const distinctDays = new Set<string>();
+  filteredCalls.forEach(c => {
+    const iso = parseDateToISO(c.callDate);
+    if (iso) distinctDays.add(iso);
+  });
+  filteredMeetings.forEach(m => {
+    if (m.dateAdded) distinctDays.add(m.dateAdded);
+  });
+  const daysCount = Math.max(1, distinctDays.size);
+  const weeksCount = Math.max(1, Math.ceil(daysCount / 7));
+  const monthsCount = Math.max(1, Math.ceil(daysCount / 30));
 
   const openers: OpenerStats[] = [];
 
   allOpeners.forEach(op => {
-    if (!op || op === 'undefined') return;
+    if (!op || op === 'undefined' || isExcludedAgent(op)) return;
     const s = stats[op] || { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, totalSec: 0 };
-    const tc = trackerCounts[op] || {};
+    const tc = dynamicTrackerCounts[op] || {};
 
     const stageCounts: Record<string, number> = {};
     let booked = 0;
@@ -137,6 +303,7 @@ export function computeDashboardMetrics(
     const onboarded = tc['Onboarded'] || 0;
 
     const answerRate = s.calls > 0 ? s.answered / s.calls : 0;
+    const connectionRate = answerRate; // Connection rate is call answer rate
     const avgCallSec = s.calls > 0 ? Math.round(s.totalSec / s.calls) : 0;
     const showRate = booked > 0 ? attended / booked : 0;
     const closeRate = booked > 0 ? onboarded / booked : 0;
@@ -150,6 +317,7 @@ export function computeDashboardMetrics(
       answered: s.answered,
       noAnswer: s.noAnswer,
       answerRate,
+      connectionRate,
       totalTalkSec: s.totalSec,
       avgCallSec,
       booked,
@@ -159,7 +327,19 @@ export function computeDashboardMetrics(
       onboarded,
       closeRate,
       callsPerMeeting,
-      stageCounts
+      stageCounts,
+      dailyAverages: {
+        calls: Number((s.calls / daysCount).toFixed(1)),
+        meetings: Number((booked / daysCount).toFixed(1))
+      },
+      weeklyAverages: {
+        calls: Number((s.calls / weeksCount).toFixed(1)),
+        meetings: Number((booked / weeksCount).toFixed(1))
+      },
+      monthlyAverages: {
+        calls: Number((s.calls / monthsCount).toFixed(1)),
+        meetings: Number((booked / monthsCount).toFixed(1))
+      }
     });
   });
 
@@ -174,6 +354,7 @@ export function computeDashboardMetrics(
     answered: 0,
     noAnswer: 0,
     answerRate: 0,
+    connectionRate: 0,
     totalTalkSec: 0,
     avgCallSec: 0,
     booked: 0,
@@ -207,10 +388,192 @@ export function computeDashboardMetrics(
   });
 
   totals.answerRate = totals.calls > 0 ? totals.answered / totals.calls : 0;
+  totals.connectionRate = totals.answerRate;
   totals.avgCallSec = totals.calls > 0 ? Math.round(totals.totalTalkSec / totals.calls) : 0;
   totals.showRate = totals.booked > 0 ? totals.attended / totals.booked : 0;
   totals.closeRate = totals.booked > 0 ? totals.onboarded / totals.booked : 0;
   totals.callsPerMeeting = totals.booked > 0 ? Number((totals.calls / totals.booked).toFixed(1)) : 0;
 
-  return { openers, totals, filteredCalls };
+  // Compute Periodic Breakdowns (Daily, Weekly, Monthly)
+  const dailyBreakdown = buildPeriodicBreakdown(
+    filteredCalls,
+    filteredMeetings,
+    Array.from(allOpeners),
+    (dateStr) => {
+      const iso = parseDateToISO(dateStr);
+      return iso ? { key: iso, label: iso } : null;
+    }
+  );
+
+  const weeklyBreakdown = buildPeriodicBreakdown(
+    filteredCalls,
+    filteredMeetings,
+    Array.from(allOpeners),
+    (dateStr) => {
+      const iso = parseDateToISO(dateStr);
+      return iso ? getIsoWeekKey(iso) : null;
+    }
+  );
+
+  const monthlyBreakdown = buildPeriodicBreakdown(
+    filteredCalls,
+    filteredMeetings,
+    Array.from(allOpeners),
+    (dateStr) => {
+      const iso = parseDateToISO(dateStr);
+      return iso ? getIsoMonthKey(iso) : null;
+    }
+  );
+
+  return {
+    openers,
+    totals,
+    filteredCalls,
+    dailyBreakdown,
+    weeklyBreakdown,
+    monthlyBreakdown
+  };
 }
+
+/**
+ * Helper to build periodic grouped metrics for agents.
+ */
+function buildPeriodicBreakdown(
+  calls: CallRecord[],
+  meetings: MeetingRecord[],
+  allOpeners: string[],
+  getKeyAndLabel: (dateStr: string) => { key: string; label: string } | null
+): PeriodicGroupSummary[] {
+  const periodMap = new Map<string, {
+    key: string;
+    label: string;
+    agentStats: Record<string, {
+      calls: number;
+      out: number;
+      in: number;
+      answered: number;
+      meetings: number;
+      noShow: number;
+      onboarded: number;
+    }>;
+  }>();
+
+  // 1. Process Calls
+  calls.forEach(c => {
+    if (!c.callDate) return;
+    const period = getKeyAndLabel(c.callDate);
+    if (!period) return;
+
+    if (!periodMap.has(period.key)) {
+      periodMap.set(period.key, { key: period.key, label: period.label, agentStats: {} });
+    }
+    const p = periodMap.get(period.key)!;
+    const opener = c.opener || 'Unmapped';
+    if (!p.agentStats[opener]) {
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, meetings: 0, noShow: 0, onboarded: 0 };
+    }
+    const a = p.agentStats[opener];
+    a.calls++;
+    if (c.type === 'OUT-Bound') a.out++;
+    else if (c.type === 'IN-Bound') a.in++;
+    if (c.outcome === 'ANSWERED') a.answered++;
+  });
+
+  // 2. Process Meetings
+  meetings.forEach(m => {
+    if (!m.dateAdded) return;
+    const period = getKeyAndLabel(m.dateAdded);
+    if (!period) return;
+
+    if (!periodMap.has(period.key)) {
+      periodMap.set(period.key, { key: period.key, label: period.label, agentStats: {} });
+    }
+    const p = periodMap.get(period.key)!;
+    const opener = m.opener || 'Unmapped';
+    if (!p.agentStats[opener]) {
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, meetings: 0, noShow: 0, onboarded: 0 };
+    }
+    const a = p.agentStats[opener];
+    a.meetings++;
+    if (m.stage === 'No-Show') a.noShow++;
+    if (m.stage === 'Onboarded') a.onboarded++;
+  });
+
+  // Convert to sorted array of PeriodicGroupSummary
+  const result: PeriodicGroupSummary[] = [];
+
+  const sortedKeys = Array.from(periodMap.keys()).sort().reverse(); // Most recent first
+
+  sortedKeys.forEach(k => {
+    const entry = periodMap.get(k)!;
+    let totCalls = 0;
+    let totAnswered = 0;
+    let totMeetings = 0;
+    let totNoShow = 0;
+    let totOnboarded = 0;
+
+    const agentList: PeriodicAgentMetrics[] = [];
+
+    allOpeners.forEach(opener => {
+      const raw = entry.agentStats[opener] || { calls: 0, out: 0, in: 0, answered: 0, meetings: 0, noShow: 0, onboarded: 0 };
+      if (raw.calls === 0 && raw.meetings === 0) return; // Skip zero-activity agents for this period
+
+      totCalls += raw.calls;
+      totAnswered += raw.answered;
+      totMeetings += raw.meetings;
+      totNoShow += raw.noShow;
+      totOnboarded += raw.onboarded;
+
+      const attended = Math.max(0, raw.meetings - raw.noShow);
+      const connectionRate = raw.calls > 0 ? raw.answered / raw.calls : 0;
+      const showRate = raw.meetings > 0 ? attended / raw.meetings : 0;
+      const closeRate = raw.meetings > 0 ? raw.onboarded / raw.meetings : 0;
+      const callsPerMeeting = raw.meetings > 0 ? Number((raw.calls / raw.meetings).toFixed(1)) : 0;
+
+      agentList.push({
+        periodKey: entry.key,
+        periodLabel: entry.label,
+        opener,
+        calls: raw.calls,
+        outbound: raw.out,
+        inbound: raw.in,
+        answered: raw.answered,
+        connectionRate,
+        meetings: raw.meetings,
+        noShow: raw.noShow,
+        attended,
+        showRate,
+        onboarded: raw.onboarded,
+        closeRate,
+        callsPerMeeting
+      });
+    });
+
+    // Sort agents by meetings booked desc, then calls desc
+    agentList.sort((a, b) => b.meetings - a.meetings || b.calls - a.calls);
+
+    const totAttended = Math.max(0, totMeetings - totNoShow);
+    const totConnectionRate = totCalls > 0 ? totAnswered / totCalls : 0;
+    const totShowRate = totMeetings > 0 ? totAttended / totMeetings : 0;
+    const totCloseRate = totMeetings > 0 ? totOnboarded / totMeetings : 0;
+
+    result.push({
+      periodKey: entry.key,
+      periodLabel: entry.label,
+      totals: {
+        calls: totCalls,
+        answered: totAnswered,
+        connectionRate: totConnectionRate,
+        meetings: totMeetings,
+        attended: totAttended,
+        showRate: totShowRate,
+        onboarded: totOnboarded,
+        closeRate: totCloseRate
+      },
+      agents: agentList
+    });
+  });
+
+  return result;
+}
+

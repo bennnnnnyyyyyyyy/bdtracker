@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
 import * as xlsx from 'xlsx';
-import { CONFIG } from './config';
-import { CallRecord, AgentMapping } from '../types/dashboard';
-import { parseAgentName, durationToSeconds } from './analytics';
+import { CONFIG, isExcludedAgent } from './config';
+import { CallRecord, AgentMapping, MeetingRecord } from '../types/dashboard';
+import { parseAgentName, durationToSeconds, parseDateToISO } from './analytics';
 
 interface CacheEntry<T> {
   data: T;
@@ -13,6 +13,7 @@ interface CacheEntry<T> {
 
 let cachedData: CacheEntry<{
   calls: CallRecord[];
+  meetings: MeetingRecord[];
   trackerCounts: Record<string, Record<string, number>>;
   agentMappings: AgentMapping[];
 }> | null = null;
@@ -63,7 +64,7 @@ export async function fetchCallDashboardData(): Promise<{
   });
 
   const agentMappings: AgentMapping[] = (mappingRes.data.values || [])
-    .filter(row => row && row[0])
+    .filter(row => row && row[0] && !isExcludedAgent(row[0]) && !isExcludedAgent(row[1]))
     .map(row => ({
       agent: String(row[0]).trim(),
       opener: String(row[1] || '').trim()
@@ -101,17 +102,22 @@ export async function fetchCallDashboardData(): Promise<{
         agent: parsedAgent,
         opener: ''
       };
-    });
+    })
+    .filter(c => !isExcludedAgent(c.agent));
 
   return { calls, agentMappings };
 }
 
-export async function fetchBDTrackerCounts(): Promise<Record<string, Record<string, number>>> {
+export async function fetchBDTrackerData(): Promise<{
+  meetings: MeetingRecord[];
+  trackerCounts: Record<string, Record<string, number>>;
+}> {
   const sheets = getSheetsClient();
   if (!sheets) throw new Error('Google Sheets API credentials not configured');
 
   const counts: Record<string, Record<string, number>> = {};
-  const ranges = CONFIG.BD_TABS.map(tab => `'${tab}'!B2:B`);
+  const meetings: MeetingRecord[] = [];
+  const ranges = CONFIG.BD_TABS.map(tab => `'${tab}'!B2:F`);
   const batchRes = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: CONFIG.BD_TRACKER_SHEET_ID,
     ranges
@@ -123,22 +129,33 @@ export async function fetchBDTrackerCounts(): Promise<Record<string, Record<stri
     const rows = valueRanges[idx]?.values || [];
     rows.forEach(r => {
       const opener = String(r[0] || '').trim();
-      if (!opener) return;
+      if (!opener || isExcludedAgent(opener)) return;
       if (!counts[opener]) counts[opener] = {};
       counts[opener][tabName] = (counts[opener][tabName] || 0) + 1;
+
+      const dateAdded = parseDateToISO(r[2]);
+      meetings.push({
+        stage: tabName,
+        opener,
+        dateAdded: dateAdded || '',
+        companyName: String(r[3] || ''),
+        authorizedPerson: String(r[4] || '')
+      });
     });
   });
 
-  return counts;
+  return { meetings, trackerCounts: counts };
 }
 
 function loadLocalActualData(): {
   calls: CallRecord[];
+  meetings: MeetingRecord[];
   trackerCounts: Record<string, Record<string, number>>;
   agentMappings: AgentMapping[];
   isMockData: boolean;
 } {
   const trackerCounts: Record<string, Record<string, number>> = {};
+  const meetings: MeetingRecord[] = [];
   const calls: CallRecord[] = [];
   const agentMappings: AgentMapping[] = [
     { agent: 'Kaity James', opener: 'Jane' },
@@ -147,7 +164,7 @@ function loadLocalActualData(): {
     { agent: 'Selene Myles', opener: 'Selene' },
     { agent: 'Jimmy Pearson', opener: 'Jimmy' },
     { agent: 'Nora Atkins', opener: 'Nora' }
-  ];
+  ].filter(m => !isExcludedAgent(m.agent) && !isExcludedAgent(m.opener));
 
   // 1. Read BD Pipeline Tabs from data/BD MEETINGS 2026 (7).xlsx
   const bdFiles = ['BD MEETINGS 2026 (7).xlsx', 'BD TRACKER (1).xlsx'].map(f => path.join(process.cwd(), 'data', f));
@@ -163,9 +180,18 @@ function loadLocalActualData(): {
               const row = rows[i];
               if (!row || !row[1]) continue;
               const opener = String(row[1]).trim();
-              if (!opener) continue;
+              if (!opener || isExcludedAgent(opener)) continue;
               if (!trackerCounts[opener]) trackerCounts[opener] = {};
               trackerCounts[opener][tabName] = (trackerCounts[opener][tabName] || 0) + 1;
+
+              const dateAdded = parseDateToISO(row[3]);
+              meetings.push({
+                stage: tabName,
+                opener,
+                dateAdded: dateAdded || '',
+                companyName: String(row[4] || ''),
+                authorizedPerson: String(row[5] || '')
+              });
             }
           }
         });
@@ -195,6 +221,8 @@ function loadLocalActualData(): {
 
         const ext = String(r[4] || '');
         const parsedAgent = parseAgentName(ext);
+        if (isExcludedAgent(parsedAgent)) continue;
+
         const durVal = r[10];
         const durSec = durationToSeconds(durVal);
 
@@ -222,11 +250,12 @@ function loadLocalActualData(): {
     }
   }
 
-  return { calls, trackerCounts, agentMappings, isMockData: false };
+  return { calls, meetings, trackerCounts, agentMappings, isMockData: false };
 }
 
 export async function getDashboardRawData(forceRefresh = false): Promise<{
   calls: CallRecord[];
+  meetings: MeetingRecord[];
   trackerCounts: Record<string, Record<string, number>>;
   agentMappings: AgentMapping[];
   isMockData: boolean;
@@ -237,14 +266,15 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
   }
 
   try {
-    const [callData, trackerCounts] = await Promise.all([
+    const [callData, bdData] = await Promise.all([
       fetchCallDashboardData(),
-      fetchBDTrackerCounts()
+      fetchBDTrackerData()
     ]);
 
     const result = {
       calls: callData.calls,
-      trackerCounts,
+      meetings: bdData.meetings,
+      trackerCounts: bdData.trackerCounts,
       agentMappings: callData.agentMappings
     };
 
@@ -256,3 +286,4 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
     return localData;
   }
 }
+
