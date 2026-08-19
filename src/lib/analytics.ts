@@ -132,7 +132,11 @@ export function formatPercent(rate: number): string {
  * Returns ISO week key (e.g., "2026-W33") and readable range label.
  */
 export function getIsoWeekKey(dateStr: string): { key: string; label: string } {
-  const d = new Date(dateStr + 'T00:00:00');
+  const iso = parseDateToISO(dateStr);
+  if (!iso) return { key: 'Unknown', label: 'Unknown' };
+
+  const [y, m, dayOfMonth] = iso.split('-').map(Number);
+  const d = new Date(y, m - 1, dayOfMonth);
   if (isNaN(d.getTime())) return { key: 'Unknown', label: 'Unknown' };
 
   // Calculate Monday of this week
@@ -145,7 +149,6 @@ export function getIsoWeekKey(dateStr: string): { key: string; label: string } {
   sunday.setDate(monday.getDate() + 6);
 
   const year = monday.getFullYear();
-  // Approximate week number
   const oneJan = new Date(year, 0, 1);
   const numberOfDays = Math.floor((monday.getTime() - oneJan.getTime()) / (24 * 60 * 60 * 1000));
   const weekNum = Math.ceil((numberOfDays + oneJan.getDay() + 1) / 7);
@@ -163,8 +166,13 @@ export function getIsoWeekKey(dateStr: string): { key: string; label: string } {
  * Returns ISO month key (e.g. "2026-08") and formatted label.
  */
 export function getIsoMonthKey(dateStr: string): { key: string; label: string } {
-  const d = new Date(dateStr + 'T00:00:00');
+  const iso = parseDateToISO(dateStr);
+  if (!iso) return { key: 'Unknown', label: 'Unknown' };
+
+  const [y, m, dayOfMonth] = iso.split('-').map(Number);
+  const d = new Date(y, m - 1, dayOfMonth);
   if (isNaN(d.getTime())) return { key: 'Unknown', label: 'Unknown' };
+
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });

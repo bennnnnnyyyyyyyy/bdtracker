@@ -161,6 +161,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <User className="w-3.5 h-3.5 text-[#52525b] shrink-0" />
             <select
+              aria-label="Filter by agent"
               value={filters.selectedOpener}
               onChange={e => onFilterChange({ selectedOpener: e.target.value })}
               className="bg-transparent text-text-muted focus:outline-none cursor-pointer font-num"
@@ -181,6 +182,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Calendar className="w-3.5 h-3.5 text-[#52525b] shrink-0" />
             <input
               type="date"
+              aria-label="Start date"
               value={filters.startDate}
               onChange={e => onFilterChange({ startDate: e.target.value, preset: 'custom' })}
               className="bg-transparent text-text-muted focus:outline-none cursor-pointer font-num"
@@ -189,6 +191,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-text-faint font-num" style={{ fontSize: 11 }}>to</span>
             <input
               type="date"
+              aria-label="End date"
               value={filters.endDate}
               onChange={e => onFilterChange({ endDate: e.target.value, preset: 'custom' })}
               className="bg-transparent text-text-muted focus:outline-none cursor-pointer font-num"
