@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, memo } from 'react';
+import React, { useMemo, useState, memo } from 'react';
 import { PhoneIncoming, PhoneOutgoing, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CallRecord } from '@/types/dashboard';
 
@@ -15,22 +15,28 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
-  const filtered = calls.filter(c => {
-    const matchesSearch =
-      c.agent.toLowerCase().includes(search.toLowerCase()) ||
-      c.opener.toLowerCase().includes(search.toLowerCase()) ||
-      c.callId.toLowerCase().includes(search.toLowerCase()) ||
-      c.to.toLowerCase().includes(search.toLowerCase()) ||
-      c.from.toLowerCase().includes(search.toLowerCase());
+  const filtered = useMemo(() => {
+    const searchLower = search.toLowerCase();
+    return calls.filter(c => {
+      const matchesSearch =
+        c.agent.toLowerCase().includes(searchLower) ||
+        c.opener.toLowerCase().includes(searchLower) ||
+        c.callId.toLowerCase().includes(searchLower) ||
+        c.to.toLowerCase().includes(searchLower) ||
+        c.from.toLowerCase().includes(searchLower);
 
-    const matchesType = typeFilter === 'ALL' || c.type === typeFilter;
-    const matchesOutcome = outcomeFilter === 'ALL' || c.outcome === outcomeFilter;
+      const matchesType = typeFilter === 'ALL' || c.type === typeFilter;
+      const matchesOutcome = outcomeFilter === 'ALL' || c.outcome === outcomeFilter;
 
-    return matchesSearch && matchesType && matchesOutcome;
-  });
+      return matchesSearch && matchesType && matchesOutcome;
+    });
+  }, [calls, outcomeFilter, search, typeFilter]);
 
-  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = useMemo(() => Math.ceil(filtered.length / pageSize) || 1, [filtered.length]);
+  const paginated = useMemo(
+    () => filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, filtered]
+  );
 
   return (
     <div className="card overflow-hidden">

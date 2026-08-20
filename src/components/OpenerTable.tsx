@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, memo } from 'react';
+import React, { useMemo, useState, memo } from 'react';
 import { Download, Search, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { OpenerStats, OrgTotals } from '@/types/dashboard';
 import { CONFIG } from '@/lib/config';
@@ -36,32 +36,35 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
     }
   };
 
-  const filtered = openers.filter(o =>
-    o.opener.toLowerCase().includes(search.toLowerCase())
-  );
+  const sorted = useMemo(() => {
+    const searchLower = search.toLowerCase();
+    const filtered = openers.filter(o =>
+      o.opener.toLowerCase().includes(searchLower)
+    );
 
-  const sorted = [...filtered].sort((a, b) => {
-    let valA: unknown;
-    let valB: unknown;
+    return [...filtered].sort((a, b) => {
+      let valA: unknown;
+      let valB: unknown;
 
-    if (CONFIG.BD_TABS.includes(sortField as string)) {
-      valA = a.stageCounts[sortField as string] || 0;
-      valB = b.stageCounts[sortField as string] || 0;
-    } else {
-      valA = a[sortField as keyof OpenerStats];
-      valB = b[sortField as keyof OpenerStats];
-    }
+      if (CONFIG.BD_TABS.includes(sortField as string)) {
+        valA = a.stageCounts[sortField as string] || 0;
+        valB = b.stageCounts[sortField as string] || 0;
+      } else {
+        valA = a[sortField as keyof OpenerStats];
+        valB = b[sortField as keyof OpenerStats];
+      }
 
-    if (typeof valA === 'string') {
-      return sortAsc
-        ? (valA as string).localeCompare(valB as string)
-        : (valB as string).localeCompare(valA as string);
-    }
+      if (typeof valA === 'string') {
+        return sortAsc
+          ? (valA as string).localeCompare(valB as string)
+          : (valB as string).localeCompare(valA as string);
+      }
 
-    const numA = (valA as number) || 0;
-    const numB = (valB as number) || 0;
-    return sortAsc ? numA - numB : numB - numA;
-  });
+      const numA = (valA as number) || 0;
+      const numB = (valB as number) || 0;
+      return sortAsc ? numA - numB : numB - numA;
+    });
+  }, [openers, search, sortAsc, sortField]);
 
   const exportCSV = () => {
     const headers = [
@@ -295,4 +298,3 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
 });
 
 OpenerTable.displayName = 'OpenerTable';
-

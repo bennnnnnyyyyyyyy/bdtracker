@@ -177,14 +177,18 @@ export default function DashboardPage() {
   const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
-    const cachedUi = readUiCache();
-    if (cachedUi?.filters) {
-      setFilters(cachedUi.filters);
-    }
-    if (cachedUi?.activeTab) {
-      setActiveTab(cachedUi.activeTab);
-    }
-    setHasHydrated(true);
+    const frame = window.requestAnimationFrame(() => {
+      const cachedUi = readUiCache();
+      if (cachedUi?.filters) {
+        setFilters(cachedUi.filters);
+      }
+      if (cachedUi?.activeTab) {
+        setActiveTab(cachedUi.activeTab);
+      }
+      setHasHydrated(true);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -193,9 +197,7 @@ export default function DashboardPage() {
   }, [filters, activeTab, hasHydrated]);
 
   const cacheKey = useMemo(() => buildDataCacheKey(filters), [
-    filters.startDate,
-    filters.endDate,
-    filters.selectedOpener
+    filters
   ]);
 
   const fetchData = useCallback(async (forceRefresh = false) => {
@@ -240,7 +242,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!hasHydrated) return;
-    fetchData();
+    const frame = window.requestAnimationFrame(() => {
+      fetchData();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [fetchData, hasHydrated]);
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
@@ -312,19 +318,19 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            <div className={activeTab === 'agents' ? 'block' : 'hidden'}>
+            {activeTab === 'agents' && (
               <AgentDashboardView
                 openers={data.openers}
                 totals={data.totals}
                 filters={filters}
               />
-            </div>
-            <div className={activeTab === 'table' ? 'block' : 'hidden'}>
+            )}
+            {activeTab === 'table' && (
               <OpenerTable openers={data.openers} totals={data.totals} />
-            </div>
-            <div className={activeTab === 'calls' ? 'block' : 'hidden'}>
+            )}
+            {activeTab === 'calls' && (
               <CallLogsView calls={data.calls} />
-            </div>
+            )}
           </>
         )}
       </main>

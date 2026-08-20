@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { OpenerStats, OrgTotals, FilterState } from '@/types/dashboard';
-import { Phone, Calendar, TrendingUp, Award, User } from 'lucide-react';
+import { Phone, Calendar, TrendingUp, Award } from 'lucide-react';
 import { formatPercent } from '@/lib/analytics';
 
 function formatLocalDateYMD(date: Date): string {
@@ -56,7 +56,7 @@ function Chip({ value, good, ok }: { value: number; good: number; ok: number }) 
 }
 
 /* ─── Agent card ─────────────────────────────────────────── */
-function AgentCard({ agent, rank, maxCalls, maxBooked }: {
+const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: {
   agent: OpenerStats;
   rank: number;
   maxCalls: number;
@@ -156,17 +156,20 @@ function AgentCard({ agent, rank, maxCalls, maxBooked }: {
       </div>
     </div>
   );
-}
+});
 
 /* ─── Main view ──────────────────────────────────────────── */
 export function AgentDashboardView({ openers, totals, filters }: AgentDashboardViewProps) {
-  const activeOpeners = openers
-    .filter(o => o.opener && o.opener !== 'undefined')
-    .sort((a, b) => b.calls - a.calls || b.booked - a.booked);
+  const activeOpeners = useMemo(
+    () => openers
+      .filter(o => o.opener && o.opener !== 'undefined')
+      .sort((a, b) => b.calls - a.calls || b.booked - a.booked),
+    [openers]
+  );
 
-  const maxCalls  = Math.max(1, ...activeOpeners.map(m => m.calls));
-  const maxBooked = Math.max(1, ...activeOpeners.map(m => m.booked));
-  const periodTitle = getPeriodTitle(filters);
+  const maxCalls = useMemo(() => Math.max(1, ...activeOpeners.map(m => m.calls)), [activeOpeners]);
+  const maxBooked = useMemo(() => Math.max(1, ...activeOpeners.map(m => m.booked)), [activeOpeners]);
+  const periodTitle = useMemo(() => getPeriodTitle(filters), [filters]);
 
   return (
     <div className="space-y-5">
@@ -226,4 +229,3 @@ export function AgentDashboardView({ openers, totals, filters }: AgentDashboardV
     </div>
   );
 }
-
