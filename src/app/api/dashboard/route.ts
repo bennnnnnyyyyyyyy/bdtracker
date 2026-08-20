@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData } from '@/lib/sheets';
-import { saveRawDataToSupabase } from '@/lib/supabase';
+import { getRawDataFromSupabase, saveRawDataToSupabase } from '@/lib/supabase';
 import { getRawDataFromFirestore, saveRawDataToFirestore } from '@/lib/firestore';
 import { computeDashboardMetrics } from '@/lib/analytics';
 import { CONFIG } from '@/lib/config';
-import { DashboardResponse } from '@/types/dashboard';
+import { AgentMapping, CallRecord, DashboardResponse, MeetingRecord } from '@/types/dashboard';
+import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,10 +17,10 @@ export async function GET(request: NextRequest) {
     const shouldRefreshSource = forceRefresh;
 
     let rawData: {
-      calls: any[];
-      meetings: any[];
+      calls: CallRecord[];
+      meetings: MeetingRecord[];
       trackerCounts: Record<string, Record<string, number>>;
-      agentMappings: any[];
+      agentMappings: AgentMapping[];
       lastUpdated?: string;
       isMockData?: boolean;
     } | null = null;
@@ -28,6 +29,9 @@ export async function GET(request: NextRequest) {
     // explicit refresh or when Firestore has not been initialized yet.
     if (!shouldRefreshSource) {
       rawData = await getRawDataFromFirestore();
+      if (!rawData) {
+        rawData = await getRawDataFromSupabase();
+      }
     }
 
     if (!rawData || shouldRefreshSource) {
@@ -35,12 +39,19 @@ export async function GET(request: NextRequest) {
       const syncedAt = new Date().toISOString();
 
       // Complete the Firestore sync before serving the new dataset.
-      await saveRawDataToFirestore({
-        calls: sheetsData.calls,
-        meetings: sheetsData.meetings,
-        trackerCounts: sheetsData.trackerCounts,
-        agentMappings: sheetsData.agentMappings,
-      });
+      try {
+        await saveRawDataToFirestore({
+          calls: sheetsData.calls,
+          meetings: sheetsData.meetings,
+          trackerCounts: sheetsData.trackerCounts,
+          agentMappings: sheetsData.agentMappings,
+        });
+      } catch (err) {
+        if (!isQuotaExceededError(err)) {
+          throw err;
+        }
+        console.warn('Firestore quota exhausted; serving fresh Sheets data and using Supabase as fallback:', err);
+      }
 
       // Keep the existing Supabase mirror aligned with Firestore.
       saveRawDataToSupabase({
@@ -87,7 +98,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error: unknown) {
     console.error('API Error in /api/dashboard:', error);
-    let errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    let errorMessage = getErrorMessage(error) || 'Internal server error';
+    if (isQuotaExceededError(error)) {
+      errorMessage = 'Data provider quota exceeded. Try again later, or use the cached dashboard until the quota resets.';
+    }
     if (errorMessage.toLowerCase().includes('caller does not have permission') || errorMessage.toLowerCase().includes('permission denied')) {
       errorMessage = 'Google Sheets Permission Denied: Please share the Google Sheets with service account "dashboard@tribal-quest-484611-j3.iam.gserviceaccount.com" as Viewer.';
     }
