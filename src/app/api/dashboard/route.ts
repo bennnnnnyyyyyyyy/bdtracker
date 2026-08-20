@@ -87,7 +87,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error: unknown) {
     console.error('API Error in /api/dashboard:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    let errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    if (errorMessage.toLowerCase().includes('caller does not have permission') || errorMessage.toLowerCase().includes('permission denied')) {
+      errorMessage = 'Google Sheets Permission Denied: Please share the Google Sheets with service account "dashboard@tribal-quest-484611-j3.iam.gserviceaccount.com" as Viewer.';
+    }
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

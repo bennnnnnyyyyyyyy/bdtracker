@@ -185,8 +185,6 @@ export async function fetchBDTrackerData(): Promise<{
   return { meetings, trackerCounts: counts };
 }
 
-
-
 export async function getDashboardRawData(forceRefresh = false): Promise<{
   calls: CallRecord[];
   meetings: MeetingRecord[];
@@ -200,14 +198,13 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
   }
 
   try {
-    // 6-second timeout race on live Google Sheets API
     const liveFetchPromise = Promise.all([
       fetchCallDashboardData(),
       fetchBDTrackerData()
     ]);
 
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Google Sheets API request timed out')), 6000)
+      setTimeout(() => reject(new Error('Google Sheets API request timed out after 45 seconds')), 45000)
     );
 
     const [callData, bdData] = await Promise.race([liveFetchPromise, timeoutPromise]);
@@ -227,5 +224,3 @@ export async function getDashboardRawData(forceRefresh = false): Promise<{
     throw err;
   }
 }
-
-

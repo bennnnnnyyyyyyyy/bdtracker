@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useTransition } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from '@/components/Header';
 import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
@@ -102,12 +102,10 @@ function writeUiCache(filters: FilterState, activeTab: ActiveTab): void {
 function DashboardLoadingScreen() {
   return (
     <div
-      className="relative overflow-hidden rounded-[28px] border px-6 py-10 sm:px-10 sm:py-14"
+      className="min-h-screen w-full flex flex-col items-center justify-center relative overflow-hidden px-6 py-12"
       style={{
-        minHeight: '62vh',
-        borderColor: 'rgba(201,168,76,0.18)',
         background:
-          'radial-gradient(circle at top, rgba(201,168,76,0.18), transparent 34%), linear-gradient(180deg, rgba(24,24,27,0.95), rgba(9,9,11,0.98))'
+          'radial-gradient(circle at 50% 30%, rgba(201,168,76,0.14), transparent 45%), linear-gradient(180deg, #121215 0%, #09090b 100%)'
       }}
       role="status"
       aria-live="polite"
@@ -115,69 +113,57 @@ function DashboardLoadingScreen() {
     >
       <div className="absolute inset-0 pointer-events-none">
         <div
-          className="absolute -top-20 right-0 h-56 w-56 rounded-full blur-3xl animate-pulse"
-          style={{ background: 'rgba(201,168,76,0.18)' }}
+          className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full blur-[100px] animate-pulse"
+          style={{ background: 'rgba(201,168,76,0.12)' }}
         />
         <div
-          className="absolute -bottom-28 -left-16 h-72 w-72 rounded-full blur-3xl animate-pulse"
-          style={{ background: 'rgba(255,255,255,0.06)', animationDelay: '250ms' }}
+          className="absolute bottom-10 right-1/4 h-80 w-80 rounded-full blur-[120px] animate-pulse"
+          style={{ background: 'rgba(255,255,255,0.03)', animationDelay: '500ms' }}
         />
       </div>
 
-      <div className="relative flex min-h-[56vh] flex-col items-center justify-center text-center">
+      <div className="relative z-10 flex flex-col items-center justify-center text-center max-w-2xl w-full">
         <div
-          className="flex h-20 w-20 items-center justify-center rounded-2xl border shadow-[0_0_60px_rgba(201,168,76,0.18)]"
-          style={{ borderColor: 'rgba(201,168,76,0.22)', background: 'rgba(17,17,19,0.82)' }}
+          className="flex h-20 w-20 items-center justify-center rounded-2xl border shadow-[0_0_60px_rgba(201,168,76,0.18)] mb-6"
+          style={{ borderColor: 'rgba(201,168,76,0.28)', background: 'rgba(17,17,19,0.92)' }}
         >
           <RefreshCw className="w-8 h-8 animate-spin" style={{ color: '#e8c56a' }} />
         </div>
 
-        <div className="mt-6">
-          <p className="label-caps" style={{ color: '#c9a84c' }}>
+        <div>
+          <p className="label-caps tracking-widest text-xs font-semibold uppercase" style={{ color: '#c9a84c' }}>
             Caching in browser storage
           </p>
-          <h1 className="mt-3 text-2xl sm:text-3xl font-semibold text-white">
+          <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-white font-serif">
             Warming the dashboard before you touch it
           </h1>
-          <p className="mx-auto mt-3 max-w-2xl text-sm sm:text-base leading-6 text-[#a1a1aa]">
+          <p className="mx-auto mt-3 max-w-lg text-sm sm:text-base leading-relaxed text-[#a1a1aa]">
             Pulling the latest sheets payload, saving it locally, and preparing the tab views so repeat visits stay fast.
           </p>
         </div>
 
-        <div className="mt-8 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-3">
-          {['Fetching live data', 'Writing browser cache', 'Preparing tab panels'].map((step, index) => (
+        <div className="mt-10 grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+          {[
+            { title: 'Fetching live data', desc: 'This happens automatically on first load.' },
+            { title: 'Writing browser cache', desc: 'This happens automatically on first load.' },
+            { title: 'Preparing tab panels', desc: 'This happens automatically on first load.' }
+          ].map((step, index) => (
             <div
-              key={step}
-              className="rounded-2xl border px-4 py-4 text-left"
+              key={step.title}
+              className="rounded-2xl border px-4 py-4 text-left backdrop-blur-md"
               style={{
                 borderColor: 'rgba(255,255,255,0.08)',
                 background: 'rgba(255,255,255,0.03)',
-                animationDelay: String(index * 120) + 'ms'
+                animationDelay: `${index * 120}ms`
               }}
             >
               <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#e8c56a' }} />
-              <p className="mt-3 text-sm font-medium text-white">{step}</p>
-              <p className="mt-1 text-xs text-[#71717a]">This happens automatically on first load.</p>
+              <p className="mt-3 text-sm font-medium text-white">{step.title}</p>
+              <p className="mt-1 text-xs text-[#71717a]">{step.desc}</p>
             </div>
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function TabSwitchOverlay({ activeTab }: { activeTab: ActiveTab }) {
-  const label = TABS.find(tab => tab.id === activeTab)?.label ?? 'view';
-  return (
-    <div
-      className="fixed inset-x-4 bottom-4 z-50 mx-auto w-fit rounded-full border px-4 py-2 text-xs font-medium shadow-2xl backdrop-blur-xl"
-      style={{
-        borderColor: 'rgba(201,168,76,0.22)',
-        background: 'rgba(9,9,11,0.9)',
-        color: '#e8c56a'
-      }}
-    >
-      Switching to {label}…
     </div>
   );
 }
@@ -189,7 +175,6 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('agents');
   const [hasHydrated, setHasHydrated] = useState(false);
-  const [isTabPending, startTabTransition] = useTransition();
 
   useEffect(() => {
     const cachedUi = readUiCache();
@@ -217,13 +202,8 @@ export default function DashboardPage() {
     const cached = !forceRefresh ? readCachedDashboard(cacheKey) : null;
     if (cached) {
       setData(cached);
-      setLoading(true);
-      setError(null);
-    } else {
-      setLoading(true);
-      setData(null);
-      setError(null);
     }
+    setLoading(true);
 
     try {
       const params = new URLSearchParams();
@@ -249,17 +229,14 @@ export default function DashboardPage() {
       const json: DashboardResponse = await res.json();
       setData(json);
       writeCachedDashboard(cacheKey, json);
+      setError(null);
     } catch (err: unknown) {
       console.error('Error fetching dashboard:', err);
-      if (!cached) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
-      } else {
-        setError('Live sync failed. Showing cached data.');
-      }
+      setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
     } finally {
       setLoading(false);
     }
-  }, [cacheKey, filters]);
+  }, [cacheKey, filters.startDate, filters.endDate, filters.selectedOpener]);
 
   useEffect(() => {
     if (!hasHydrated) return;
@@ -271,10 +248,12 @@ export default function DashboardPage() {
   };
 
   const handleTabChange = (tab: ActiveTab) => {
-    startTabTransition(() => {
-      setActiveTab(tab);
-    });
+    setActiveTab(tab);
   };
+
+  if (!hasHydrated || (loading && !data)) {
+    return <DashboardLoadingScreen />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#09090b', color: '#f4f4f5' }}>
@@ -289,8 +268,6 @@ export default function DashboardPage() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
-        {isTabPending && data && <TabSwitchOverlay activeTab={activeTab} />}
-
         {error && (
           <div
             className="rounded-xl p-4 flex items-center justify-between text-sm"
@@ -310,9 +287,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {!hasHydrated || (loading && !data) ? (
-          <DashboardLoadingScreen />
-        ) : data ? (
+        {data && (
           <>
             <KpiGrid totals={data.totals} />
 
@@ -351,7 +326,7 @@ export default function DashboardPage() {
               <CallLogsView calls={data.calls} />
             </div>
           </>
-        ) : null}
+        )}
       </main>
 
       <footer
