@@ -107,6 +107,86 @@ export async function fetchCallDashboardData(): Promise<{
   return { calls, agentMappings };
 }
 
+export async function fetchBDTrackerData(): Promise<{
+  meetings: MeetingRecord[];
+  trackerCounts: Record<string, Record<string, number>>;
+}> {
+  const sheets = getSheetsClient();
+  if (!sheets) throw new Error('Google Sheets API credentials not configured');
+
+  const counts: Record<string, Record<string, number>> = {};
+  const meetings: MeetingRecord[] = [];
+  
+  // Pull A1:Z for each BD tab in one single batch request
+  const ranges = CONFIG.BD_TABS.map(tab => `'${tab}'!A1:Z`);
+  const batchRes = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: CONFIG.BD_TRACKER_SHEET_ID,
+    ranges
+  });
+
+  const valueRanges = batchRes.data.valueRanges || [];
+
+  CONFIG.BD_TABS.forEach((tabName, idx) => {
+    const rawRows = valueRanges[idx]?.values || [];
+    if (rawRows.length < 2) return;
+
+    // Detect column indices from header row
+    const headers = (rawRows[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
+    
+    let openerIdx = headers.findIndex(h => h.includes('opener') || h === 'agent' || h === 'rep');
+    if (openerIdx === -1) openerIdx = 1; // Default Col B (0-indexed 1)
+
+    let dateIdx = headers.findIndex(h => 
+      h.includes('date added') || h.includes('meeting date') || h.includes('date booked') || h === 'date' || h.includes('created') || h.includes('timestamp')
+    );
+    if (dateIdx === -1) {
+      dateIdx = headers.findIndex(h => h.includes('date'));
+    }
+
+    let companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
+    let personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
+
+    for (let r = 1; r < rawRows.length; r++) {
+      const row = rawRows[r];
+      if (!row || row.length === 0) continue;
+
+      const opener = String(row[openerIdx] || '').trim();
+      if (!opener || isExcludedAgent(opener)) continue;
+
+      if (!counts[opener]) counts[opener] = {};
+      counts[opener][tabName] = (counts[opener][tabName] || 0) + 1;
+
+      // Extract date with primary index or fallback row scan
+      let dateAdded: string | null = null;
+      if (dateIdx !== -1 && row[dateIdx] !== undefined) {
+        dateAdded = parseDateToISO(row[dateIdx]);
+      }
+      if (!dateAdded) {
+        for (let c = 0; c < row.length; c++) {
+          if (c === openerIdx) continue;
+          const parsed = parseDateToISO(row[c]);
+          if (parsed) {
+            dateAdded = parsed;
+            break;
+          }
+        }
+      }
+
+      meetings.push({
+        stage: tabName,
+        opener,
+        dateAdded: dateAdded || '',
+        companyName: companyIdx !== -1 ? String(row[companyIdx] || '') : '',
+        authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : ''
+      });
+    }
+  });
+
+  return { meetings, trackerCounts: counts };
+}
+
+
+
 export async function getDashboardRawData(forceRefresh = false): Promise<{
   calls: CallRecord[];
   meetings: MeetingRecord[];
