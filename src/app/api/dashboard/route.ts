@@ -1,7 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData } from '@/lib/sheets';
 import { getRawDataFromSupabase, saveRawDataToSupabase } from '@/lib/supabase';
-import { getRawDataFromFirestore, saveRawDataToFirestore } from '@/lib/firestore';
 import { computeDashboardMetrics } from '@/lib/analytics';
 import { CONFIG } from '@/lib/config';
 import { AgentMapping, CallRecord, DashboardResponse, MeetingRecord } from '@/types/dashboard';
@@ -25,41 +24,23 @@ export async function GET(request: NextRequest) {
       isMockData?: boolean;
     } | null = null;
 
-    // Firestore is the canonical dashboard store. Sheets is only used for an
-    // explicit refresh or when Firestore has not been initialized yet.
+    // Supabase is the dashboard store. Sheets is only read on an explicit refresh
+    // or when Supabase has not been initialized yet.
     if (!shouldRefreshSource) {
-      rawData = await getRawDataFromFirestore();
-      if (!rawData) {
-        rawData = await getRawDataFromSupabase();
-      }
+      rawData = await getRawDataFromSupabase();
     }
 
     if (!rawData || shouldRefreshSource) {
       const sheetsData = await getDashboardRawData(true);
       const syncedAt = new Date().toISOString();
 
-      // Complete the Firestore sync before serving the new dataset.
-      try {
-        await saveRawDataToFirestore({
-          calls: sheetsData.calls,
-          meetings: sheetsData.meetings,
-          trackerCounts: sheetsData.trackerCounts,
-          agentMappings: sheetsData.agentMappings,
-        });
-      } catch (err) {
-        if (!isQuotaExceededError(err)) {
-          throw err;
-        }
-        console.warn('Firestore quota exhausted; serving fresh Sheets data and using Supabase as fallback:', err);
-      }
-
-      // Keep the existing Supabase mirror aligned with Firestore.
-      saveRawDataToSupabase({
+      // Write the fresh Sheets dataset directly to Supabase before responding.
+      await saveRawDataToSupabase({
         calls: sheetsData.calls,
         meetings: sheetsData.meetings,
         trackerCounts: sheetsData.trackerCounts,
         agentMappings: sheetsData.agentMappings,
-      }).catch((err) => console.warn('Background Supabase mirror warning:', err));
+      });
 
       rawData = { ...sheetsData, lastUpdated: syncedAt };
     }

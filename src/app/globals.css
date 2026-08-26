@@ -38,17 +38,17 @@
   --color-gold-border:rgba(201,168,76,0.25);
 
   /* Semantic status */
-  --color-success:        #4ade80;
-  --color-success-dim:    rgba(74,222,128,0.08);
-  --color-success-border: rgba(74,222,128,0.18);
+  --color-success:        #35e58a;
+  --color-success-dim:    rgba(53,229,138,0.10);
+  --color-success-border: rgba(53,229,138,0.25);
 
   --color-warn:        #e8c56a;
   --color-warn-dim:    rgba(232,197,106,0.08);
   --color-warn-border: rgba(232,197,106,0.18);
 
-  --color-danger:        #f87171;
-  --color-danger-dim:    rgba(248,113,113,0.08);
-  --color-danger-border: rgba(248,113,113,0.15);
+  --color-danger:        #ff6675;
+  --color-danger-dim:    rgba(255,102,117,0.10);
+  --color-danger-border: rgba(255,102,117,0.24);
 }
 
 /* ── Base reset ──────────────────────────────────────── */
@@ -58,6 +58,7 @@ html { height: 100%; }
 
 body {
   background-color: #09090b;
+  background-image: radial-gradient(circle at 8% 0%, rgba(53,229,138,0.055), transparent 28rem), radial-gradient(circle at 94% 22%, rgba(255,102,117,0.045), transparent 26rem);
   color: #f4f4f5;
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -96,6 +97,18 @@ body {
 .card:hover {
   border-color: rgba(255,255,255,0.13);
 }
+.card-success {
+  border-color: rgba(53,229,138,0.22);
+  background: linear-gradient(145deg, rgba(53,229,138,0.075), #17171a 42%);
+  box-shadow: inset 0 1px 0 rgba(53,229,138,0.18);
+}
+
+.card-danger {
+  border-color: rgba(255,102,117,0.22);
+  background: linear-gradient(145deg, rgba(255,102,117,0.07), #17171a 42%);
+  box-shadow: inset 0 1px 0 rgba(255,102,117,0.16);
+}
+
 
 .card-gold {
   background: linear-gradient(160deg, #1a1608 0%, #17171a 55%);
@@ -115,9 +128,9 @@ body {
   letter-spacing: 0.04em;
 }
 
-.pill-success { color: #4ade80; background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.18); }
+.pill-success { color: #35e58a; background: rgba(53,229,138,0.10); border: 1px solid rgba(53,229,138,0.25); }
 .pill-warn    { color: #e8c56a; background: rgba(232,197,106,0.08); border: 1px solid rgba(232,197,106,0.18); }
-.pill-danger  { color: #f87171; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.15); }
+.pill-danger  { color: #ff6675; background: rgba(255,102,117,0.10); border: 1px solid rgba(255,102,117,0.24); }
 
 /* ── Separator bar ───────────────────────────────────── */
 .bar-track {
@@ -133,6 +146,8 @@ body {
 }
 .bar-fill-white { background: linear-gradient(90deg, #3a3a3f, #d4d4d8); }
 .bar-fill-gold  { background: linear-gradient(90deg, #b8922a, #e8c56a); }
+.bar-fill-success { background: linear-gradient(90deg, #159957, #35e58a); box-shadow: 0 0 12px rgba(53,229,138,0.28); }
+.bar-fill-danger  { background: linear-gradient(90deg, #b9344d, #ff6675); box-shadow: 0 0 12px rgba(255,102,117,0.24); }
 
 /* ── Section tag ─────────────────────────────────────── */
 .sec-tag {

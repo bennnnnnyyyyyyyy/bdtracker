@@ -39,11 +39,11 @@ function getPeriodTitle(filters: FilterState): string {
 }
 
 /* ─── Mini progress bar ──────────────────────────────────── */
-function Bar({ value, max, gold }: { value: number; max: number; gold?: boolean }) {
+function Bar({ value, max, tone = 'neutral' }: { value: number; max: number; tone?: 'neutral' | 'gold' | 'success' | 'danger' }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div className="bar-track w-full">
-      <div className={`bar-fill ${gold ? 'bar-fill-gold' : 'bar-fill-white'}`} style={{ width: `${pct}%` }} />
+      <div className={`bar-fill ${tone === 'gold' ? 'bar-fill-gold' : tone === 'success' ? 'bar-fill-success' : tone === 'danger' ? 'bar-fill-danger' : 'bar-fill-white'}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -130,7 +130,7 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
             <span className="label-caps">Booked</span>
           </div>
           <span className="font-num text-2xl font-bold text-white leading-none">{agent.booked.toLocaleString()}</span>
-          <Bar value={agent.booked} max={maxBooked} gold />
+          <Bar value={agent.booked} max={maxBooked} tone="gold" />
         </div>
 
         {/* Show rate */}
@@ -142,7 +142,7 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
           <span className={`font-num text-2xl font-bold leading-none ${showColor}`}>
             {agent.booked === 0 ? '—' : fmtPct(agent.showRate)}
           </span>
-          <Bar value={agent.booked === 0 ? 0 : agent.showRate} max={1} gold={agent.showRate >= 0.6} />
+          <Bar value={agent.booked === 0 ? 0 : agent.showRate} max={1} tone={agent.booked === 0 ? 'neutral' : agent.showRate >= 0.6 ? 'success' : agent.showRate >= 0.4 ? 'gold' : 'danger'} />
         </div>
       </div>
 

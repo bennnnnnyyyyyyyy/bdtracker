@@ -11,12 +11,13 @@ interface KpiCardProps {
   value: string;
   sub?: string;
   valueClass?: string;
+  tone?: 'neutral' | 'success' | 'danger';
 }
 
-const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, sub, valueClass = 'text-white' }) => (
-  <div className="card relative overflow-hidden p-5 flex flex-col gap-3">
+const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, sub, valueClass = 'text-white', tone = 'neutral' }) => (
+  <div className={`card ${tone === 'success' ? 'card-success' : tone === 'danger' ? 'card-danger' : ''} relative overflow-hidden p-5 flex flex-col gap-3`}>
     {/* top accent line — gold */}
-    <div className="absolute top-0 inset-x-0 h-px bg-linear-to-r from-transparent via-[#c9a84c]/50 to-transparent" />
+    <div className={`absolute top-0 inset-x-0 h-px ${tone === 'success' ? 'bg-linear-to-r from-transparent via-[#35e58a]/80 to-transparent' : tone === 'danger' ? 'bg-linear-to-r from-transparent via-[#ff6675]/80 to-transparent' : 'bg-linear-to-r from-transparent via-[#c9a84c]/50 to-transparent'}`} />
 
     <div className="flex items-center justify-between">
       <span className="label-caps">{label}</span>
@@ -58,8 +59,9 @@ export const KpiGrid: React.FC<{ totals: OrgTotals }> = React.memo(({ totals }) 
       label="Show Rate"
       value={formatPercent(totals.showRate)}
       sub={`${totals.noShow} no-shows`}
-      icon={<TrendingUp className="w-3.5 h-3.5 text-[#4ade80]" />}
-      valueClass="text-[#4ade80]"
+      icon={<TrendingUp className="w-3.5 h-3.5 text-[#35e58a]" />}
+      valueClass="text-[#35e58a]"
+      tone="success"
     />
     <KpiCard
       label="Closing Rate"
