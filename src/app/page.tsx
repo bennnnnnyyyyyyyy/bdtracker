@@ -29,12 +29,26 @@ const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
   { id: 'calls', label: 'Call Logs', icon: <PhoneCall className="w-4 h-4" /> },
 ];
 
+function getThisWeekRange(): Pick<FilterState, 'startDate' | 'endDate'> {
+  const now = new Date();
+  const day = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const format = (date: Date) => [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+  return { startDate: format(monday), endDate: format(sunday) };
+}
+
 const DEFAULT_FILTERS: FilterState = {
-  startDate: '',
-  endDate: '',
+  ...getThisWeekRange(),
   selectedOpener: 'ALL',
   searchQuery: '',
-  preset: 'all_time'
+  preset: 'this_week'
 };
 
 function buildDataCacheKey(filters: FilterState): string {

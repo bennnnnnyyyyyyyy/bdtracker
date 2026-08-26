@@ -35,7 +35,7 @@ function getPeriodTitle(filters: FilterState): string {
   if (filters.startDate && filters.endDate) return `${filters.startDate} → ${filters.endDate}`;
   if (filters.startDate) return `From ${filters.startDate}`;
   if (filters.endDate) return `Until ${filters.endDate}`;
-  return 'All Time';
+  return 'This Week';
 }
 
 /* ─── Mini progress bar ──────────────────────────────────── */
@@ -111,8 +111,8 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
         </div>
       </div>
 
-      {/* Three metric boxes */}
-      <div className="relative grid grid-cols-3 gap-px flex-1" style={{ background: 'rgba(255,255,255,0.04)' }}>
+      {/* Four management metrics */}
+      <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-px flex-1" style={{ background: 'rgba(255,255,255,0.04)' }}>
         {/* Calls */}
         <div className="flex flex-col gap-2 px-3.5 py-3.5 bg-card">
           <div className="flex items-center gap-1.5">
@@ -121,6 +121,16 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
           </div>
           <span className="font-num text-2xl font-bold text-white leading-none">{agent.calls.toLocaleString()}</span>
           <Bar value={agent.calls} max={maxCalls} />
+        </div>
+
+        {/* No answer */}
+        <div className="flex flex-col gap-2 px-3.5 py-3.5 bg-card">
+          <div className="flex items-center gap-1.5">
+            <Phone className="w-2.5 h-2.5 text-[#f87171]" />
+            <span className="label-caps">No Answer</span>
+          </div>
+          <span className="font-num text-2xl font-bold text-[#f87171] leading-none">{agent.noAnswer.toLocaleString()}</span>
+          <Bar value={agent.noAnswer} max={Math.max(1, maxCalls)} tone="danger" />
         </div>
 
         {/* Booked */}
@@ -132,7 +142,6 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
           <span className="font-num text-2xl font-bold text-white leading-none">{agent.booked.toLocaleString()}</span>
           <Bar value={agent.booked} max={maxBooked} tone="gold" />
         </div>
-
         {/* Show rate */}
         <div className="flex flex-col gap-2 px-3.5 py-3.5 bg-card">
           <div className="flex items-center gap-1.5">

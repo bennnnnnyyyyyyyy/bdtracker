@@ -67,7 +67,6 @@ const PRESETS: PresetOption[] = [
       return { startDate: formatLocalDateYMD(s), endDate: formatLocalDateYMD(now) };
     }
   },
-  { label: 'All Time', value: 'all_time', getRange: () => ({ startDate: '', endDate: '' }) },
 ];
 
 export const Header: React.FC<HeaderProps> = ({
@@ -82,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({
     onFilterChange({ startDate, endDate, preset: preset.value });
   };
 
-  const hasActiveFilter = filters.startDate || filters.endDate || filters.selectedOpener !== 'ALL';
+  const hasActiveFilter = filters.selectedOpener !== 'ALL';
 
   return (
     <header
@@ -202,7 +201,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Clear */}
           {hasActiveFilter && (
             <button
-              onClick={() => onFilterChange({ startDate: '', endDate: '', selectedOpener: 'ALL', preset: 'all_time' })}
+              onClick={() => onFilterChange({ startDate: filters.startDate, endDate: filters.endDate, selectedOpener: 'ALL', preset: 'this_week' })}
               className="flex items-center gap-1 text-[#52525b] hover:text-text-muted text-xs font-medium px-2 py-1.5 rounded-lg transition-colors cursor-pointer"
             >
               <X className="w-3 h-3" />
