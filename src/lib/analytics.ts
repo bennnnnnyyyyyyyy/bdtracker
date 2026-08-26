@@ -531,6 +531,7 @@ function buildPeriodicBreakdown(
       out: number;
       in: number;
       answered: number;
+      noAnswer: number;
       meetings: number;
       noShow: number;
       onboarded: number;
@@ -549,13 +550,14 @@ function buildPeriodicBreakdown(
     const p = periodMap.get(period.key)!;
     const opener = c.opener || 'Unmapped';
     if (!p.agentStats[opener]) {
-      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, meetings: 0, noShow: 0, onboarded: 0 };
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, onboarded: 0 };
     }
     const a = p.agentStats[opener];
     a.calls++;
     if (c.type === 'OUT-Bound') a.out++;
     else if (c.type === 'IN-Bound') a.in++;
     if (c.outcome === 'ANSWERED') a.answered++;
+    else if (c.outcome === 'NO ANSWER') a.noAnswer++;
   });
 
   // 2. Process Meetings
@@ -570,7 +572,7 @@ function buildPeriodicBreakdown(
     const p = periodMap.get(period.key)!;
     const opener = m.opener || 'Unmapped';
     if (!p.agentStats[opener]) {
-      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, meetings: 0, noShow: 0, onboarded: 0 };
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, onboarded: 0 };
     }
     const a = p.agentStats[opener];
     a.meetings++;
@@ -587,6 +589,7 @@ function buildPeriodicBreakdown(
     const entry = periodMap.get(k)!;
     let totCalls = 0;
     let totAnswered = 0;
+    let totNoAnswer = 0;
     let totMeetings = 0;
     let totNoShow = 0;
     let totOnboarded = 0;
@@ -594,11 +597,12 @@ function buildPeriodicBreakdown(
     const agentList: PeriodicAgentMetrics[] = [];
 
     allOpeners.forEach(opener => {
-      const raw = entry.agentStats[opener] || { calls: 0, out: 0, in: 0, answered: 0, meetings: 0, noShow: 0, onboarded: 0 };
+      const raw = entry.agentStats[opener] || { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, onboarded: 0 };
       if (raw.calls === 0 && raw.meetings === 0) return; // Skip zero-activity agents for this period
 
       totCalls += raw.calls;
       totAnswered += raw.answered;
+      totNoAnswer += raw.noAnswer;
       totMeetings += raw.meetings;
       totNoShow += raw.noShow;
       totOnboarded += raw.onboarded;
@@ -617,6 +621,7 @@ function buildPeriodicBreakdown(
         outbound: raw.out,
         inbound: raw.in,
         answered: raw.answered,
+        noAnswer: raw.noAnswer,
         connectionRate,
         meetings: raw.meetings,
         noShow: raw.noShow,
@@ -642,6 +647,7 @@ function buildPeriodicBreakdown(
       totals: {
         calls: totCalls,
         answered: totAnswered,
+        noAnswer: totNoAnswer,
         connectionRate: totConnectionRate,
         meetings: totMeetings,
         attended: totAttended,

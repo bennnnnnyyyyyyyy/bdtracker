@@ -21,6 +21,7 @@ interface MetricCol {
 const METRIC_COLS: MetricCol[] = [
   { key: 'calls', label: 'Calls', color: 'text-blue-300' },
   { key: 'connectionRate', label: 'Connection %', color: 'text-cyan-300', isRate: true },
+  { key: 'noAnswer', label: 'No Answer', color: 'text-rose-300' },
   { key: 'meetings', label: 'Meetings', color: 'text-indigo-300' },
   { key: 'showRate', label: 'Show %', color: 'text-emerald-300', isRate: true },
   { key: 'onboarded', label: 'Closed', color: 'text-purple-300' },

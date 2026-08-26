@@ -5,11 +5,12 @@ import { Header } from '@/components/Header';
 import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
 import { CallLogsView } from '@/components/CallLogsView';
+import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FilterState, DashboardResponse } from '@/types/dashboard';
-import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall } from 'lucide-react';
+import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3 } from 'lucide-react';
 
-type ActiveTab = 'agents' | 'table' | 'calls';
+type ActiveTab = 'agents' | 'periods' | 'table' | 'calls';
 
 const DASHBOARD_DATA_CACHE_KEY = 'bd-tracker-dashboard-data-cache-v2';
 const DASHBOARD_UI_CACHE_KEY = 'bd-tracker-dashboard-ui-cache-v1';
@@ -25,6 +26,7 @@ type DashboardUiCache = {
 
 const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
   { id: 'agents', label: 'Agents', icon: <LayoutGrid className="w-4 h-4" /> },
+  { id: 'periods', label: 'Day / Week / Month', icon: <BarChart3 className="w-4 h-4" /> },
   { id: 'table', label: 'Full Table', icon: <TableIcon className="w-4 h-4" /> },
   { id: 'calls', label: 'Call Logs', icon: <PhoneCall className="w-4 h-4" /> },
 ];
@@ -338,6 +340,22 @@ export default function DashboardPage() {
                 totals={data.totals}
                 filters={filters}
               />
+            )}
+            {activeTab === 'periods' && (
+              <div className="space-y-6">
+                <section>
+                  <div className="sec-tag mb-2">Daily performance</div>
+                  <PeriodicBreakdownTable data={data.dailyBreakdown} emptyLabel="No daily activity in this period" />
+                </section>
+                <section>
+                  <div className="sec-tag mb-2">Weekly performance</div>
+                  <PeriodicBreakdownTable data={data.weeklyBreakdown} emptyLabel="No weekly activity in this period" />
+                </section>
+                <section>
+                  <div className="sec-tag mb-2">Monthly performance</div>
+                  <PeriodicBreakdownTable data={data.monthlyBreakdown} emptyLabel="No monthly activity in this period" />
+                </section>
+              </div>
             )}
             {activeTab === 'table' && (
               <OpenerTable openers={data.openers} totals={data.totals} />

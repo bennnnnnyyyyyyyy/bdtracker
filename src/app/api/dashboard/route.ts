@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData } from '@/lib/sheets';
 import { getRawDataFromSupabase, saveRawDataToSupabase } from '@/lib/supabase';
 import { computeDashboardMetrics } from '@/lib/analytics';
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     // Supabase is the dashboard store. Sheets is only read on an explicit refresh
     // or when Supabase has not been initialized yet.
     if (!shouldRefreshSource) {
-      rawData = await getRawDataFromSupabase();
+      rawData = await getRawDataFromSupabase({ startDate, endDate });
     }
 
     if (!rawData || shouldRefreshSource) {

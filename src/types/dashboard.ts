@@ -67,6 +67,7 @@ export interface PeriodicAgentMetrics {
   outbound: number;
   inbound: number;
   answered: number;
+  noAnswer: number;
   connectionRate: number;
   meetings: number; // booked in this period
   noShow: number;
@@ -83,6 +84,7 @@ export interface PeriodicGroupSummary {
   totals: {
     calls: number;
     answered: number;
+    noAnswer: number;
     connectionRate: number;
     meetings: number;
     attended: number;

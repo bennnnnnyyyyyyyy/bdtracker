@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS public.metadata (
 CREATE INDEX IF NOT EXISTS idx_calls_opener ON public.calls (opener);
 CREATE INDEX IF NOT EXISTS idx_calls_date ON public.calls (call_date);
 CREATE INDEX IF NOT EXISTS idx_meetings_opener ON public.meetings (opener);
+CREATE INDEX IF NOT EXISTS idx_meetings_date ON public.meetings (date_added);
 CREATE INDEX IF NOT EXISTS idx_meetings_stage ON public.meetings (stage);
 
 -- Disable Row Level Security (RLS) or enable public read for dashboard
