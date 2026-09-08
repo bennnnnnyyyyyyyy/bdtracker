@@ -118,67 +118,15 @@ function writeUiCache(filters: FilterState, activeTab: ActiveTab): void {
 function DashboardLoadingScreen() {
   return (
     <div
-      className="min-h-screen w-full flex flex-col items-center justify-center relative overflow-hidden px-6 py-12"
-      style={{
-        background:
-          'radial-gradient(circle at 50% 30%, rgba(201,168,76,0.14), transparent 45%), linear-gradient(180deg, #121215 0%, #09090b 100%)'
-      }}
+      className="min-h-screen w-full flex items-center justify-center"
+      style={{ background: '#09090b' }}
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="absolute inset-0 pointer-events-none">
-        <div
-          className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full blur-[100px] animate-pulse"
-          style={{ background: 'rgba(201,168,76,0.12)' }}
-        />
-        <div
-          className="absolute bottom-10 right-1/4 h-80 w-80 rounded-full blur-[120px] animate-pulse"
-          style={{ background: 'rgba(255,255,255,0.03)', animationDelay: '500ms' }}
-        />
-      </div>
-
-      <div className="relative z-10 flex flex-col items-center justify-center text-center max-w-2xl w-full">
-        <div
-          className="flex h-20 w-20 items-center justify-center rounded-2xl border shadow-[0_0_60px_rgba(201,168,76,0.18)] mb-6"
-          style={{ borderColor: 'rgba(201,168,76,0.28)', background: 'rgba(17,17,19,0.92)' }}
-        >
-          <RefreshCw className="w-8 h-8 animate-spin" style={{ color: '#e8c56a' }} />
-        </div>
-
-        <div>
-          <p className="label-caps tracking-widest text-xs font-semibold uppercase" style={{ color: '#c9a84c' }}>
-            Caching in browser storage
-          </p>
-          <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-white font-serif">
-            Warming the dashboard before you touch it
-          </h1>
-          <p className="mx-auto mt-3 max-w-lg text-sm sm:text-base leading-relaxed text-[#a1a1aa]">
-            Pulling the latest sheets payload, saving it locally, and preparing the tab views so repeat visits stay fast.
-          </p>
-        </div>
-
-        <div className="mt-10 grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
-          {[
-            { title: 'Fetching live data', desc: 'This happens automatically on first load.' },
-            { title: 'Writing browser cache', desc: 'This happens automatically on first load.' },
-            { title: 'Preparing tab panels', desc: 'This happens automatically on first load.' }
-          ].map((step, index) => (
-            <div
-              key={step.title}
-              className="rounded-2xl border px-4 py-4 text-left backdrop-blur-md"
-              style={{
-                borderColor: 'rgba(255,255,255,0.08)',
-                background: 'rgba(255,255,255,0.03)',
-                animationDelay: `${index * 120}ms`
-              }}
-            >
-              <div className="h-1.5 w-1.5 rounded-full" style={{ background: '#e8c56a' }} />
-              <p className="mt-3 text-sm font-medium text-white">{step.title}</p>
-              <p className="mt-1 text-xs text-[#71717a]">{step.desc}</p>
-            </div>
-          ))}
-        </div>
+      <div className="flex items-center gap-3 text-sm text-[#a1a1aa]">
+        <RefreshCw className="h-4 w-4 animate-spin" style={{ color: '#e8c56a' }} />
+        <span>Loading dashboard…</span>
       </div>
     </div>
   );
