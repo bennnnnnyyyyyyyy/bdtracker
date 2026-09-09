@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     // Supabase is the dashboard store. Sheets is only read on an explicit refresh
     // or when Supabase has not been initialized yet.
     if (!shouldRefreshSource) {
-      rawData = await getRawDataFromSupabase({ startDate, endDate });
+      rawData = await getRawDataFromSupabase();
     }
 
     if (!rawData || shouldRefreshSource) {

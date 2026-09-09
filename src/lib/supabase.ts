@@ -126,7 +126,7 @@ export async function saveRawDataToSupabase(data: {
 /**
  * Reads raw records from Supabase PostgreSQL tables with a fast timeout fallback.
  */
-export async function getRawDataFromSupabase(filters?: { startDate?: string; endDate?: string }): Promise<{
+export async function getRawDataFromSupabase(): Promise<{
   calls: CallRecord[];
   meetings: MeetingRecord[];
   trackerCounts: Record<string, Record<string, number>>;
@@ -137,8 +137,8 @@ export async function getRawDataFromSupabase(filters?: { startDate?: string; end
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
-    // Timeout after 3 seconds to prevent long hangs if Supabase is unreachable/cold
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
+    // Allow the paginated raw-data read to complete without masking it as a timeout
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000));
 
     const fetchPromise = (async () => {
       // 1. Fetch metadata
@@ -156,10 +156,10 @@ export async function getRawDataFromSupabase(filters?: { startDate?: string; end
       const lastUpdated = syncMeta.updated_at || new Date().toISOString();
       const trackerCounts = (trackerMeta?.value as Record<string, Record<string, number>>) || {};
 
-      // 2. Fetch mappings and only the selected period's meetings in parallel.
-      let meetingsQuery = supabase.from('meetings').select('stage, opener, date_added, company_name, authorized_person');
-      if (filters?.startDate) meetingsQuery = meetingsQuery.gte('date_added', filters.startDate);
-      if (filters?.endDate) meetingsQuery = meetingsQuery.lte('date_added', filters.endDate);
+      // 2. Fetch all mappings and meetings. Source-sheet dates are stored as text
+      // in multiple formats, so SQL text comparisons against ISO dates are incorrect.
+      // Date filtering happens consistently in computeDashboardMetrics().
+      const meetingsQuery = supabase.from('meetings').select('stage, opener, date_added, company_name, authorized_person');
 
       const [mappingsRes, meetingsRes] = await Promise.all([
         supabase.from('agent_mappings').select('agent, opener'),
@@ -186,9 +186,9 @@ export async function getRawDataFromSupabase(filters?: { startDate?: string; end
       let hasMore = true;
 
       while (hasMore) {
-        let callsQuery = supabase.from('calls').select('*');
-        if (filters?.startDate) callsQuery = callsQuery.gte('call_date', filters.startDate);
-        if (filters?.endDate) callsQuery = callsQuery.lte('call_date', filters.endDate);
+        // call_date is source-sheet text (not an ISO database date); fetch it
+        // unfiltered and let computeDashboardMetrics() parse/filter it.
+        const callsQuery = supabase.from('calls').select('*');
         const { data: callsPage, error } = await callsQuery
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
