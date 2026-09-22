@@ -69,7 +69,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
   const exportCSV = () => {
     const headers = [
       'Opener', 'Calls Made', 'Present Days', 'Calls / Pres. Day', 'Calls / Day (As-Is)', 'Outbound', 'Inbound', 'Answered', 'No Answer', 'Answer Rate',
-      'Total Talk (min)', 'Avg Call (sec)', 'Meetings Booked', 'No-Show', 'Attended', 'Show Rate',
+      'Total Talk (min)', 'Avg Call (sec)', 'Meetings Booked', 'Med B Count', 'Med B %', 'PPO Count', 'PPO %', 'No-Show', 'Attended', 'Show Rate',
       'Onboarded', 'Close Rate', 'Calls per Meeting', ...CONFIG.BD_TABS
     ];
 
@@ -87,6 +87,10 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
       Math.round(o.totalTalkSec / 60),
       o.avgCallSec,
       o.booked,
+      o.medBCount || 0,
+      `"${(o.medBRate || 0).toFixed(1)}%"`,
+      o.ppoCount || 0,
+      `"${(o.ppoRate || 0).toFixed(1)}%"`,
       o.noShow,
       o.attended,
       `"${(o.showRate * 100).toFixed(1)}%"`,
@@ -110,6 +114,10 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
       Math.round(totals.totalTalkSec / 60),
       totals.avgCallSec,
       totals.booked,
+      totals.medBCount || 0,
+      `"${(totals.medBRate || 0).toFixed(1)}%"`,
+      totals.ppoCount || 0,
+      `"${(totals.ppoRate || 0).toFixed(1)}%"`,
       totals.noShow,
       totals.attended,
       `"${(totals.showRate * 100).toFixed(1)}%"`,
@@ -218,6 +226,12 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
               <th onClick={() => handleSort('booked')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#e8c56a]">
                 Booked {renderSortIcon('booked')}
               </th>
+              <th onClick={() => handleSort('medBRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#c084fc]" title="Med B percentage of booked meetings">
+                Med B % {renderSortIcon('medBRate')}
+              </th>
+              <th onClick={() => handleSort('ppoRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#38bdf8]" title="PPO percentage of booked meetings">
+                PPO % {renderSortIcon('ppoRate')}
+              </th>
               <th onClick={() => handleSort('noShow')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#f87171]">
                 No-Show {renderSortIcon('noShow')}
               </th>
@@ -267,6 +281,12 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
                 <td className="py-2.5 px-3 text-right text-[#a1a1aa]">{formatMinutes(o.totalTalkSec)}</td>
                 <td className="py-2.5 px-3 text-right text-[#71717a]">{o.avgCallSec}s</td>
                 <td className="py-2.5 px-3 text-right font-bold text-[#e8c56a]">{o.booked}</td>
+                <td className="py-2.5 px-3 text-right text-[#c084fc]" title={`${o.medBCount || 0} Med B meetings`}>
+                  {o.booked > 0 ? `${(o.medBRate || 0).toFixed(1)}%` : '—'}
+                </td>
+                <td className="py-2.5 px-3 text-right text-[#38bdf8]" title={`${o.ppoCount || 0} PPO meetings`}>
+                  {o.booked > 0 ? `${(o.ppoRate || 0).toFixed(1)}%` : '—'}
+                </td>
                 <td className="py-2.5 px-3 text-right text-[#f87171]">{o.noShow}</td>
                 <td className="py-2.5 px-3 text-right text-[#4ade80]">{o.attended}</td>
                 <td className="py-2.5 px-3 text-right font-medium text-[#e8c56a]">{formatPercent(o.showRate)}</td>
@@ -299,6 +319,12 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
               <td className="py-3 px-3 text-right text-[#d4d4d8]">{formatMinutes(totals.totalTalkSec)}</td>
               <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.avgCallSec}s</td>
               <td className="py-3 px-3 text-right text-[#e8c56a]">{totals.booked.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#c084fc]">
+                {totals.booked > 0 ? `${(totals.medBRate || 0).toFixed(1)}%` : '—'}
+              </td>
+              <td className="py-3 px-3 text-right text-[#38bdf8]">
+                {totals.booked > 0 ? `${(totals.ppoRate || 0).toFixed(1)}%` : '—'}
+              </td>
               <td className="py-3 px-3 text-right text-[#f87171]">{totals.noShow.toLocaleString()}</td>
               <td className="py-3 px-3 text-right text-[#4ade80]">{totals.attended.toLocaleString()}</td>
               <td className="py-3 px-3 text-right text-[#e8c56a]">{formatPercent(totals.showRate)}</td>

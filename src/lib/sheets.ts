@@ -156,6 +156,14 @@ export async function fetchBDTrackerData(): Promise<{
 
     const companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
     const personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
+    const medbIdx = headers.findIndex(h => h.includes('medb') || h.includes('med b') || h.includes('med_b'));
+    const ppoIdx = headers.findIndex(h => h === 'ppo' || h.includes('ppo'));
+
+    const isChecked = (val: unknown) => {
+      if (typeof val === 'boolean') return val;
+      const s = String(val || '').trim().toLowerCase();
+      return s === 'true' || s === '1' || s === 'yes' || s === 'y';
+    };
 
     for (let r = 1; r < rawRows.length; r++) {
       const row = rawRows[r];
@@ -187,7 +195,9 @@ export async function fetchBDTrackerData(): Promise<{
         opener,
         dateAdded: dateAdded || '',
         companyName: companyIdx !== -1 ? String(row[companyIdx] || '') : '',
-        authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : ''
+        authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : '',
+        medB: medbIdx !== -1 ? isChecked(row[medbIdx]) : false,
+        ppo: ppoIdx !== -1 ? isChecked(row[ppoIdx]) : false
       });
     }
   });

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { RefreshCw, PhoneCall, Calendar, User, Database, CheckCircle2, X, Upload } from 'lucide-react';
+import { RefreshCw, PhoneCall, Calendar, User, Database, CheckCircle2, X, Upload, FileSpreadsheet } from 'lucide-react';
 import { FilterState, OpenerStats, DataSourceInfo } from '@/types/dashboard';
 
 interface HeaderProps {
@@ -10,6 +10,7 @@ interface HeaderProps {
   openers: OpenerStats[];
   onRefresh: () => void;
   onOpenImportModal?: () => void;
+  onExportXlsx?: () => void;
   loading: boolean;
   lastUpdated: string;
   isMockData?: boolean;
@@ -72,7 +73,7 @@ const PRESETS: PresetOption[] = [
 ];
 
 export const Header: React.FC<HeaderProps> = ({
-  filters, onFilterChange, openers, onRefresh, loading, lastUpdated, isMockData
+  filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, loading, lastUpdated, isMockData, dataSourceInfo
 }) => {
   const formattedTime = lastUpdated
     ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -115,6 +116,15 @@ export const Header: React.FC<HeaderProps> = ({
                     <CheckCircle2 className="w-2.5 h-2.5 mr-1" />Live
                   </span>
                 )}
+                {dataSourceInfo?.attendanceSource === 'local_excel' ? (
+                  <span className="pill" style={{ background: 'rgba(56,189,248,0.12)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.25)' }} title="Attendance loaded from local Excel file (BD _ French Dashboard 2026)">
+                    Attendance: Excel
+                  </span>
+                ) : dataSourceInfo?.attendanceSource === 'google_sheets' ? (
+                  <span className="pill pill-success" title="Attendance synced live from Google Sheets">
+                    Attendance: Sheets Live
+                  </span>
+                ) : null}
               </div>
               <p className="label-caps mt-0.5">
                 Ultatel · BD Tracker
@@ -123,15 +133,41 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-all cursor-pointer disabled:opacity-40"
-            style={{ background: '#1a1608', border: '1px solid rgba(201,168,76,0.3)', color: '#e8c56a' }}
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-2">
+            {onExportXlsx && (
+              <button
+                onClick={onExportXlsx}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer hover:brightness-110"
+                style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}
+                title="Export complete per-person analytics to Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Export XLSX</span>
+              </button>
+            )}
+
+            {onOpenImportModal && (
+              <button
+                onClick={onOpenImportModal}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#f4f4f5' }}
+                title="Upload Excel attendance or Ultatel reports"
+              >
+                <Upload className="w-3.5 h-3.5 text-[#38bdf8]" />
+                <span>Upload Excel</span>
+              </button>
+            )}
+
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-all cursor-pointer disabled:opacity-40"
+              style={{ background: '#1a1608', border: '1px solid rgba(201,168,76,0.3)', color: '#e8c56a' }}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* Bottom row: presets + filters */}

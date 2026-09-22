@@ -155,6 +155,7 @@ export interface DashboardResponse {
   openers: OpenerStats[];
   totals: OrgTotals;
   calls: CallRecord[];
+  meetings?: MeetingRecord[];
   agentMappings: AgentMapping[];
   stages: string[];
   lastUpdated: string;

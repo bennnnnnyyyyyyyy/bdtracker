@@ -7,6 +7,8 @@ import { OpenerTable } from '@/components/OpenerTable';
 import { CallLogsView } from '@/components/CallLogsView';
 import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
+import { FileImportModal } from '@/components/FileImportModal';
+import { exportDashboardAnalyticsXlsx } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse } from '@/types/dashboard';
 import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3 } from 'lucide-react';
 
@@ -138,6 +140,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('agents');
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
@@ -232,9 +235,18 @@ export default function DashboardPage() {
         onFilterChange={handleFilterChange}
         openers={data?.openers || []}
         onRefresh={() => fetchData(true)}
+        onOpenImportModal={() => setImportModalOpen(true)}
+        onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
         loading={loading}
         lastUpdated={data?.lastUpdated || ''}
         isMockData={data?.isMockData}
+        dataSourceInfo={data?.dataSourceInfo}
+      />
+
+      <FileImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onSuccess={() => fetchData(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">

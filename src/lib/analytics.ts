@@ -270,6 +270,7 @@ export function computeDashboardMetrics(
   openers: OpenerStats[];
   totals: OrgTotals;
   filteredCalls: CallRecord[];
+  filteredMeetings: MeetingRecord[];
   dailyBreakdown: PeriodicGroupSummary[];
   weeklyBreakdown: PeriodicGroupSummary[];
   monthlyBreakdown: PeriodicGroupSummary[];
@@ -395,6 +396,36 @@ export function computeDashboardMetrics(
   const weeksCount = Math.max(1, Math.ceil(fallbackDaysCount / 7));
   const monthsCount = Math.max(1, Math.ceil(fallbackDaysCount / 30));
 
+  // Calculate business days in range (Mon-Fri) for attendance adherence calculation
+  let expectedWorkingDays = 0;
+  if (filter?.startDate && filter?.endDate) {
+    const cur = new Date(filter.startDate);
+    const end = new Date(filter.endDate);
+    while (cur <= end) {
+      const day = cur.getDay();
+      if (day !== 0 && day !== 6) {
+        expectedWorkingDays++;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+  if (expectedWorkingDays === 0) {
+    expectedWorkingDays = fallbackDaysCount;
+  }
+
+  // Count Med B and PPO checks per canonical opener
+  const openerMedBCounts: Record<string, number> = {};
+  const openerPPOCounts: Record<string, number> = {};
+  filteredMeetings.forEach(m => {
+    if (!m.opener) return;
+    if (m.medB) {
+      openerMedBCounts[m.opener] = (openerMedBCounts[m.opener] || 0) + 1;
+    }
+    if (m.ppo) {
+      openerPPOCounts[m.opener] = (openerPPOCounts[m.opener] || 0) + 1;
+    }
+  });
+
   const openers: OpenerStats[] = [];
   let sumTotalPresentDays = 0;
 
@@ -415,6 +446,11 @@ export function computeDashboardMetrics(
     const attended = Math.max(0, booked - noShow);
     const onboarded = tc['Onboarded'] || 0;
 
+    const medBCount = openerMedBCounts[op] || 0;
+    const medBRate = booked > 0 ? Number(((medBCount / booked) * 100).toFixed(1)) : 0;
+    const ppoCount = openerPPOCounts[op] || 0;
+    const ppoRate = booked > 0 ? Number(((ppoCount / booked) * 100).toFixed(1)) : 0;
+
     const answerRate = s.calls > 0 ? s.answered / s.calls : 0;
     const connectionRate = answerRate;
     const avgCallSec = s.calls > 0 ? Math.round(s.totalSec / s.calls) : 0;
@@ -429,6 +465,10 @@ export function computeDashboardMetrics(
     // PRESENT DAYS CALCULATION: strictly from Attendance Sheet (column AH & daily codes)
     const presentDays = attendance
       ? calculateAgentPresentDays(op, attendance, agentMappings, filter?.startDate, filter?.endDate)
+      : 0;
+
+    const adherenceRate = expectedWorkingDays > 0 && presentDays > 0
+      ? Number(Math.min(100, (presentDays / expectedWorkingDays) * 100).toFixed(1))
       : 0;
 
     // Calls per day: strictly calls / presentDays!
@@ -450,6 +490,10 @@ export function computeDashboardMetrics(
       totalTalkSec: s.totalSec,
       avgCallSec,
       booked,
+      medBCount,
+      medBRate,
+      ppoCount,
+      ppoRate,
       noShow,
       attended,
       showRate,
@@ -459,6 +503,7 @@ export function computeDashboardMetrics(
       stageCounts,
       presentDays,
       callsPerPresentDay,
+      adherenceRate,
       activeDays: agentDaysCount,
       callsPerCalendarDay,
       dailyAverages: {
@@ -491,6 +536,10 @@ export function computeDashboardMetrics(
     totalTalkSec: 0,
     avgCallSec: 0,
     booked: 0,
+    medBCount: 0,
+    medBRate: 0,
+    ppoCount: 0,
+    ppoRate: 0,
     noShow: 0,
     attended: 0,
     showRate: 0,
@@ -499,7 +548,8 @@ export function computeDashboardMetrics(
     callsPerMeeting: 0,
     stageCounts: {},
     totalPresentDays: Number(sumTotalPresentDays.toFixed(1)),
-    callsPerPresentDay: 0
+    callsPerPresentDay: 0,
+    adherenceRate: 0
   };
 
   CONFIG.BD_TABS.forEach(tab => {
@@ -514,6 +564,8 @@ export function computeDashboardMetrics(
     totals.noAnswer += o.noAnswer;
     totals.totalTalkSec += o.totalTalkSec;
     totals.booked += o.booked;
+    totals.medBCount += o.medBCount;
+    totals.ppoCount += o.ppoCount;
     totals.noShow += o.noShow;
     totals.attended += o.attended;
     totals.onboarded += o.onboarded;
@@ -528,6 +580,11 @@ export function computeDashboardMetrics(
   totals.showRate = totals.booked > 0 ? totals.attended / totals.booked : 0;
   totals.closeRate = totals.booked > 0 ? totals.onboarded / totals.booked : 0;
   totals.callsPerMeeting = totals.booked > 0 ? Number((totals.calls / totals.booked).toFixed(1)) : 0;
+  totals.medBRate = totals.booked > 0 ? Number(((totals.medBCount / totals.booked) * 100).toFixed(1)) : 0;
+  totals.ppoRate = totals.booked > 0 ? Number(((totals.ppoCount / totals.booked) * 100).toFixed(1)) : 0;
+  totals.adherenceRate = expectedWorkingDays > 0 && totals.totalPresentDays > 0 && openers.length > 0
+    ? Number(Math.min(100, (totals.totalPresentDays / (expectedWorkingDays * openers.length)) * 100).toFixed(1))
+    : 0;
   totals.callsPerPresentDay = totals.totalPresentDays > 0
     ? Number((totals.calls / totals.totalPresentDays).toFixed(1))
     : Number((totals.calls / fallbackDaysCount).toFixed(1));
@@ -576,6 +633,7 @@ export function computeDashboardMetrics(
     openers,
     totals,
     filteredCalls,
+    filteredMeetings,
     dailyBreakdown,
     weeklyBreakdown,
     monthlyBreakdown
