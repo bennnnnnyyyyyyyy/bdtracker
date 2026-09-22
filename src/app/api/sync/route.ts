@@ -17,7 +17,7 @@ async function sync(request: NextRequest) {
   }
 
   try {
-    const rawData = await getDashboardRawData(true);
+    const rawData = await getDashboardRawData();
     const supabaseResult = await saveRawDataToSupabase({
       calls: rawData.calls,
       meetings: rawData.meetings,
@@ -28,7 +28,7 @@ async function sync(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Error in /api/sync:', error);
     const errorMessage = isQuotaExceededError(error)
-      ? 'Data provider quota exceeded. Try again later, or use cached data until the quota resets.'
+      ? 'Data provider quota exceeded. Try again later; the live source is temporarily unavailable.'
       : getErrorMessage(error) || 'Failed to sync Google Sheets to Supabase';
     return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }

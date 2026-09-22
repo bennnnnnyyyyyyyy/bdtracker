@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData, fetchAttendanceData, RawDashboardDataset } from '@/lib/sheets';
-import { getRawDataFromSupabase, saveRawDataToSupabase } from '@/lib/supabase';
+import { getRawDataFromSupabase } from '@/lib/supabase';
 import { computeDashboardMetrics } from '@/lib/analytics';
 import { CONFIG } from '@/lib/config';
 import { DashboardResponse, DataSourceInfo } from '@/types/dashboard';
@@ -13,9 +13,6 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate') || undefined;
     const endDate = searchParams.get('endDate') || undefined;
     const selectedOpener = searchParams.get('opener') || undefined;
-    const forceRefresh = searchParams.get('refresh') === 'true';
-    const shouldRefreshSource = forceRefresh;
-
     let rawData: RawDashboardDataset | null = null;
     let attendanceData: AttendanceDataset | undefined;
     let currentDataSourceInfo: DataSourceInfo = {
@@ -24,70 +21,33 @@ export async function GET(request: NextRequest) {
       callsSource: 'call_logs',
     };
 
-    // 1. Supabase is the primary store unless explicit refresh is requested
-    if (!shouldRefreshSource) {
-      // These sources are independent; start both network/file reads together.
-      const [supaData, attRes] = await Promise.all([
-        getRawDataFromSupabase(),
-        fetchAttendanceData(),
-      ]);
-      if (supaData && supaData.calls.length > 0) {
-        attendanceData = attRes.attendance;
-        currentDataSourceInfo.attendanceSource = attRes.source;
+    // Always pull the live Sheets/local sources first. Supabase is emergency fallback only.
+    try {
+      const liveData = await getDashboardRawData();
+      rawData = liveData;
+      attendanceData = liveData.attendance;
+      currentDataSourceInfo = liveData.dataSourceInfo;
+    } catch (ingestErr) {
+      console.warn('[Data Ingest] Live pull failed, attempting Supabase fallback:', ingestErr);
+      const fallbackSupa = await getRawDataFromSupabase();
+      if (!fallbackSupa) throw ingestErr;
 
-        rawData = {
-          calls: supaData.calls,
-          meetings: supaData.meetings,
-          trackerCounts: supaData.trackerCounts,
-          agentMappings: supaData.agentMappings,
-          attendance: attRes.attendance,
-          dataSourceInfo: currentDataSourceInfo,
-          isMockData: false,
-        };
-      }
-    }
-
-    // 2. Fetch fresh dataset from Google Sheets / Local Excel if refresh or no Supabase data
-    if (!rawData || shouldRefreshSource) {
-      try {
-        const freshData = await getDashboardRawData(true);
-
-        // Write fresh dataset to Supabase in background
-        saveRawDataToSupabase({
-          calls: freshData.calls,
-          meetings: freshData.meetings,
-          trackerCounts: freshData.trackerCounts,
-          agentMappings: freshData.agentMappings,
-        }).catch((err) => console.warn('[Supabase Sync] Async save warning:', err));
-
-        rawData = { ...freshData };
-        attendanceData = freshData.attendance;
-        currentDataSourceInfo = freshData.dataSourceInfo;
-      } catch (ingestErr) {
-        console.warn('[Data Ingest] Primary ingest failed, attempting fallback:', ingestErr);
-        // If live pull failed, try Supabase as emergency fallback
-        const fallbackSupa = await getRawDataFromSupabase();
-        if (fallbackSupa) {
-          const attRes = await fetchAttendanceData();
-          rawData = {
-            calls: fallbackSupa.calls,
-            meetings: fallbackSupa.meetings,
-            trackerCounts: fallbackSupa.trackerCounts,
-            agentMappings: fallbackSupa.agentMappings,
-            attendance: attRes.attendance,
-            dataSourceInfo: {
-              source: 'supabase',
-              attendanceSource: attRes.source,
-              callsSource: 'supabase',
-              notes: 'Google Sheets sync failed; showing cached database records.',
-            },
-            isMockData: false,
-          };
-          attendanceData = attRes.attendance;
-        } else {
-          throw ingestErr;
-        }
-      }
+      const attRes = await fetchAttendanceData();
+      rawData = {
+        calls: fallbackSupa.calls,
+        meetings: fallbackSupa.meetings,
+        trackerCounts: fallbackSupa.trackerCounts,
+        agentMappings: fallbackSupa.agentMappings,
+        attendance: attRes.attendance,
+        dataSourceInfo: {
+          source: 'supabase',
+          attendanceSource: attRes.source,
+          callsSource: 'supabase',
+          notes: 'Live source failed; showing emergency database fallback.',
+        },
+        isMockData: false,
+      };
+      attendanceData = attRes.attendance;
     }
 
     if (!rawData) {
@@ -124,12 +84,16 @@ export async function GET(request: NextRequest) {
       dataSourceInfo: currentDataSourceInfo,
     };
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    });
   } catch (error: unknown) {
     console.error('API Error in /api/dashboard:', error);
     let errorMessage = getErrorMessage(error) || 'Internal server error';
     if (isQuotaExceededError(error)) {
-      errorMessage = 'Data provider quota exceeded. Try again later, or use the cached dashboard until the quota resets.';
+      errorMessage = 'Data provider quota exceeded. Try again later; the live dashboard source is temporarily unavailable.';
     }
     if (
       errorMessage.toLowerCase().includes('caller does not have permission') ||

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
@@ -14,12 +14,9 @@ import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarC
 
 type ActiveTab = 'agents' | 'periods' | 'table' | 'calls';
 
-const DASHBOARD_DATA_CACHE_KEY = 'bd-tracker-dashboard-data-cache-v2';
 const DASHBOARD_UI_CACHE_KEY = 'bd-tracker-dashboard-ui-cache-v1';
 const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const DASHBOARD_CACHE_LIMIT = 8;
 
-type DashboardCacheStore = Record<string, { savedAt: number; data: DashboardResponse }>;
 type DashboardUiCache = {
   filters: FilterState;
   activeTab: ActiveTab;
@@ -55,14 +52,6 @@ const DEFAULT_FILTERS: FilterState = {
   preset: 'this_week'
 };
 
-function buildDataCacheKey(filters: FilterState): string {
-  return JSON.stringify({
-    startDate: filters.startDate || '',
-    endDate: filters.endDate || '',
-    selectedOpener: filters.selectedOpener || 'ALL'
-  });
-}
-
 function readJsonStorage<T>(storageKey: string): T | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -81,25 +70,6 @@ function writeJsonStorage(storageKey: string, value: unknown): void {
   } catch {
     // Ignore quota or privacy-mode failures and keep the dashboard usable.
   }
-}
-
-function readCachedDashboard(cacheKey: string): DashboardResponse | null {
-  const store = readJsonStorage<DashboardCacheStore>(DASHBOARD_DATA_CACHE_KEY);
-  const entry = store?.[cacheKey];
-  if (!entry) return null;
-  if (Date.now() - entry.savedAt > DASHBOARD_CACHE_TTL_MS) return null;
-  return entry.data;
-}
-
-function writeCachedDashboard(cacheKey: string, data: DashboardResponse): void {
-  const store = readJsonStorage<DashboardCacheStore>(DASHBOARD_DATA_CACHE_KEY) ?? {};
-  store[cacheKey] = { savedAt: Date.now(), data };
-
-  const prunedEntries = Object.entries(store)
-    .sort((a, b) => b[1].savedAt - a[1].savedAt)
-    .slice(0, DASHBOARD_CACHE_LIMIT);
-
-  writeJsonStorage(DASHBOARD_DATA_CACHE_KEY, Object.fromEntries(prunedEntries));
 }
 
 function readUiCache(): DashboardUiCache | null {
@@ -163,15 +133,7 @@ export default function DashboardPage() {
     writeUiCache(filters, activeTab);
   }, [filters, activeTab, hasHydrated]);
 
-  const cacheKey = useMemo(() => buildDataCacheKey(filters), [
-    filters
-  ]);
-
   const fetchData = useCallback(async (forceRefresh = false) => {
-    const cached = !forceRefresh ? readCachedDashboard(cacheKey) : null;
-    if (cached) {
-      setData(cached);
-    }
     setLoading(true);
 
     try {
@@ -183,7 +145,7 @@ export default function DashboardPage() {
       }
       if (forceRefresh) params.set('refresh', 'true');
 
-      const res = await fetch('/api/dashboard?' + params.toString());
+      const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
       if (!res.ok) {
         let errDetail = res.statusText;
         try {
@@ -197,7 +159,6 @@ export default function DashboardPage() {
 
       const json: DashboardResponse = await res.json();
       setData(json);
-      writeCachedDashboard(cacheKey, json);
       setError(null);
     } catch (err: unknown) {
       console.error('Error fetching dashboard:', err);
@@ -205,7 +166,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [cacheKey, filters.startDate, filters.endDate, filters.selectedOpener]);
+  }, [filters.startDate, filters.endDate, filters.selectedOpener]);
 
   useEffect(() => {
     if (!hasHydrated) return;

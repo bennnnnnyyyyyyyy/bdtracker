@@ -4,18 +4,6 @@ import { CallRecord, MeetingRecord, AgentMapping } from '../types/dashboard';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://tyideivywfxxvqbfdxag.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-type SupabaseRawData = {
-  calls: CallRecord[];
-  meetings: MeetingRecord[];
-  trackerCounts: Record<string, Record<string, number>>;
-  agentMappings: AgentMapping[];
-  lastUpdated: string;
-};
-
-let rawDataCache: { data: SupabaseRawData; timestamp: number } | null = null;
-let rawDataRequest: Promise<SupabaseRawData | null> | null = null;
-const RAW_DATA_CACHE_TTL_MS = 5 * 60 * 1000;
-
 export function getSupabaseAdmin() {
   try {
     if (!SUPABASE_KEY) {
@@ -124,9 +112,6 @@ export async function saveRawDataToSupabase(data: {
       updated_at: timestamp,
     }, { onConflict: 'key' });
 
-    // The source has changed; do not serve the pre-refresh snapshot.
-    rawDataCache = null;
-
     return {
       callsCount: data.calls.length,
       meetingsCount: data.meetings.length,
@@ -148,23 +133,6 @@ export async function getRawDataFromSupabase(): Promise<{
   agentMappings: AgentMapping[];
   lastUpdated: string;
 } | null> {
-  if (rawDataCache && Date.now() - rawDataCache.timestamp < RAW_DATA_CACHE_TTL_MS) {
-    return rawDataCache.data;
-  }
-
-  if (rawDataRequest) return rawDataRequest;
-
-  rawDataRequest = getRawDataFromSupabaseUncached();
-  try {
-    const data = await rawDataRequest;
-    if (data) rawDataCache = { data, timestamp: Date.now() };
-    return data;
-  } finally {
-    rawDataRequest = null;
-  }
-}
-
-async function getRawDataFromSupabaseUncached(): Promise<SupabaseRawData | null> {
   try {
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
@@ -220,7 +188,9 @@ async function getRawDataFromSupabaseUncached(): Promise<SupabaseRawData | null>
       while (hasMore) {
         // call_date is source-sheet text (not an ISO database date); fetch it
         // unfiltered and let computeDashboardMetrics() parse/filter it.
-        const callsQuery = supabase.from('calls').select('*');
+        const callsQuery = supabase.from('calls').select(
+          'call_date, call_id, from_num, to_num, extension, department, did, description, call_type, outcome, duration, duration_sec, notes, call_path, agent, opener'
+        );
         const { data: callsPage, error } = await callsQuery
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 

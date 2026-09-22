@@ -8,11 +8,6 @@ import { parseAgentName, durationToSeconds, parseDateToISO } from './analytics';
 import { AttendanceDataset, parseAttendanceRows } from './attendance';
 import { parseUltatelDeptRows, deptSummariesToCallRecords } from './ultatel';
 
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
 export interface RawDashboardDataset {
   calls: CallRecord[];
   meetings: MeetingRecord[];
@@ -22,11 +17,6 @@ export interface RawDashboardDataset {
   dataSourceInfo: DataSourceInfo;
   isMockData: boolean;
 }
-
-let cachedData: CacheEntry<RawDashboardDataset> | null = null;
-let cachedAttendance: CacheEntry<Awaited<ReturnType<typeof fetchAttendanceDataUncached>>> | null = null;
-let attendanceRequest: Promise<Awaited<ReturnType<typeof fetchAttendanceDataUncached>>> | null = null;
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function getSheetsClient() {
   const saPath = path.join(process.cwd(), 'google2.json');
@@ -217,24 +207,7 @@ type AttendanceFetchResult = {
   source: 'google_sheets' | 'local_excel' | 'none';
 };
 
-export async function fetchAttendanceData(forceRefresh = false): Promise<AttendanceFetchResult> {
-  const now = Date.now();
-  if (!forceRefresh && cachedAttendance && now - cachedAttendance.timestamp < CACHE_TTL_MS) {
-    return cachedAttendance.data;
-  }
-  if (!forceRefresh && attendanceRequest) return attendanceRequest;
-
-  attendanceRequest = fetchAttendanceDataUncached();
-  try {
-    const result = await attendanceRequest;
-    cachedAttendance = { data: result, timestamp: Date.now() };
-    return result;
-  } finally {
-    attendanceRequest = null;
-  }
-}
-
-async function fetchAttendanceDataUncached(): Promise<AttendanceFetchResult> {
+export async function fetchAttendanceData(): Promise<AttendanceFetchResult> {
   const sheets = getSheetsClient();
 
   // Try Google Sheets API first
@@ -303,12 +276,7 @@ export function fetchLocalUltatelDeptData(): CallRecord[] | null {
  * Orchestrates multi-source data retrieval:
  * Combines Google Sheets (or fallback files), local Ultatel departmental reports, and attendance.
  */
-export async function getDashboardRawData(forceRefresh = false): Promise<RawDashboardDataset> {
-  const now = Date.now();
-  if (!forceRefresh && cachedData && now - cachedData.timestamp < CACHE_TTL_MS) {
-    return { ...cachedData.data, isMockData: false };
-  }
-
+export async function getDashboardRawData(): Promise<RawDashboardDataset> {
   try {
     // 1. Fetch Call Logs and BD Tracker
     const [callData, bdData, attendanceResult] = await Promise.all([
@@ -320,7 +288,7 @@ export async function getDashboardRawData(forceRefresh = false): Promise<RawDash
         console.warn('[Google Sheets] BD Tracker fetch failed:', err.message);
         return { meetings: [], trackerCounts: {} };
       }),
-      fetchAttendanceData(true)
+      fetchAttendanceData()
     ]);
 
     // 2. Check if local Ultatel departmental summary is present
@@ -358,7 +326,6 @@ export async function getDashboardRawData(forceRefresh = false): Promise<RawDash
       isMockData: false
     };
 
-    cachedData = { data: result, timestamp: now };
     return result;
   } catch (err: unknown) {
     console.error('[Data Ingestion] Failed to load data:', err);
