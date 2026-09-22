@@ -36,6 +36,7 @@ export interface OpenerStats {
   noAnswer: number;
   answerRate: number;
   connectionRate: number; // Answer rate (Connection rate)
+  bookingRate: number; // Meetings booked / answered calls
   totalTalkSec: number;
   avgCallSec: number;
   booked: number;
@@ -119,6 +120,7 @@ export interface OrgTotals {
   noAnswer: number;
   answerRate: number;
   connectionRate: number;
+  bookingRate: number;
   totalTalkSec: number;
   avgCallSec: number;
   booked: number;
@@ -154,6 +156,7 @@ export interface DataSourceInfo {
 export interface DashboardResponse {
   openers: OpenerStats[];
   totals: OrgTotals;
+  funnel: FunnelSummary;
   calls: CallRecord[];
   meetings?: MeetingRecord[];
   agentMappings: AgentMapping[];
@@ -167,6 +170,18 @@ export interface DashboardResponse {
   error?: string;
 }
 
+export interface FunnelSummary {
+  calls: number;
+  answered: number;
+  booked: number;
+  attended: number;
+  onboarded: number;
+  connectionRate: number;
+  bookingRate: number;
+  showRate: number;
+  closeRate: number;
+}
+
 export type TimeGranularity = 'summary' | 'day' | 'week' | 'month';
 
 export interface FilterState {
@@ -177,4 +192,3 @@ export interface FilterState {
   granularity?: TimeGranularity;
   preset?: 'today' | 'this_week' | 'this_month' | 'last_30_days' | 'custom';
 }
-

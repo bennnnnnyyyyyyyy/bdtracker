@@ -7,6 +7,7 @@ import { OpenerTable } from '@/components/OpenerTable';
 import { CallLogsView } from '@/components/CallLogsView';
 import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
+import { ExecutiveInsights } from '@/components/ExecutiveInsights';
 import { FileImportModal } from '@/components/FileImportModal';
 import { exportDashboardAnalyticsXlsx } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse } from '@/types/dashboard';
@@ -233,6 +234,7 @@ export default function DashboardPage() {
         {data && (
           <>
             <KpiGrid totals={data.totals} />
+            <ExecutiveInsights funnel={data.funnel} openers={data.openers} weeklyBreakdown={data.weeklyBreakdown} />
 
             <div
               role="tablist"
@@ -268,12 +270,12 @@ export default function DashboardPage() {
             {activeTab === 'periods' && (
               <div className="space-y-6">
                 <section>
-                  <div className="sec-tag mb-2">Daily performance</div>
-                  <PeriodicBreakdownTable data={data.dailyBreakdown} emptyLabel="No daily activity in this period" />
-                </section>
-                <section>
                   <div className="sec-tag mb-2">Weekly performance</div>
                   <PeriodicBreakdownTable data={data.weeklyBreakdown} emptyLabel="No weekly activity in this period" />
+                </section>
+                <section>
+                  <div className="sec-tag mb-2">Daily performance</div>
+                  <PeriodicBreakdownTable data={data.dailyBreakdown} emptyLabel="No daily activity in this period" />
                 </section>
                 <section>
                   <div className="sec-tag mb-2">Monthly performance</div>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
-import { Award, Calendar, Phone, TrendingUp } from 'lucide-react';
+import { Award, Calendar, CheckCircle2, Phone, TrendingUp, UsersRound } from 'lucide-react';
 import { FilterState, OpenerStats } from '@/types/dashboard';
 
 interface AgentDashboardViewProps {
@@ -13,8 +13,8 @@ function formatLocalDateYMD(date: Date): string {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 }
 
-function formatRate(rate: number): string {
-  return Number.isFinite(rate) && rate > 0 ? `${Math.round(rate * 100)}%` : '—';
+function formatRate(rate: number, hasDenominator: boolean): string {
+  return hasDenominator && Number.isFinite(rate) ? `${Math.round(rate * 100)}%` : '—';
 }
 
 function getPeriodTitle(filters: FilterState): string {
@@ -26,20 +26,26 @@ function getPeriodTitle(filters: FilterState): string {
   return 'Current period';
 }
 
-function coachingStatus(agent: OpenerStats): { label: string; className: string } {
-  if (agent.booked > 0 && agent.showRate < 0.4) return { label: 'Show rate needs attention', className: 'pill-danger' };
-  if (agent.presentDays > 0 && agent.callsPerPresentDay < 10) return { label: 'Activity needs attention', className: 'pill-warn' };
+type TeamBenchmarks = { connectionRate: number; bookingRate: number; showRate: number; closeRate: number; callsPerPresentDay: number };
+
+function coachingStatus(agent: OpenerStats, benchmarks: TeamBenchmarks): { label: string; className: string } {
+  if (agent.calls > 0 && agent.connectionRate < benchmarks.connectionRate) return { label: 'Connectivity needs attention', className: 'pill-danger' };
+  if (agent.answered > 0 && agent.bookingRate < benchmarks.bookingRate) return { label: 'Conversion needs attention', className: 'pill-danger' };
+  if (agent.booked > 0 && agent.showRate < benchmarks.showRate) return { label: 'Show rate needs attention', className: 'pill-warn' };
+  if (agent.booked > 0 && agent.closeRate < benchmarks.closeRate) return { label: 'Close rate needs attention', className: 'pill-warn' };
+  if (agent.presentDays > 0 && agent.callsPerPresentDay < benchmarks.callsPerPresentDay) return { label: 'Activity needs attention', className: 'pill-warn' };
   return { label: 'On track', className: 'pill-success' };
 }
 
-const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: {
+const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, benchmarks }: {
   agent: OpenerStats;
   rank: number;
   maxCalls: number;
   maxBooked: number;
+  benchmarks: TeamBenchmarks;
 }) {
   const isTop = rank === 1;
-  const status = coachingStatus(agent);
+  const status = coachingStatus(agent, benchmarks);
   const productivity = agent.presentDays > 0
     ? `${agent.callsPerPresentDay}/day · ${agent.presentDays} present days`
     : `${agent.callsPerCalendarDay ?? 0}/calendar day`;
@@ -59,10 +65,13 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
 
       <div className="grid grid-cols-2 gap-px bg-white/5">
         <Metric label="Calls" value={agent.calls.toLocaleString()} ratio={agent.calls / maxCalls} tone="neutral" icon={<Phone className="w-3 h-3" />} />
+        <Metric label="Connect" value={formatRate(agent.connectionRate, agent.calls > 0)} tone={agent.connectionRate >= benchmarks.connectionRate ? 'success' : 'danger'} icon={<UsersRound className="w-3 h-3" />} />
         <Metric label="Booked" value={agent.booked.toLocaleString()} ratio={agent.booked / maxBooked} tone="gold" icon={<Calendar className="w-3 h-3" />} />
-        <Metric label="Show rate" value={formatRate(agent.showRate)} tone={agent.showRate >= 0.6 ? 'success' : agent.showRate >= 0.4 ? 'gold' : 'danger'} icon={<TrendingUp className="w-3 h-3" />} />
-        <Metric label="Close rate" value={formatRate(agent.closeRate)} tone={agent.closeRate >= 0.2 ? 'success' : 'neutral'} />
+        <Metric label="Booking rate" value={formatRate(agent.bookingRate, agent.answered > 0)} tone={agent.answered > 0 && agent.bookingRate >= benchmarks.bookingRate ? 'success' : 'neutral'} />
+        <Metric label="Show rate" value={formatRate(agent.showRate, agent.booked > 0)} tone={agent.showRate >= 0.6 ? 'success' : agent.showRate >= 0.4 ? 'gold' : 'danger'} icon={<TrendingUp className="w-3 h-3" />} />
+        <Metric label="Close rate" value={formatRate(agent.closeRate, agent.booked > 0)} tone={agent.closeRate >= benchmarks.closeRate ? 'success' : 'neutral'} icon={<CheckCircle2 className="w-3 h-3" />} />
       </div>
+      <div className="px-4 py-2.5 flex items-center justify-between text-[10px] font-num text-text-dim border-t border-white/6"><span>{agent.presentDays > 0 ? `${agent.presentDays} present days · ${agent.callsPerPresentDay}/day` : 'Attendance unavailable'}</span><span>{agent.onboarded} onboarded</span></div>
     </article>
   );
 });
@@ -82,9 +91,19 @@ function Metric({ label, value, ratio, tone = 'neutral', icon }: { label: string
 export function AgentDashboardView({ openers, filters }: AgentDashboardViewProps) {
   const activeOpeners = useMemo(() => openers
     .filter((opener) => opener.opener && opener.opener !== 'undefined')
-    .sort((a, b) => b.calls - a.calls || b.booked - a.booked), [openers]);
+    .sort((a, b) => b.onboarded - a.onboarded || b.booked - a.booked || b.bookingRate - a.bookingRate), [openers]);
   const maxCalls = useMemo(() => Math.max(1, ...activeOpeners.map((agent) => agent.calls)), [activeOpeners]);
   const maxBooked = useMemo(() => Math.max(1, ...activeOpeners.map((agent) => agent.booked)), [activeOpeners]);
+  const benchmarks = useMemo<TeamBenchmarks>(() => {
+    const avg = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+    return {
+      connectionRate: avg(activeOpeners.filter(agent => agent.calls > 0).map(agent => agent.connectionRate)),
+      bookingRate: avg(activeOpeners.filter(agent => agent.answered > 0).map(agent => agent.bookingRate)),
+      showRate: avg(activeOpeners.filter(agent => agent.booked > 0).map(agent => agent.showRate)),
+      closeRate: avg(activeOpeners.filter(agent => agent.booked > 0).map(agent => agent.closeRate)),
+      callsPerPresentDay: avg(activeOpeners.filter(agent => agent.presentDays > 0).map(agent => agent.callsPerPresentDay)),
+    };
+  }, [activeOpeners]);
 
   return (
     <section aria-labelledby="team-performance-heading" className="space-y-4">
@@ -103,7 +122,7 @@ export function AgentDashboardView({ openers, filters }: AgentDashboardViewProps
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} />)}
+          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} benchmarks={benchmarks} />)}
         </div>
       )}
     </section>

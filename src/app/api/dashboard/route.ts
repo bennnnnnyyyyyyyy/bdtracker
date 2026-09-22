@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Compute metrics with attendance-aware present days logic
-    const { openers, totals, filteredCalls, filteredMeetings, dailyBreakdown, weeklyBreakdown, monthlyBreakdown } =
+    const { openers, totals, funnel, filteredCalls, filteredMeetings, dailyBreakdown, weeklyBreakdown, monthlyBreakdown } =
       computeDashboardMetrics(
         rawData.calls,
         rawData.meetings,
@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
     const response: DashboardResponse = {
       openers: responseOpeners,
       totals,
+      funnel,
       calls: filteredCalls,
       meetings: filteredMeetings,
       agentMappings: rawData.agentMappings,

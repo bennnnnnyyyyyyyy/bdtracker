@@ -50,6 +50,7 @@ export function exportDashboardAnalyticsXlsx(
     'Inbound Calls',
     'Answered Calls',
     'Connection Rate %',
+    'Booking Rate %',
     'Total Talk Time (HH:MM:SS)',
     'Avg Call Duration (MM:SS)',
     'Meetings Booked',
@@ -80,6 +81,7 @@ export function exportDashboardAnalyticsXlsx(
       op.inbound,
       op.answered,
       `${(op.connectionRate * 100).toFixed(1)}%`,
+      op.answered > 0 ? `${(op.bookingRate * 100).toFixed(1)}%` : '—',
       formatSecondsToHms(op.totalTalkSec),
       formatSecondsToHms(op.avgCallSec).slice(3), // MM:SS
       op.booked,
@@ -110,6 +112,7 @@ export function exportDashboardAnalyticsXlsx(
       tot.inbound,
       tot.answered,
       `${(tot.connectionRate * 100).toFixed(1)}%`,
+      tot.answered > 0 ? `${(tot.bookingRate * 100).toFixed(1)}%` : '—',
       formatSecondsToHms(tot.totalTalkSec),
       formatSecondsToHms(tot.avgCallSec).slice(3),
       tot.booked,
@@ -132,6 +135,18 @@ export function exportDashboardAnalyticsXlsx(
   const wsSummary = xlsx.utils.aoa_to_sheet([summaryHeaders, ...summaryRows]);
   wsSummary['!cols'] = autoFitColumns([summaryHeaders, ...summaryRows]);
   xlsx.utils.book_append_sheet(wb, wsSummary, 'Agent Overview');
+
+  const funnelRows: (string | number)[][] = [
+    ['Stage', 'Count', 'Conversion from prior', 'Conversion from calls'],
+    ['Calls', data.funnel.calls, '—', '—'],
+    ['Answered', data.funnel.answered, `${(data.funnel.connectionRate * 100).toFixed(1)}%`, `${(data.funnel.connectionRate * 100).toFixed(1)}%`],
+    ['Meetings Booked', data.funnel.booked, data.funnel.answered > 0 ? `${(data.funnel.bookingRate * 100).toFixed(1)}%` : '—', data.funnel.calls > 0 ? `${((data.funnel.booked / data.funnel.calls) * 100).toFixed(1)}%` : '—'],
+    ['Attended', data.funnel.attended, data.funnel.booked > 0 ? `${(data.funnel.showRate * 100).toFixed(1)}%` : '—', data.funnel.calls > 0 ? `${((data.funnel.attended / data.funnel.calls) * 100).toFixed(1)}%` : '—'],
+    ['Onboarded', data.funnel.onboarded, data.funnel.booked > 0 ? `${(data.funnel.closeRate * 100).toFixed(1)}%` : '—', data.funnel.calls > 0 ? `${((data.funnel.onboarded / data.funnel.calls) * 100).toFixed(1)}%` : '—'],
+  ];
+  const wsFunnel = xlsx.utils.aoa_to_sheet(funnelRows);
+  wsFunnel['!cols'] = autoFitColumns(funnelRows);
+  xlsx.utils.book_append_sheet(wb, wsFunnel, 'Executive Funnel');
 
   // ==========================================
   // SHEET 2: Meeting Pipeline Details

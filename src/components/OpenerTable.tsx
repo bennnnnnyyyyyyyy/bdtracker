@@ -68,7 +68,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
 
   const exportCSV = () => {
     const headers = [
-      'Opener', 'Calls Made', 'Present Days', 'Calls / Pres. Day', 'Calls / Day (As-Is)', 'Outbound', 'Inbound', 'Answered', 'No Answer', 'Answer Rate',
+      'Opener', 'Calls Made', 'Present Days', 'Calls / Pres. Day', 'Calls / Day (As-Is)', 'Outbound', 'Inbound', 'Answered', 'No Answer', 'Answer Rate', 'Booking Rate',
       'Total Talk (min)', 'Avg Call (sec)', 'Meetings Booked', 'Med B Count', 'Med B %', 'PPO Count', 'PPO %', 'No-Show', 'Attended', 'Show Rate',
       'Onboarded', 'Close Rate', 'Calls per Meeting', ...CONFIG.BD_TABS
     ];
@@ -84,6 +84,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
       o.answered,
       o.noAnswer,
       `"${(o.answerRate * 100).toFixed(1)}%"`,
+      o.answered > 0 ? `"${(o.bookingRate * 100).toFixed(1)}%"` : '—',
       Math.round(o.totalTalkSec / 60),
       o.avgCallSec,
       o.booked,
@@ -111,6 +112,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
       totals.answered,
       totals.noAnswer,
       `"${(totals.answerRate * 100).toFixed(1)}%"`,
+      totals.answered > 0 ? `"${(totals.bookingRate * 100).toFixed(1)}%"` : '—',
       Math.round(totals.totalTalkSec / 60),
       totals.avgCallSec,
       totals.booked,
@@ -217,6 +219,9 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
               <th onClick={() => handleSort('answerRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
                 Answer Rate {renderSortIcon('answerRate')}
               </th>
+              <th onClick={() => handleSort('bookingRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#e8c56a]" title="Meetings booked divided by answered calls">
+                Booking Rate {renderSortIcon('bookingRate')}
+              </th>
               <th onClick={() => handleSort('totalTalkSec')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
                 Total Talk {renderSortIcon('totalTalkSec')}
               </th>
@@ -278,6 +283,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
                     {formatPercent(o.answerRate)}
                   </span>
                 </td>
+                <td className="py-2.5 px-3 text-right font-medium text-[#e8c56a]">{o.answered > 0 ? formatPercent(o.bookingRate) : '—'}</td>
                 <td className="py-2.5 px-3 text-right text-[#a1a1aa]">{formatMinutes(o.totalTalkSec)}</td>
                 <td className="py-2.5 px-3 text-right text-[#71717a]">{o.avgCallSec}s</td>
                 <td className="py-2.5 px-3 text-right font-bold text-[#e8c56a]">{o.booked}</td>
@@ -316,6 +322,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
               <td className="py-3 px-3 text-right text-[#4ade80]">{totals.answered.toLocaleString()}</td>
               <td className="py-3 px-3 text-right text-[#52525b]">{totals.noAnswer.toLocaleString()}</td>
               <td className="py-3 px-3 text-right text-[#4ade80]">{formatPercent(totals.answerRate)}</td>
+              <td className="py-3 px-3 text-right text-[#e8c56a]">{totals.answered > 0 ? formatPercent(totals.bookingRate) : '—'}</td>
               <td className="py-3 px-3 text-right text-[#d4d4d8]">{formatMinutes(totals.totalTalkSec)}</td>
               <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.avgCallSec}s</td>
               <td className="py-3 px-3 text-right text-[#e8c56a]">{totals.booked.toLocaleString()}</td>

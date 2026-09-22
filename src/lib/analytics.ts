@@ -6,7 +6,8 @@ import {
   OrgTotals,
   AgentMapping,
   PeriodicGroupSummary,
-  PeriodicAgentMetrics
+  PeriodicAgentMetrics,
+  FunnelSummary
 } from '../types/dashboard';
 import { AttendanceDataset, calculateAgentPresentDays } from './attendance';
 
@@ -269,6 +270,7 @@ export function computeDashboardMetrics(
 ): {
   openers: OpenerStats[];
   totals: OrgTotals;
+  funnel: FunnelSummary;
   filteredCalls: CallRecord[];
   filteredMeetings: MeetingRecord[];
   dailyBreakdown: PeriodicGroupSummary[];
@@ -453,6 +455,7 @@ export function computeDashboardMetrics(
 
     const answerRate = s.calls > 0 ? s.answered / s.calls : 0;
     const connectionRate = answerRate;
+    const bookingRate = s.answered > 0 ? booked / s.answered : 0;
     const avgCallSec = s.calls > 0 ? Math.round(s.totalSec / s.calls) : 0;
     const showRate = booked > 0 ? attended / booked : 0;
     const closeRate = booked > 0 ? onboarded / booked : 0;
@@ -487,6 +490,7 @@ export function computeDashboardMetrics(
       noAnswer: s.noAnswer,
       answerRate,
       connectionRate,
+      bookingRate,
       totalTalkSec: s.totalSec,
       avgCallSec,
       booked,
@@ -533,6 +537,7 @@ export function computeDashboardMetrics(
     noAnswer: 0,
     answerRate: 0,
     connectionRate: 0,
+    bookingRate: 0,
     totalTalkSec: 0,
     avgCallSec: 0,
     booked: 0,
@@ -576,6 +581,7 @@ export function computeDashboardMetrics(
 
   totals.answerRate = totals.calls > 0 ? totals.answered / totals.calls : 0;
   totals.connectionRate = totals.answerRate;
+  totals.bookingRate = totals.answered > 0 ? totals.booked / totals.answered : 0;
   totals.avgCallSec = totals.calls > 0 ? Math.round(totals.totalTalkSec / totals.calls) : 0;
   totals.showRate = totals.booked > 0 ? totals.attended / totals.booked : 0;
   totals.closeRate = totals.booked > 0 ? totals.onboarded / totals.booked : 0;
@@ -629,9 +635,22 @@ export function computeDashboardMetrics(
     agentMappings
   );
 
+  const funnel: FunnelSummary = {
+    calls: totals.calls,
+    answered: totals.answered,
+    booked: totals.booked,
+    attended: totals.attended,
+    onboarded: totals.onboarded,
+    connectionRate: totals.connectionRate,
+    bookingRate: totals.bookingRate,
+    showRate: totals.showRate,
+    closeRate: totals.closeRate,
+  };
+
   return {
     openers,
     totals,
+    funnel,
     filteredCalls,
     filteredMeetings,
     dailyBreakdown,
