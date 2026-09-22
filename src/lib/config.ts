@@ -1,11 +1,11 @@
 export const CONFIG = {
-  // Call Dashboard Sheet (Call Logs, Import Staging, Agent Mapping, BD Dashboard)
-  CALL_DASHBOARD_SHEET_ID: process.env.CALL_DASHBOARD_SHEET_ID || '1aI0879YxZdu17GHm-QLhOoE8CuFlkpyROvCtRjjuRbw',
+  // Live operational tabs are copied into the BD Tracker by Apps Script.
+  CALL_DASHBOARD_SHEET_ID: process.env.CALL_DASHBOARD_SHEET_ID || '1uicpBruuFeno2ES4hNw-TIAwNkGEI37gw8Z-A4yMpC8',
 
   // BD Meetings Tracker Sheet (New Meetings, Follow Ups, etc.)
   BD_TRACKER_SHEET_ID: process.env.BD_TRACKER_SHEET_ID || '1uicpBruuFeno2ES4hNw-TIAwNkGEI37gw8Z-A4yMpC8',
 
-  // Attendance is copied into the BD Tracker by the French Dashboard Apps Script bridge.
+  // Apps Script copies Attendance into the same tracker spreadsheet used by the app.
   ATTENDANCE_SHEET_ID: process.env.ATTENDANCE_SHEET_ID || '1uicpBruuFeno2ES4hNw-TIAwNkGEI37gw8Z-A4yMpC8',
   ATTENDANCE_SHEET_NAME: 'Attendance',
 

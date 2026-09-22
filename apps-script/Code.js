@@ -13,6 +13,9 @@
  * Global Configuration
  */
 const CONFIG = {
+  // French/source spreadsheet containing Call Logs, Attendance, and Agent Mapping.
+  FRENCH_SOURCE_ID: '1aI0879YxZdu17GHm-QLhOoE8CuFlkpyROvCtRjjuRbw',
+
   // BD Tracker Spreadsheet ID (leave empty if tabs live in the current spreadsheet)
   BD_TRACKER_ID: '1uicpBruuFeno2ES4hNw-TIAwNkGEI37gw8Z-A4yMpC8',
 
@@ -85,6 +88,7 @@ function onOpen() {
     .addItem('1. Prepare / Open Staging Tab', 'createStagingTab')
     .addItem('2. Process Staged Call Import', 'processStagingImport')
     .addItem('3. Refresh BD Dashboard', 'refreshDashboard')
+    .addItem('4. Sync French Data to BD Tracker', 'syncFrenchDataToTracker')
     .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
@@ -357,6 +361,40 @@ function backfillCallLogFields() {
 
   callLog.getRange(2, 1, data.length, numCols).setValues(data);
   SpreadsheetApp.getUi().alert(`Successfully backfilled ${data.length} call rows.`);
+}
+
+/**
+ * Copies the source operational tabs into the BD Tracker spreadsheet.
+ * Only these three destination tabs are replaced; pipeline tabs are untouched.
+ */
+function syncFrenchDataToTracker() {
+  const source = SpreadsheetApp.openById(CONFIG.FRENCH_SOURCE_ID);
+  const target = SpreadsheetApp.openById(CONFIG.BD_TRACKER_ID);
+  const tabNames = [CONFIG.CALL_LOG_SHEET, 'Attendance', CONFIG.MAPPING_SHEET];
+
+  tabNames.forEach(name => {
+    const sourceSheet = source.getSheetByName(name);
+    if (!sourceSheet) throw new Error(`Source spreadsheet is missing the "${name}" tab.`);
+
+    const values = sourceSheet.getDataRange().getValues();
+    let targetSheet = target.getSheetByName(name);
+    if (!targetSheet) targetSheet = target.insertSheet(name);
+
+    targetSheet.clearContents();
+    if (values.length > 0 && values[0].length > 0) {
+      if (targetSheet.getMaxRows() < values.length) {
+        targetSheet.insertRowsAfter(targetSheet.getMaxRows(), values.length - targetSheet.getMaxRows());
+      }
+      if (targetSheet.getMaxColumns() < values[0].length) {
+        targetSheet.insertColumnsAfter(targetSheet.getMaxColumns(), values[0].length - targetSheet.getMaxColumns());
+      }
+      targetSheet.getRange(1, 1, values.length, values[0].length).setValues(values);
+    }
+  });
+
+  SpreadsheetApp.getUi().alert(
+    `French data synced to BD Tracker.\n\nUpdated: ${tabNames.join(', ')}\nPipeline tabs were left untouched.`
+  );
 }
 
 /** Converts all existing Call Logs timestamps from fixed UTC-6 to Cairo time. */
