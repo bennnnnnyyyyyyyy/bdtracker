@@ -26,10 +26,12 @@ export async function GET(request: NextRequest) {
 
     // 1. Supabase is the primary store unless explicit refresh is requested
     if (!shouldRefreshSource) {
-      const supaData = await getRawDataFromSupabase();
+      // These sources are independent; start both network/file reads together.
+      const [supaData, attRes] = await Promise.all([
+        getRawDataFromSupabase(),
+        fetchAttendanceData(),
+      ]);
       if (supaData && supaData.calls.length > 0) {
-        // Fetch current attendance dataset to accompany Supabase calls/meetings
-        const attRes = await fetchAttendanceData();
         attendanceData = attRes.attendance;
         currentDataSourceInfo.attendanceSource = attRes.source;
 

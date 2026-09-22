@@ -24,6 +24,8 @@ export interface RawDashboardDataset {
 }
 
 let cachedData: CacheEntry<RawDashboardDataset> | null = null;
+let cachedAttendance: CacheEntry<Awaited<ReturnType<typeof fetchAttendanceDataUncached>>> | null = null;
+let attendanceRequest: Promise<Awaited<ReturnType<typeof fetchAttendanceDataUncached>>> | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function getSheetsClient() {
@@ -210,10 +212,29 @@ export async function fetchBDTrackerData(): Promise<{
  * 1. Tries Google Sheets API on CONFIG.ATTENDANCE_SHEET_ID.
  * 2. If permission denied or network failure, falls back to local Excel file BD _ French Dashboard 2026 (3).xlsx.
  */
-export async function fetchAttendanceData(): Promise<{
+type AttendanceFetchResult = {
   attendance: AttendanceDataset;
   source: 'google_sheets' | 'local_excel' | 'none';
-}> {
+};
+
+export async function fetchAttendanceData(forceRefresh = false): Promise<AttendanceFetchResult> {
+  const now = Date.now();
+  if (!forceRefresh && cachedAttendance && now - cachedAttendance.timestamp < CACHE_TTL_MS) {
+    return cachedAttendance.data;
+  }
+  if (!forceRefresh && attendanceRequest) return attendanceRequest;
+
+  attendanceRequest = fetchAttendanceDataUncached();
+  try {
+    const result = await attendanceRequest;
+    cachedAttendance = { data: result, timestamp: Date.now() };
+    return result;
+  } finally {
+    attendanceRequest = null;
+  }
+}
+
+async function fetchAttendanceDataUncached(): Promise<AttendanceFetchResult> {
   const sheets = getSheetsClient();
 
   // Try Google Sheets API first
@@ -299,7 +320,7 @@ export async function getDashboardRawData(forceRefresh = false): Promise<RawDash
         console.warn('[Google Sheets] BD Tracker fetch failed:', err.message);
         return { meetings: [], trackerCounts: {} };
       }),
-      fetchAttendanceData()
+      fetchAttendanceData(true)
     ]);
 
     // 2. Check if local Ultatel departmental summary is present
