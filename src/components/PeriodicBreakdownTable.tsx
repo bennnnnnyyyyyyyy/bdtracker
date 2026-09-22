@@ -20,6 +20,8 @@ interface MetricCol {
 
 const METRIC_COLS: MetricCol[] = [
   { key: 'calls', label: 'Calls', color: 'text-blue-300' },
+  { key: 'presentDays', label: 'Pres. Days', color: 'text-sky-300' },
+  { key: 'callsPerPresentDay', label: 'Calls / Day', color: 'text-sky-300' },
   { key: 'connectionRate', label: 'Connection %', color: 'text-cyan-300', isRate: true },
   { key: 'noAnswer', label: 'No Answer', color: 'text-rose-300' },
   { key: 'meetings', label: 'Meetings', color: 'text-indigo-300' },
@@ -63,6 +65,8 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = mem
 
   const getVal = (obj: Record<string, unknown>, key: MetricKey, isRate?: boolean): string => {
     const v = (obj[key] as number) ?? 0;
+    if (key === 'presentDays') return v > 0 ? String(v) : '—';
+    if (key === 'callsPerPresentDay') return v > 0 ? String(v) : '—';
     return isRate ? formatPercent(v) : v.toLocaleString();
   };
 

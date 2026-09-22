@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDashboardRawData } from '@/lib/sheets';
+import { getDashboardRawData, fetchAttendanceData, RawDashboardDataset } from '@/lib/sheets';
 import { getRawDataFromSupabase, saveRawDataToSupabase } from '@/lib/supabase';
 import { computeDashboardMetrics } from '@/lib/analytics';
 import { CONFIG } from '@/lib/config';
-import { AgentMapping, CallRecord, DashboardResponse, MeetingRecord } from '@/types/dashboard';
+import { DashboardResponse, DataSourceInfo } from '@/types/dashboard';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
+import { AttendanceDataset } from '@/lib/attendance';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,48 +16,92 @@ export async function GET(request: NextRequest) {
     const forceRefresh = searchParams.get('refresh') === 'true';
     const shouldRefreshSource = forceRefresh;
 
-    let rawData: {
-      calls: CallRecord[];
-      meetings: MeetingRecord[];
-      trackerCounts: Record<string, Record<string, number>>;
-      agentMappings: AgentMapping[];
-      lastUpdated?: string;
-      isMockData?: boolean;
-    } | null = null;
+    let rawData: RawDashboardDataset | null = null;
+    let attendanceData: AttendanceDataset | undefined;
+    let currentDataSourceInfo: DataSourceInfo = {
+      source: 'supabase',
+      attendanceSource: 'local_excel',
+      callsSource: 'call_logs',
+    };
 
-    // Supabase is the dashboard store. Sheets is only read on an explicit refresh
-    // or when Supabase has not been initialized yet.
+    // 1. Supabase is the primary store unless explicit refresh is requested
     if (!shouldRefreshSource) {
-      rawData = await getRawDataFromSupabase();
+      const supaData = await getRawDataFromSupabase();
+      if (supaData && supaData.calls.length > 0) {
+        // Fetch current attendance dataset to accompany Supabase calls/meetings
+        const attRes = await fetchAttendanceData();
+        attendanceData = attRes.attendance;
+        currentDataSourceInfo.attendanceSource = attRes.source;
+
+        rawData = {
+          calls: supaData.calls,
+          meetings: supaData.meetings,
+          trackerCounts: supaData.trackerCounts,
+          agentMappings: supaData.agentMappings,
+          attendance: attRes.attendance,
+          dataSourceInfo: currentDataSourceInfo,
+          isMockData: false,
+        };
+      }
     }
 
+    // 2. Fetch fresh dataset from Google Sheets / Local Excel if refresh or no Supabase data
     if (!rawData || shouldRefreshSource) {
-      const sheetsData = await getDashboardRawData(true);
-      const syncedAt = new Date().toISOString();
+      try {
+        const freshData = await getDashboardRawData(true);
+        const syncedAt = new Date().toISOString();
 
-      // Write the fresh Sheets dataset directly to Supabase before responding.
-      await saveRawDataToSupabase({
-        calls: sheetsData.calls,
-        meetings: sheetsData.meetings,
-        trackerCounts: sheetsData.trackerCounts,
-        agentMappings: sheetsData.agentMappings,
-      });
+        // Write fresh dataset to Supabase in background
+        saveRawDataToSupabase({
+          calls: freshData.calls,
+          meetings: freshData.meetings,
+          trackerCounts: freshData.trackerCounts,
+          agentMappings: freshData.agentMappings,
+        }).catch((err) => console.warn('[Supabase Sync] Async save warning:', err));
 
-      rawData = { ...sheetsData, lastUpdated: syncedAt };
+        rawData = { ...freshData };
+        attendanceData = freshData.attendance;
+        currentDataSourceInfo = freshData.dataSourceInfo;
+      } catch (ingestErr) {
+        console.warn('[Data Ingest] Primary ingest failed, attempting fallback:', ingestErr);
+        // If live pull failed, try Supabase as emergency fallback
+        const fallbackSupa = await getRawDataFromSupabase();
+        if (fallbackSupa) {
+          const attRes = await fetchAttendanceData();
+          rawData = {
+            calls: fallbackSupa.calls,
+            meetings: fallbackSupa.meetings,
+            trackerCounts: fallbackSupa.trackerCounts,
+            agentMappings: fallbackSupa.agentMappings,
+            attendance: attRes.attendance,
+            dataSourceInfo: {
+              source: 'supabase',
+              attendanceSource: attRes.source,
+              callsSource: 'supabase',
+              notes: 'Google Sheets sync failed; showing cached database records.',
+            },
+            isMockData: false,
+          };
+          attendanceData = attRes.attendance;
+        } else {
+          throw ingestErr;
+        }
+      }
     }
 
     if (!rawData) {
       throw new Error('Failed to retrieve dashboard data');
     }
 
-    // 3. Compute metrics
+    // 3. Compute metrics with attendance-aware present days logic
     const { openers, totals, filteredCalls, dailyBreakdown, weeklyBreakdown, monthlyBreakdown } =
       computeDashboardMetrics(
         rawData.calls,
         rawData.meetings,
         rawData.trackerCounts,
         rawData.agentMappings,
-        { startDate, endDate, selectedOpener }
+        { startDate, endDate, selectedOpener },
+        attendanceData || rawData.attendance
       );
 
     const responseOpeners = selectedOpener && selectedOpener !== 'ALL'
@@ -69,11 +114,12 @@ export async function GET(request: NextRequest) {
       calls: filteredCalls,
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,
-      lastUpdated: rawData.lastUpdated || new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
       dailyBreakdown,
       weeklyBreakdown,
       monthlyBreakdown,
       isMockData: rawData.isMockData,
+      dataSourceInfo: currentDataSourceInfo,
     };
 
     return NextResponse.json(response);
@@ -83,8 +129,12 @@ export async function GET(request: NextRequest) {
     if (isQuotaExceededError(error)) {
       errorMessage = 'Data provider quota exceeded. Try again later, or use the cached dashboard until the quota resets.';
     }
-    if (errorMessage.toLowerCase().includes('caller does not have permission') || errorMessage.toLowerCase().includes('permission denied')) {
-      errorMessage = 'Google Sheets Permission Denied: Please share the Google Sheets with service account "dashboard@tribal-quest-484611-j3.iam.gserviceaccount.com" as Viewer.';
+    if (
+      errorMessage.toLowerCase().includes('caller does not have permission') ||
+      errorMessage.toLowerCase().includes('permission denied')
+    ) {
+      errorMessage =
+        'Google Sheets Permission Notice: Please share the spreadsheet with service account "dashboard@tribal-quest-484611-j3.iam.gserviceaccount.com" as Viewer. Local Excel files are used in the meantime.';
     }
     return NextResponse.json(
       { error: errorMessage },

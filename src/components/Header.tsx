@@ -1,17 +1,19 @@
 'use client';
 
 import React from 'react';
-import { RefreshCw, PhoneCall, Calendar, User, Database, CheckCircle2, X } from 'lucide-react';
-import { FilterState, OpenerStats } from '@/types/dashboard';
+import { RefreshCw, PhoneCall, Calendar, User, Database, CheckCircle2, X, Upload } from 'lucide-react';
+import { FilterState, OpenerStats, DataSourceInfo } from '@/types/dashboard';
 
 interface HeaderProps {
   filters: FilterState;
   onFilterChange: (newFilters: Partial<FilterState>) => void;
   openers: OpenerStats[];
   onRefresh: () => void;
+  onOpenImportModal?: () => void;
   loading: boolean;
   lastUpdated: string;
   isMockData?: boolean;
+  dataSourceInfo?: DataSourceInfo;
 }
 
 type Preset = FilterState['preset'];

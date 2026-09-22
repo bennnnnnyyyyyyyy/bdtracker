@@ -97,7 +97,18 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
             <span className="font-serif text-sm font-bold text-white truncate">{agent.opener}</span>
             {isTop && <Award className="w-3.5 h-3.5 shrink-0 text-[#e8c56a]" />}
           </div>
-          <div className="label-caps mt-0.5">#{rank} · Opener</div>
+          <div className="flex items-center flex-wrap gap-1.5 mt-1">
+            <span className="label-caps">#{rank}</span>
+            {agent.presentDays > 0 ? (
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-medium font-num bg-[#0284c7]/15 text-[#38bdf8] border border-[#0284c7]/30" title="Present days from Attendance Sheet">
+                {agent.presentDays} Pres. Days ({agent.callsPerPresentDay}/day)
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-medium font-num bg-zinc-800 text-zinc-400">
+                {agent.callsPerCalendarDay ? `${agent.callsPerCalendarDay}/day (As-Is)` : '0/day'}
+              </span>
+            )}
+          </div>
         </div>
         <div
           className="w-6 h-6 rounded-md flex items-center justify-center font-num text-[10px] font-bold shrink-0"
@@ -196,14 +207,15 @@ export function AgentDashboardView({ openers, totals, filters }: AgentDashboardV
       {/* Team summary strip */}
       {activeOpeners.length > 0 && (
         <div
-          className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-xl overflow-hidden"
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px rounded-xl overflow-hidden"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
         >
           {[
-            { label: 'Total Calls',     value: totals.calls.toLocaleString() },
-            { label: 'Meetings Booked', value: totals.booked.toLocaleString() },
-            { label: 'Avg Show Rate',   value: formatPercent(totals.showRate) },
-            { label: 'Onboarded',       value: totals.onboarded.toLocaleString() },
+            { label: 'Total Calls',       value: totals.calls.toLocaleString() },
+            { label: 'Total Pres. Days',  value: `${totals.totalPresentDays} (${totals.callsPerPresentDay}/day)` },
+            { label: 'Meetings Booked',   value: totals.booked.toLocaleString() },
+            { label: 'Avg Show Rate',     value: formatPercent(totals.showRate) },
+            { label: 'Onboarded',         value: totals.onboarded.toLocaleString() },
           ].map(stat => (
             <div key={stat.label} className="flex flex-col gap-1.5 px-5 py-4 bg-[#17171a]">
               <span className="label-caps">{stat.label}</span>

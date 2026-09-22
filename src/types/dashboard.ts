@@ -23,6 +23,8 @@ export interface MeetingRecord {
   dateAdded: string; // ISO YYYY-MM-DD or parsed date
   companyName?: string;
   authorizedPerson?: string;
+  medB?: boolean;
+  ppo?: boolean;
 }
 
 export interface OpenerStats {
@@ -37,6 +39,10 @@ export interface OpenerStats {
   totalTalkSec: number;
   avgCallSec: number;
   booked: number;
+  medBCount: number;
+  medBRate: number; // Med B percentage: medBCount / booked
+  ppoCount: number;
+  ppoRate: number; // PPO percentage: ppoCount / booked
   noShow: number;
   attended: number;
   showRate: number; // Attended / Booked
@@ -44,6 +50,12 @@ export interface OpenerStats {
   closeRate: number; // Onboarded / Booked
   callsPerMeeting: number;
   stageCounts: Record<string, number>;
+  // Present Days & Daily Calls based strictly on Present Days
+  presentDays: number;
+  callsPerPresentDay: number;
+  adherenceRate?: number;
+  activeDays?: number;
+  callsPerCalendarDay?: number;
   // Periodic averages
   dailyAverages?: {
     calls: number;
@@ -76,6 +88,8 @@ export interface PeriodicAgentMetrics {
   onboarded: number;
   closeRate: number;
   callsPerMeeting: number;
+  presentDays: number;
+  callsPerPresentDay: number;
 }
 
 export interface PeriodicGroupSummary {
@@ -91,6 +105,8 @@ export interface PeriodicGroupSummary {
     showRate: number;
     onboarded: number;
     closeRate: number;
+    presentDays?: number;
+    callsPerPresentDay?: number;
   };
   agents: PeriodicAgentMetrics[];
 }
@@ -106,6 +122,10 @@ export interface OrgTotals {
   totalTalkSec: number;
   avgCallSec: number;
   booked: number;
+  medBCount: number;
+  medBRate: number;
+  ppoCount: number;
+  ppoRate: number;
   noShow: number;
   attended: number;
   showRate: number;
@@ -113,11 +133,22 @@ export interface OrgTotals {
   closeRate: number;
   callsPerMeeting: number;
   stageCounts: Record<string, number>;
+  totalPresentDays: number;
+  callsPerPresentDay: number;
+  adherenceRate?: number;
+  callsPerCalendarDay?: number;
 }
 
 export interface AgentMapping {
   agent: string;
   opener: string;
+}
+
+export interface DataSourceInfo {
+  source: 'google_sheets' | 'local_excel' | 'supabase';
+  attendanceSource: 'google_sheets' | 'local_excel' | 'none';
+  callsSource: 'google_sheets' | 'ultatel_dept_report' | 'call_logs' | 'supabase';
+  notes?: string;
 }
 
 export interface DashboardResponse {
@@ -131,6 +162,7 @@ export interface DashboardResponse {
   weeklyBreakdown: PeriodicGroupSummary[];
   monthlyBreakdown: PeriodicGroupSummary[];
   isMockData?: boolean;
+  dataSourceInfo?: DataSourceInfo;
   error?: string;
 }
 

@@ -8,6 +8,7 @@ import {
   PeriodicGroupSummary,
   PeriodicAgentMetrics
 } from '../types/dashboard';
+import { AttendanceDataset, calculateAgentPresentDays } from './attendance';
 
 /**
  * Extracts agent name from Ultatel extension cell.
@@ -20,7 +21,7 @@ export function parseAgentName(extensionCell: string): string {
 }
 
 /**
- * Converts various duration formats (hh:mm:ss, mm:ss, Sheets date/serial, numbers) to total seconds.
+ * Converts various duration formats (hh:mm:ss, mm:ss, "1 H , 2.53 M", Sheets date/serial, numbers) to total seconds.
  */
 export function durationToSeconds(val: unknown): number {
   if (val === null || val === undefined || val === '') return 0;
@@ -34,6 +35,16 @@ export function durationToSeconds(val: unknown): number {
     return val.getHours() * 3600 + val.getMinutes() * 60 + val.getSeconds();
   }
   const s = String(val).trim();
+
+  // Check for "X H , Y M" format from Ultatel
+  const hMatch = s.match(/(\d+(?:\.\d+)?)\s*H/i);
+  const mMatch = s.match(/(\d+(?:\.\d+)?)\s*M/i);
+  if (hMatch || mMatch) {
+    const hours = hMatch ? parseFloat(hMatch[1]) : 0;
+    const mins = mMatch ? parseFloat(mMatch[1]) : 0;
+    return Math.round(hours * 3600 + mins * 60);
+  }
+
   const parts = s.split(':').map(Number);
   if (parts.some(isNaN)) return 0;
   if (parts.length === 2) return parts[0] * 60 + parts[1];
@@ -92,7 +103,6 @@ export function parseDateToISO(val: unknown): string | null {
     let mm = p1;
     let dd = p2;
     if (p1 > 12 && p2 <= 12) {
-      // European format DD/MM/YYYY
       dd = p1;
       mm = p2;
     }
@@ -111,7 +121,6 @@ export function parseDateToISO(val: unknown): string | null {
   return null;
 }
 
-
 export function formatSeconds(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
@@ -129,17 +138,16 @@ export function formatPercent(rate: number): string {
 }
 
 /**
- * Returns ISO week key (e.g., "2026-W33") and readable range label.
+ * Returns ISO week key (e.g., "2026-W33"), readable range label, and boundary ISO strings.
  */
-export function getIsoWeekKey(dateStr: string): { key: string; label: string } {
+export function getIsoWeekKey(dateStr: string): { key: string; label: string; startISO: string; endISO: string } {
   const iso = parseDateToISO(dateStr);
-  if (!iso) return { key: 'Unknown', label: 'Unknown' };
+  if (!iso) return { key: 'Unknown', label: 'Unknown', startISO: '', endISO: '' };
 
   const [y, m, dayOfMonth] = iso.split('-').map(Number);
   const d = new Date(y, m - 1, dayOfMonth);
-  if (isNaN(d.getTime())) return { key: 'Unknown', label: 'Unknown' };
+  if (isNaN(d.getTime())) return { key: 'Unknown', label: 'Unknown', startISO: '', endISO: '' };
 
-  // Calculate Monday of this week
   const day = d.getDay();
   const diffToMonday = (day === 0 ? -6 : 1) - day;
   const monday = new Date(d);
@@ -153,39 +161,50 @@ export function getIsoWeekKey(dateStr: string): { key: string; label: string } {
   const numberOfDays = Math.floor((monday.getTime() - oneJan.getTime()) / (24 * 60 * 60 * 1000));
   const weekNum = Math.ceil((numberOfDays + oneJan.getDay() + 1) / 7);
 
+  const formatYMD = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  const startISO = formatYMD(monday);
+  const endISO = formatYMD(sunday);
+
   const monLabel = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const sunLabel = sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   return {
     key: `${year}-W${String(weekNum).padStart(2, '0')}`,
-    label: `${monLabel} – ${sunLabel}`
+    label: `${monLabel} – ${sunLabel}`,
+    startISO,
+    endISO
   };
 }
 
 /**
- * Returns ISO month key (e.g. "2026-08") and formatted label.
+ * Returns ISO month key (e.g. "2026-08"), formatted label, and boundary ISO strings.
  */
-export function getIsoMonthKey(dateStr: string): { key: string; label: string } {
+export function getIsoMonthKey(dateStr: string): { key: string; label: string; startISO: string; endISO: string } {
   const iso = parseDateToISO(dateStr);
-  if (!iso) return { key: 'Unknown', label: 'Unknown' };
+  if (!iso) return { key: 'Unknown', label: 'Unknown', startISO: '', endISO: '' };
 
   const [y, m, dayOfMonth] = iso.split('-').map(Number);
   const d = new Date(y, m - 1, dayOfMonth);
-  if (isNaN(d.getTime())) return { key: 'Unknown', label: 'Unknown' };
+  if (isNaN(d.getTime())) return { key: 'Unknown', label: 'Unknown', startISO: '', endISO: '' };
 
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const startISO = `${year}-${month}-01`;
+  const lastDay = new Date(year, d.getMonth() + 1, 0).getDate();
+  const endISO = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+
   return {
     key: `${year}-${month}`,
-    label
+    label,
+    startISO,
+    endISO
   };
 }
 
 /**
  * Canonical agent / opener normalizer.
- * Matches full names, first names, and custom mappings to a consistent Opener name.
- * Drops system extensions (numbers, IVR, etc.) and excluded agents.
  */
 export function resolveOpener(
   rawName: string | undefined | null,
@@ -195,7 +214,6 @@ export function resolveOpener(
   const clean = String(rawName).trim();
   if (!clean || isExcludedAgent(clean)) return null;
 
-  // Ignore numeric extensions, system names, and unassigned channels
   if (/^\d+$/.test(clean) || /^(front desk|conference|support|ivr|unmapped|main line|fax|unknown)/i.test(clean)) {
     return null;
   }
@@ -235,6 +253,7 @@ export function resolveOpener(
 
 /**
  * Computes all opener stats, org totals, and daily/weekly/monthly breakdowns.
+ * Measures calls per day based strictly on Present Days from Attendance.
  */
 export function computeDashboardMetrics(
   rawCalls: CallRecord[],
@@ -245,7 +264,8 @@ export function computeDashboardMetrics(
     startDate?: string;
     endDate?: string;
     selectedOpener?: string;
-  }
+  },
+  attendance?: AttendanceDataset
 ): {
   openers: OpenerStats[];
   totals: OrgTotals;
@@ -263,7 +283,6 @@ export function computeDashboardMetrics(
     filteredCalls.push({ ...c, agent: rawAgent, opener });
   });
 
-  // Date filtering for calls & meetings using strict ISO string bounds
   const startISO = filter?.startDate ? parseDateToISO(filter.startDate) : null;
   const endISO = filter?.endDate ? parseDateToISO(filter.endDate) : null;
   const isDateFiltered = Boolean(startISO || endISO);
@@ -305,7 +324,6 @@ export function computeDashboardMetrics(
       dynamicTrackerCounts[m.opener][m.stage] = (dynamicTrackerCounts[m.opener][m.stage] || 0) + 1;
     });
   } else {
-    // Re-map raw tracker counts to canonical openers
     Object.keys(trackerCounts).forEach(rawOpener => {
       const canonical = resolveOpener(rawOpener, agentMappings);
       if (!canonical || isExcludedAgent(canonical)) return;
@@ -347,22 +365,38 @@ export function computeDashboardMetrics(
     if (canonical && !isExcludedAgent(canonical)) allOpeners.add(canonical);
   });
 
-
-  // Calculate unique days, weeks, months for averages
+  // Calculate unique days for fallback and per-agent active days
   const distinctDays = new Set<string>();
+  const agentActiveDays: Record<string, Set<string>> = {};
+
   filteredCalls.forEach(c => {
     const iso = parseDateToISO(c.callDate);
-    if (iso) distinctDays.add(iso);
+    if (iso) {
+      distinctDays.add(iso);
+      const op = c.opener;
+      if (op) {
+        if (!agentActiveDays[op]) agentActiveDays[op] = new Set();
+        agentActiveDays[op].add(iso);
+      }
+    }
   });
   filteredMeetings.forEach(m => {
     const iso = parseDateToISO(m.dateAdded);
-    if (iso) distinctDays.add(iso);
+    if (iso) {
+      distinctDays.add(iso);
+      const op = m.opener;
+      if (op) {
+        if (!agentActiveDays[op]) agentActiveDays[op] = new Set();
+        agentActiveDays[op].add(iso);
+      }
+    }
   });
-  const daysCount = Math.max(1, distinctDays.size);
-  const weeksCount = Math.max(1, Math.ceil(daysCount / 7));
-  const monthsCount = Math.max(1, Math.ceil(daysCount / 30));
+  const fallbackDaysCount = Math.max(1, distinctDays.size);
+  const weeksCount = Math.max(1, Math.ceil(fallbackDaysCount / 7));
+  const monthsCount = Math.max(1, Math.ceil(fallbackDaysCount / 30));
 
   const openers: OpenerStats[] = [];
+  let sumTotalPresentDays = 0;
 
   allOpeners.forEach(op => {
     if (!op || op === 'undefined' || isExcludedAgent(op)) return;
@@ -382,11 +416,27 @@ export function computeDashboardMetrics(
     const onboarded = tc['Onboarded'] || 0;
 
     const answerRate = s.calls > 0 ? s.answered / s.calls : 0;
-    const connectionRate = answerRate; // Connection rate is call answer rate
+    const connectionRate = answerRate;
     const avgCallSec = s.calls > 0 ? Math.round(s.totalSec / s.calls) : 0;
     const showRate = booked > 0 ? attended / booked : 0;
     const closeRate = booked > 0 ? onboarded / booked : 0;
     const callsPerMeeting = booked > 0 ? Number((s.calls / booked).toFixed(1)) : 0;
+
+    // ACTIVE DAYS & AS-IS CALLS PER DAY
+    const agentDaysCount = (agentActiveDays[op]?.size) || fallbackDaysCount;
+    const callsPerCalendarDay = agentDaysCount > 0 ? Number((s.calls / agentDaysCount).toFixed(1)) : 0;
+
+    // PRESENT DAYS CALCULATION: strictly from Attendance Sheet (column AH & daily codes)
+    const presentDays = attendance
+      ? calculateAgentPresentDays(op, attendance, agentMappings, filter?.startDate, filter?.endDate)
+      : 0;
+
+    // Calls per day: strictly calls / presentDays!
+    const callsPerPresentDay = presentDays > 0
+      ? Number((s.calls / presentDays).toFixed(1))
+      : callsPerCalendarDay;
+
+    sumTotalPresentDays += presentDays;
 
     openers.push({
       opener: op,
@@ -407,9 +457,13 @@ export function computeDashboardMetrics(
       closeRate,
       callsPerMeeting,
       stageCounts,
+      presentDays,
+      callsPerPresentDay,
+      activeDays: agentDaysCount,
+      callsPerCalendarDay,
       dailyAverages: {
-        calls: Number((s.calls / daysCount).toFixed(1)),
-        meetings: Number((booked / daysCount).toFixed(1))
+        calls: callsPerPresentDay,
+        meetings: presentDays > 0 ? Number((booked / presentDays).toFixed(1)) : Number((booked / agentDaysCount).toFixed(1))
       },
       weeklyAverages: {
         calls: Number((s.calls / weeksCount).toFixed(1)),
@@ -443,7 +497,9 @@ export function computeDashboardMetrics(
     onboarded: 0,
     closeRate: 0,
     callsPerMeeting: 0,
-    stageCounts: {}
+    stageCounts: {},
+    totalPresentDays: Number(sumTotalPresentDays.toFixed(1)),
+    callsPerPresentDay: 0
   };
 
   CONFIG.BD_TABS.forEach(tab => {
@@ -472,6 +528,12 @@ export function computeDashboardMetrics(
   totals.showRate = totals.booked > 0 ? totals.attended / totals.booked : 0;
   totals.closeRate = totals.booked > 0 ? totals.onboarded / totals.booked : 0;
   totals.callsPerMeeting = totals.booked > 0 ? Number((totals.calls / totals.booked).toFixed(1)) : 0;
+  totals.callsPerPresentDay = totals.totalPresentDays > 0
+    ? Number((totals.calls / totals.totalPresentDays).toFixed(1))
+    : Number((totals.calls / fallbackDaysCount).toFixed(1));
+  totals.callsPerCalendarDay = fallbackDaysCount > 0
+    ? Number((totals.calls / fallbackDaysCount).toFixed(1))
+    : 0;
 
   // Compute Periodic Breakdowns (Daily, Weekly, Monthly)
   const dailyBreakdown = buildPeriodicBreakdown(
@@ -480,8 +542,10 @@ export function computeDashboardMetrics(
     Array.from(allOpeners),
     (dateStr) => {
       const iso = parseDateToISO(dateStr);
-      return iso ? { key: iso, label: iso } : null;
-    }
+      return iso ? { key: iso, label: iso, startISO: iso, endISO: iso } : null;
+    },
+    attendance,
+    agentMappings
   );
 
   const weeklyBreakdown = buildPeriodicBreakdown(
@@ -491,7 +555,9 @@ export function computeDashboardMetrics(
     (dateStr) => {
       const iso = parseDateToISO(dateStr);
       return iso ? getIsoWeekKey(iso) : null;
-    }
+    },
+    attendance,
+    agentMappings
   );
 
   const monthlyBreakdown = buildPeriodicBreakdown(
@@ -501,7 +567,9 @@ export function computeDashboardMetrics(
     (dateStr) => {
       const iso = parseDateToISO(dateStr);
       return iso ? getIsoMonthKey(iso) : null;
-    }
+    },
+    attendance,
+    agentMappings
   );
 
   return {
@@ -515,17 +583,21 @@ export function computeDashboardMetrics(
 }
 
 /**
- * Helper to build periodic grouped metrics for agents.
+ * Helper to build periodic grouped metrics for agents with attendance awareness.
  */
 function buildPeriodicBreakdown(
   calls: CallRecord[],
   meetings: MeetingRecord[],
   allOpeners: string[],
-  getKeyAndLabel: (dateStr: string) => { key: string; label: string } | null
+  getKeyAndLabel: (dateStr: string) => { key: string; label: string; startISO?: string; endISO?: string } | null,
+  attendance?: AttendanceDataset,
+  agentMappings?: AgentMapping[]
 ): PeriodicGroupSummary[] {
   const periodMap = new Map<string, {
     key: string;
     label: string;
+    startISO?: string;
+    endISO?: string;
     agentStats: Record<string, {
       calls: number;
       out: number;
@@ -545,7 +617,13 @@ function buildPeriodicBreakdown(
     if (!period) return;
 
     if (!periodMap.has(period.key)) {
-      periodMap.set(period.key, { key: period.key, label: period.label, agentStats: {} });
+      periodMap.set(period.key, {
+        key: period.key,
+        label: period.label,
+        startISO: period.startISO,
+        endISO: period.endISO,
+        agentStats: {}
+      });
     }
     const p = periodMap.get(period.key)!;
     const opener = c.opener || 'Unmapped';
@@ -567,7 +645,13 @@ function buildPeriodicBreakdown(
     if (!period) return;
 
     if (!periodMap.has(period.key)) {
-      periodMap.set(period.key, { key: period.key, label: period.label, agentStats: {} });
+      periodMap.set(period.key, {
+        key: period.key,
+        label: period.label,
+        startISO: period.startISO,
+        endISO: period.endISO,
+        agentStats: {}
+      });
     }
     const p = periodMap.get(period.key)!;
     const opener = m.opener || 'Unmapped';
@@ -583,7 +667,7 @@ function buildPeriodicBreakdown(
   // Convert to sorted array of PeriodicGroupSummary
   const result: PeriodicGroupSummary[] = [];
 
-  const sortedKeys = Array.from(periodMap.keys()).sort().reverse(); // Most recent first
+  const sortedKeys = Array.from(periodMap.keys()).sort().reverse();
 
   sortedKeys.forEach(k => {
     const entry = periodMap.get(k)!;
@@ -593,12 +677,13 @@ function buildPeriodicBreakdown(
     let totMeetings = 0;
     let totNoShow = 0;
     let totOnboarded = 0;
+    let totPresentDays = 0;
 
     const agentList: PeriodicAgentMetrics[] = [];
 
     allOpeners.forEach(opener => {
       const raw = entry.agentStats[opener] || { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, onboarded: 0 };
-      if (raw.calls === 0 && raw.meetings === 0) return; // Skip zero-activity agents for this period
+      if (raw.calls === 0 && raw.meetings === 0) return;
 
       totCalls += raw.calls;
       totAnswered += raw.answered;
@@ -612,6 +697,13 @@ function buildPeriodicBreakdown(
       const showRate = raw.meetings > 0 ? attended / raw.meetings : 0;
       const closeRate = raw.meetings > 0 ? raw.onboarded / raw.meetings : 0;
       const callsPerMeeting = raw.meetings > 0 ? Number((raw.calls / raw.meetings).toFixed(1)) : 0;
+
+      const presentDays = (attendance && agentMappings)
+        ? calculateAgentPresentDays(opener, attendance, agentMappings, entry.startISO, entry.endISO)
+        : 0;
+
+      const callsPerPresentDay = presentDays > 0 ? Number((raw.calls / presentDays).toFixed(1)) : raw.calls;
+      totPresentDays += presentDays;
 
       agentList.push({
         periodKey: entry.key,
@@ -629,17 +721,19 @@ function buildPeriodicBreakdown(
         showRate,
         onboarded: raw.onboarded,
         closeRate,
-        callsPerMeeting
+        callsPerMeeting,
+        presentDays,
+        callsPerPresentDay
       });
     });
 
-    // Sort agents by meetings booked desc, then calls desc
     agentList.sort((a, b) => b.meetings - a.meetings || b.calls - a.calls);
 
     const totAttended = Math.max(0, totMeetings - totNoShow);
     const totConnectionRate = totCalls > 0 ? totAnswered / totCalls : 0;
     const totShowRate = totMeetings > 0 ? totAttended / totMeetings : 0;
     const totCloseRate = totMeetings > 0 ? totOnboarded / totMeetings : 0;
+    const totCallsPerPresentDay = totPresentDays > 0 ? Number((totCalls / totPresentDays).toFixed(1)) : totCalls;
 
     result.push({
       periodKey: entry.key,
@@ -653,7 +747,9 @@ function buildPeriodicBreakdown(
         attended: totAttended,
         showRate: totShowRate,
         onboarded: totOnboarded,
-        closeRate: totCloseRate
+        closeRate: totCloseRate,
+        presentDays: Number(totPresentDays.toFixed(1)),
+        callsPerPresentDay: totCallsPerPresentDay
       },
       agents: agentList
     });
@@ -661,4 +757,3 @@ function buildPeriodicBreakdown(
 
   return result;
 }
-

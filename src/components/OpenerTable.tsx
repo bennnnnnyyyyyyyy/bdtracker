@@ -68,7 +68,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
 
   const exportCSV = () => {
     const headers = [
-      'Opener', 'Calls Made', 'Outbound', 'Inbound', 'Answered', 'No Answer', 'Answer Rate',
+      'Opener', 'Calls Made', 'Present Days', 'Calls / Pres. Day', 'Calls / Day (As-Is)', 'Outbound', 'Inbound', 'Answered', 'No Answer', 'Answer Rate',
       'Total Talk (min)', 'Avg Call (sec)', 'Meetings Booked', 'No-Show', 'Attended', 'Show Rate',
       'Onboarded', 'Close Rate', 'Calls per Meeting', ...CONFIG.BD_TABS
     ];
@@ -76,6 +76,9 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
     const rows = sorted.map(o => [
       `"${o.opener}"`,
       o.calls,
+      o.presentDays,
+      o.callsPerPresentDay,
+      o.callsPerCalendarDay || 0,
       o.outbound,
       o.inbound,
       o.answered,
@@ -96,6 +99,9 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
     const totalsRow = [
       '"TOTAL"',
       totals.calls,
+      totals.totalPresentDays,
+      totals.callsPerPresentDay,
+      totals.callsPerCalendarDay || 0,
       totals.outbound,
       totals.inbound,
       totals.answered,
@@ -179,6 +185,15 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
               <th onClick={() => handleSort('calls')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
                 Calls Made {renderSortIcon('calls')}
               </th>
+              <th onClick={() => handleSort('presentDays')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#38bdf8]" title="Weighted present days from Attendance Sheet">
+                Pres. Days {renderSortIcon('presentDays')}
+              </th>
+              <th onClick={() => handleSort('callsPerPresentDay')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#38bdf8]" title="Total Calls / Present Days">
+                Calls / Pres. Day {renderSortIcon('callsPerPresentDay')}
+              </th>
+              <th onClick={() => handleSort('callsPerCalendarDay')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#a1a1aa]" title="Total Calls / Active Calendar Days (As-Is)">
+                Calls / Day {renderSortIcon('callsPerCalendarDay')}
+              </th>
               <th onClick={() => handleSort('outbound')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
                 Out {renderSortIcon('outbound')}
               </th>
@@ -235,6 +250,9 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
                   {o.opener}
                 </td>
                 <td className="py-2.5 px-3 text-right font-semibold text-white">{o.calls.toLocaleString()}</td>
+                <td className="py-2.5 px-3 text-right font-medium text-[#38bdf8]">{o.presentDays > 0 ? o.presentDays : '—'}</td>
+                <td className="py-2.5 px-3 text-right font-bold text-[#38bdf8]">{o.presentDays > 0 ? o.callsPerPresentDay : '—'}</td>
+                <td className="py-2.5 px-3 text-right text-[#a1a1aa]">{o.callsPerCalendarDay ?? o.dailyAverages?.calls ?? 0}</td>
                 <td className="py-2.5 px-3 text-right text-[#71717a]">{o.outbound}</td>
                 <td className="py-2.5 px-3 text-right text-[#71717a]">{o.inbound}</td>
                 <td className="py-2.5 px-3 text-right text-[#4ade80]">{o.answered}</td>
@@ -270,6 +288,9 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
                 TOTAL ({openers.length} Openers)
               </td>
               <td className="py-3 px-3 text-right text-white">{totals.calls.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#38bdf8]">{totals.totalPresentDays.toLocaleString()}</td>
+              <td className="py-3 px-3 text-right text-[#38bdf8]">{totals.callsPerPresentDay}</td>
+              <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.callsPerCalendarDay ?? 0}</td>
               <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.outbound.toLocaleString()}</td>
               <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.inbound.toLocaleString()}</td>
               <td className="py-3 px-3 text-right text-[#4ade80]">{totals.answered.toLocaleString()}</td>

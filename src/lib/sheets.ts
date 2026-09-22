@@ -1,22 +1,29 @@
 import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
+import * as xlsx from 'xlsx';
 import { CONFIG, isExcludedAgent } from './config';
-import { CallRecord, AgentMapping, MeetingRecord } from '../types/dashboard';
+import { CallRecord, AgentMapping, MeetingRecord, DataSourceInfo } from '../types/dashboard';
 import { parseAgentName, durationToSeconds, parseDateToISO } from './analytics';
+import { AttendanceDataset, parseAttendanceRows } from './attendance';
+import { parseUltatelDeptRows, deptSummariesToCallRecords } from './ultatel';
 
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
 }
 
-let cachedData: CacheEntry<{
+export interface RawDashboardDataset {
   calls: CallRecord[];
   meetings: MeetingRecord[];
   trackerCounts: Record<string, Record<string, number>>;
   agentMappings: AgentMapping[];
-}> | null = null;
+  attendance: AttendanceDataset;
+  dataSourceInfo: DataSourceInfo;
+  isMockData: boolean;
+}
 
+let cachedData: CacheEntry<RawDashboardDataset> | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function getSheetsClient() {
@@ -50,6 +57,9 @@ function getSheetsClient() {
   return null;
 }
 
+/**
+ * Fetches call logs and agent mappings from Google Sheets.
+ */
 export async function fetchCallDashboardData(): Promise<{
   calls: CallRecord[];
   agentMappings: AgentMapping[];
@@ -107,6 +117,9 @@ export async function fetchCallDashboardData(): Promise<{
   return { calls, agentMappings };
 }
 
+/**
+ * Fetches pipeline meetings and stage counts from BD Tracker Google Sheet.
+ */
 export async function fetchBDTrackerData(): Promise<{
   meetings: MeetingRecord[];
   trackerCounts: Record<string, Record<string, number>>;
@@ -117,7 +130,6 @@ export async function fetchBDTrackerData(): Promise<{
   const counts: Record<string, Record<string, number>> = {};
   const meetings: MeetingRecord[] = [];
   
-  // Pull A1:Z for each BD tab in one single batch request
   const ranges = CONFIG.BD_TABS.map(tab => `'${tab}'!A1:Z`);
   const batchRes = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: CONFIG.BD_TRACKER_SHEET_ID,
@@ -130,11 +142,10 @@ export async function fetchBDTrackerData(): Promise<{
     const rawRows = valueRanges[idx]?.values || [];
     if (rawRows.length < 2) return;
 
-    // Detect column indices from header row
-    const headers = (rawRows[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
+    const headers = (rawRows[0] || []).map((h: unknown) => String(h || '').trim().toLowerCase());
     
     let openerIdx = headers.findIndex(h => h.includes('opener') || h === 'agent' || h === 'rep');
-    if (openerIdx === -1) openerIdx = 1; // Default Col B (0-indexed 1)
+    if (openerIdx === -1) openerIdx = 1;
 
     let dateIdx = headers.findIndex(h => 
       h.includes('date added') || h.includes('meeting date') || h.includes('date booked') || h === 'date' || h.includes('created') || h.includes('timestamp')
@@ -143,8 +154,8 @@ export async function fetchBDTrackerData(): Promise<{
       dateIdx = headers.findIndex(h => h.includes('date'));
     }
 
-    let companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
-    let personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
+    const companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
+    const personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
 
     for (let r = 1; r < rawRows.length; r++) {
       const row = rawRows[r];
@@ -156,7 +167,6 @@ export async function fetchBDTrackerData(): Promise<{
       if (!counts[opener]) counts[opener] = {};
       counts[opener][tabName] = (counts[opener][tabName] || 0) + 1;
 
-      // Extract date with primary index or fallback row scan
       let dateAdded: string | null = null;
       if (dateIdx !== -1 && row[dateIdx] !== undefined) {
         dateAdded = parseDateToISO(row[dateIdx]);
@@ -185,42 +195,142 @@ export async function fetchBDTrackerData(): Promise<{
   return { meetings, trackerCounts: counts };
 }
 
-export async function getDashboardRawData(forceRefresh = false): Promise<{
-  calls: CallRecord[];
-  meetings: MeetingRecord[];
-  trackerCounts: Record<string, Record<string, number>>;
-  agentMappings: AgentMapping[];
-  isMockData: boolean;
+/**
+ * Fetches attendance data:
+ * 1. Tries Google Sheets API on CONFIG.ATTENDANCE_SHEET_ID.
+ * 2. If permission denied or network failure, falls back to local Excel file BD _ French Dashboard 2026 (3).xlsx.
+ */
+export async function fetchAttendanceData(): Promise<{
+  attendance: AttendanceDataset;
+  source: 'google_sheets' | 'local_excel' | 'none';
 }> {
+  const sheets = getSheetsClient();
+
+  // Try Google Sheets API first
+  if (sheets && CONFIG.ATTENDANCE_SHEET_ID) {
+    try {
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId: CONFIG.ATTENDANCE_SHEET_ID,
+        range: `'${CONFIG.ATTENDANCE_SHEET_NAME}'!A1:AT`
+      });
+
+      if (res.data.values && res.data.values.length > 0) {
+        const attendance = parseAttendanceRows(res.data.values);
+        return { attendance, source: 'google_sheets' };
+      }
+    } catch (err: unknown) {
+      console.warn('[Attendance] Google Sheets API fetch failed, trying local file fallback:', (err as Error).message);
+    }
+  }
+
+  // Fallback to local Excel file
+  const localPath = path.join(process.cwd(), CONFIG.LOCAL_ATTENDANCE_FILE);
+  if (fs.existsSync(localPath)) {
+    try {
+      const wb = xlsx.readFile(localPath);
+      const sheet = wb.Sheets[CONFIG.ATTENDANCE_SHEET_NAME] || wb.Sheets[wb.SheetNames[1]];
+      if (sheet) {
+        const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
+        const attendance = parseAttendanceRows(rows);
+        return { attendance, source: 'local_excel' };
+      }
+    } catch (err) {
+      console.warn('[Attendance] Local Excel parse failed:', err);
+    }
+  }
+
+  return {
+    attendance: { agentDaily: {}, agentMonthly: {} },
+    source: 'none'
+  };
+}
+
+/**
+ * Fetches Ultatel departmental report from local Excel if present.
+ */
+export function fetchLocalUltatelDeptData(): CallRecord[] | null {
+  const localPath = path.join(process.cwd(), CONFIG.LOCAL_ULTATEL_DEPT_FILE);
+  if (!fs.existsSync(localPath)) return null;
+
+  try {
+    const wb = xlsx.readFile(localPath);
+    const sheet = wb.Sheets['Sheet1'] || wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) return null;
+
+    const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
+    const summaries = parseUltatelDeptRows(rows);
+    if (summaries.length === 0) return null;
+
+    return deptSummariesToCallRecords(summaries);
+  } catch (err) {
+    console.warn('[Ultatel] Local Dept report parse failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Orchestrates multi-source data retrieval:
+ * Combines Google Sheets (or fallback files), local Ultatel departmental reports, and attendance.
+ */
+export async function getDashboardRawData(forceRefresh = false): Promise<RawDashboardDataset> {
   const now = Date.now();
   if (!forceRefresh && cachedData && now - cachedData.timestamp < CACHE_TTL_MS) {
     return { ...cachedData.data, isMockData: false };
   }
 
   try {
-    const liveFetchPromise = Promise.all([
-      fetchCallDashboardData(),
-      fetchBDTrackerData()
+    // 1. Fetch Call Logs and BD Tracker
+    const [callData, bdData, attendanceResult] = await Promise.all([
+      fetchCallDashboardData().catch((err) => {
+        console.warn('[Google Sheets] Call logs fetch failed:', err.message);
+        return { calls: [], agentMappings: [] };
+      }),
+      fetchBDTrackerData().catch((err) => {
+        console.warn('[Google Sheets] BD Tracker fetch failed:', err.message);
+        return { meetings: [], trackerCounts: {} };
+      }),
+      fetchAttendanceData()
     ]);
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Google Sheets API request timed out after 45 seconds')), 45000)
-    );
+    // 2. Check if local Ultatel departmental summary is present
+    const ultatelDeptCalls = fetchLocalUltatelDeptData();
 
-    const [callData, bdData] = await Promise.race([liveFetchPromise, timeoutPromise]);
+    // If call logs are empty or if local Ultatel departmental export exists, prioritize/merge
+    let calls = callData.calls;
+    let callsSource: DataSourceInfo['callsSource'] = 'google_sheets';
 
-    const result = {
-      calls: callData.calls,
+    if (calls.length === 0 && ultatelDeptCalls && ultatelDeptCalls.length > 0) {
+      calls = ultatelDeptCalls;
+      callsSource = 'ultatel_dept_report';
+    } else if (calls.length > 0) {
+      callsSource = 'call_logs';
+    }
+
+    const dataSourceInfo: DataSourceInfo = {
+      source: attendanceResult.source === 'google_sheets' && callsSource === 'google_sheets'
+        ? 'google_sheets'
+        : 'local_excel',
+      attendanceSource: attendanceResult.source,
+      callsSource,
+      notes: attendanceResult.source === 'local_excel'
+        ? 'Attendance loaded from local Excel file (BD _ French Dashboard 2026)'
+        : undefined
+    };
+
+    const result: RawDashboardDataset = {
+      calls,
       meetings: bdData.meetings,
       trackerCounts: bdData.trackerCounts,
-      agentMappings: callData.agentMappings
+      agentMappings: callData.agentMappings,
+      attendance: attendanceResult.attendance,
+      dataSourceInfo,
+      isMockData: false
     };
 
     cachedData = { data: result, timestamp: now };
-    console.log(`[Google Sheets] Live pull complete: ${result.calls.length} calls, ${result.meetings.length} meetings loaded.`);
-    return { ...result, isMockData: false };
+    return result;
   } catch (err: unknown) {
-    console.error('[Google Sheets] Live pull failed:', err);
+    console.error('[Data Ingestion] Failed to load data:', err);
     throw err;
   }
 }
