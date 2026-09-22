@@ -5,8 +5,8 @@ export const CONFIG = {
   // BD Meetings Tracker Sheet (New Meetings, Follow Ups, etc.)
   BD_TRACKER_SHEET_ID: process.env.BD_TRACKER_SHEET_ID || '1uicpBruuFeno2ES4hNw-TIAwNkGEI37gw8Z-A4yMpC8',
 
-  // BD / French Dashboard 2026 Attendance Sheet
-  ATTENDANCE_SHEET_ID: process.env.ATTENDANCE_SHEET_ID || '1OifBiymAAVSm8JNpIULtU7V4k_b_7Mj9Puo6Ag_suHw',
+  // Attendance is copied into the BD Tracker by the French Dashboard Apps Script bridge.
+  ATTENDANCE_SHEET_ID: process.env.ATTENDANCE_SHEET_ID || '1uicpBruuFeno2ES4hNw-TIAwNkGEI37gw8Z-A4yMpC8',
   ATTENDANCE_SHEET_NAME: 'Attendance',
 
   // Local fallback file names
