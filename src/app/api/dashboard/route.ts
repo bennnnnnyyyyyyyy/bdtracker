@@ -49,7 +49,6 @@ export async function GET(request: NextRequest) {
     if (!rawData || shouldRefreshSource) {
       try {
         const freshData = await getDashboardRawData(true);
-        const syncedAt = new Date().toISOString();
 
         // Write fresh dataset to Supabase in background
         saveRawDataToSupabase({

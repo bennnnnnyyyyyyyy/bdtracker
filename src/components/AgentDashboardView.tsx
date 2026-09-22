@@ -1,61 +1,37 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
-import { OpenerStats, OrgTotals, FilterState } from '@/types/dashboard';
-import { Phone, Calendar, TrendingUp, Award } from 'lucide-react';
-import { formatPercent } from '@/lib/analytics';
+import { Award, Calendar, Phone, TrendingUp } from 'lucide-react';
+import { FilterState, OpenerStats } from '@/types/dashboard';
 
-function formatLocalDateYMD(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-
-/* ─── Types ─────────────────────────────────────────────── */
 interface AgentDashboardViewProps {
   openers: OpenerStats[];
-  totals: OrgTotals;
   filters: FilterState;
 }
 
-function fmtPct(r: number) {
-  if (!isFinite(r) || isNaN(r) || r === 0) return '—';
-  return `${(r * 100).toFixed(0)}%`;
+function formatLocalDateYMD(date: Date): string {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
+function formatRate(rate: number): string {
+  return Number.isFinite(rate) && rate > 0 ? `${Math.round(rate * 100)}%` : '—';
 }
 
 function getPeriodTitle(filters: FilterState): string {
-  if (filters.preset === 'today') {
-    return `Today · ${filters.startDate || formatLocalDateYMD(new Date())}`;
-  }
+  if (filters.preset === 'today') return `Today · ${filters.startDate || formatLocalDateYMD(new Date())}`;
   if (filters.preset === 'this_week') return 'This Week';
   if (filters.preset === 'this_month') return 'This Month';
   if (filters.preset === 'last_30_days') return 'Last 30 Days';
   if (filters.startDate && filters.endDate) return `${filters.startDate} → ${filters.endDate}`;
-  if (filters.startDate) return `From ${filters.startDate}`;
-  if (filters.endDate) return `Until ${filters.endDate}`;
-  return 'This Week';
+  return 'Current period';
 }
 
-/* ─── Mini progress bar ──────────────────────────────────── */
-function Bar({ value, max, tone = 'neutral' }: { value: number; max: number; tone?: 'neutral' | 'gold' | 'success' | 'danger' }) {
-  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
-  return (
-    <div className="bar-track w-full">
-      <div className={`bar-fill ${tone === 'gold' ? 'bar-fill-gold' : tone === 'success' ? 'bar-fill-success' : tone === 'danger' ? 'bar-fill-danger' : 'bar-fill-white'}`} style={{ width: `${pct}%` }} />
-    </div>
-  );
+function coachingStatus(agent: OpenerStats): { label: string; className: string } {
+  if (agent.booked > 0 && agent.showRate < 0.4) return { label: 'Show rate needs attention', className: 'pill-danger' };
+  if (agent.presentDays > 0 && agent.callsPerPresentDay < 10) return { label: 'Activity needs attention', className: 'pill-warn' };
+  return { label: 'On track', className: 'pill-success' };
 }
 
-/* ─── Rate chip ──────────────────────────────────────────── */
-function Chip({ value, good, ok }: { value: number; good: number; ok: number }) {
-  const pct = isFinite(value) && !isNaN(value) ? value : 0;
-  const cls = pct >= good ? 'pill-success' : pct >= ok ? 'pill-warn' : 'pill-danger';
-  return <span className={`pill ${cls}`}>{fmtPct(value)}</span>;
-}
-
-/* ─── Agent card ─────────────────────────────────────────── */
 const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: {
   agent: OpenerStats;
   rank: number;
@@ -63,190 +39,73 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
   maxBooked: number;
 }) {
   const isTop = rank === 1;
-  const initials = agent.opener.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'AG';
-  const hue = (agent.opener.charCodeAt(0) * 41 + (agent.opener.charCodeAt(1) ?? 0) * 17) % 360;
-
-  const showColor =
-    agent.booked === 0 ? 'text-[#3f3f46]'
-    : agent.showRate >= 0.6 ? 'text-[#4ade80]'
-    : agent.showRate >= 0.4 ? 'text-[#e8c56a]'
-    : 'text-[#f87171]';
+  const status = coachingStatus(agent);
+  const productivity = agent.presentDays > 0
+    ? `${agent.callsPerPresentDay}/day · ${agent.presentDays} present days`
+    : `${agent.callsPerCalendarDay ?? 0}/calendar day`;
 
   return (
-    <div className={`card ${isTop ? 'card-gold' : ''} group relative overflow-hidden flex flex-col`}>
-      {/* Hover glow */}
-      <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-[13px]"
-        style={{ background: `radial-gradient(ellipse at top left, hsl(${hue},40%,7%) 0%, transparent 65%)` }}
-      />
-
-      {/* Header */}
-      <div className="relative flex items-center gap-3 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 font-num"
-          style={{
-            background: `linear-gradient(135deg, hsl(${hue},40%,12%), hsl(${(hue + 40) % 360},40%,8%))`,
-            border: `1px solid hsl(${hue},35%,24%)`,
-            color: `hsl(${hue},55%,72%)`,
-          }}
-        >
-          {initials}
-        </div>
-        <div className="flex-1 min-w-0">
+    <article className={`card ${isTop ? 'card-gold' : ''} overflow-hidden`}>
+      <header className="flex items-start justify-between gap-3 px-4 py-3.5 border-b border-white/6">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-serif text-sm font-bold text-white truncate">{agent.opener}</span>
-            {isTop && <Award className="w-3.5 h-3.5 shrink-0 text-[#e8c56a]" />}
+            <h3 className="font-serif text-base font-bold text-white truncate">{agent.opener}</h3>
+            {isTop && <Award className="w-4 h-4 shrink-0 text-gold-light" aria-label="Top performer" />}
           </div>
-          <div className="flex items-center flex-wrap gap-1.5 mt-1">
-            <span className="label-caps">#{rank}</span>
-            {agent.presentDays > 0 ? (
-              <span className="px-1.5 py-0.2 rounded text-[10px] font-medium font-num bg-[#0284c7]/15 text-[#38bdf8] border border-[#0284c7]/30" title="Present days from Attendance Sheet">
-                {agent.presentDays} Pres. Days ({agent.callsPerPresentDay}/day)
-              </span>
-            ) : (
-              <span className="px-1.5 py-0.2 rounded text-[10px] font-medium font-num bg-zinc-800 text-zinc-400">
-                {agent.callsPerCalendarDay ? `${agent.callsPerCalendarDay}/day (As-Is)` : '0/day'}
-              </span>
-            )}
-          </div>
+          <p className="label-caps mt-1">#{rank} · {productivity}</p>
         </div>
-        <div
-          className="w-6 h-6 rounded-md flex items-center justify-center font-num text-[10px] font-bold shrink-0"
-          style={{
-            background: isTop ? 'rgba(201,168,76,0.12)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${isTop ? 'rgba(201,168,76,0.25)' : 'rgba(255,255,255,0.06)'}`,
-            color: isTop ? '#e8c56a' : '#52525b',
-          }}
-        >
-          {rank}
-        </div>
+        <span className={`pill ${status.className} shrink-0`}>{status.label}</span>
+      </header>
+
+      <div className="grid grid-cols-2 gap-px bg-white/5">
+        <Metric label="Calls" value={agent.calls.toLocaleString()} ratio={agent.calls / maxCalls} tone="neutral" icon={<Phone className="w-3 h-3" />} />
+        <Metric label="Booked" value={agent.booked.toLocaleString()} ratio={agent.booked / maxBooked} tone="gold" icon={<Calendar className="w-3 h-3" />} />
+        <Metric label="Show rate" value={formatRate(agent.showRate)} tone={agent.showRate >= 0.6 ? 'success' : agent.showRate >= 0.4 ? 'gold' : 'danger'} icon={<TrendingUp className="w-3 h-3" />} />
+        <Metric label="Close rate" value={formatRate(agent.closeRate)} tone={agent.closeRate >= 0.2 ? 'success' : 'neutral'} />
       </div>
-
-      {/* Four management metrics */}
-      <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-px flex-1" style={{ background: 'rgba(255,255,255,0.04)' }}>
-        {/* Calls */}
-        <div className="flex flex-col gap-2 px-3.5 py-3.5 bg-card">
-          <div className="flex items-center gap-1.5">
-            <Phone className="w-2.5 h-2.5 text-[#52525b]" />
-            <span className="label-caps">Calls</span>
-          </div>
-          <span className="font-num text-2xl font-bold text-white leading-none">{agent.calls.toLocaleString()}</span>
-          <Bar value={agent.calls} max={maxCalls} />
-        </div>
-
-        {/* No answer */}
-        <div className="flex flex-col gap-2 px-3.5 py-3.5 bg-card">
-          <div className="flex items-center gap-1.5">
-            <Phone className="w-2.5 h-2.5 text-[#f87171]" />
-            <span className="label-caps">No Answer</span>
-          </div>
-          <span className="font-num text-2xl font-bold text-[#f87171] leading-none">{agent.noAnswer.toLocaleString()}</span>
-          <Bar value={agent.noAnswer} max={Math.max(1, maxCalls)} tone="danger" />
-        </div>
-
-        {/* Booked */}
-        <div className="flex flex-col gap-2 px-3.5 py-3.5 bg-card">
-          <div className="flex items-center gap-1.5">
-            <Calendar className="w-2.5 h-2.5 text-[#52525b]" />
-            <span className="label-caps">Booked</span>
-          </div>
-          <span className="font-num text-2xl font-bold text-white leading-none">{agent.booked.toLocaleString()}</span>
-          <Bar value={agent.booked} max={maxBooked} tone="gold" />
-        </div>
-        {/* Show rate */}
-        <div className="flex flex-col gap-2 px-3.5 py-3.5 bg-card">
-          <div className="flex items-center gap-1.5">
-            <TrendingUp className="w-2.5 h-2.5 text-[#52525b]" />
-            <span className="label-caps">Show</span>
-          </div>
-          <span className={`font-num text-2xl font-bold leading-none ${showColor}`}>
-            {agent.booked === 0 ? '—' : fmtPct(agent.showRate)}
-          </span>
-          <Bar value={agent.booked === 0 ? 0 : agent.showRate} max={1} tone={agent.booked === 0 ? 'neutral' : agent.showRate >= 0.6 ? 'success' : agent.showRate >= 0.4 ? 'gold' : 'danger'} />
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="relative flex items-center justify-between px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <Chip value={agent.answerRate} good={0.5} ok={0.3} />
-          <span className="label-caps">conn.</span>
-        </div>
-        <span className="label-caps">{agent.attended} showed · {agent.noShow} no-show</span>
-      </div>
-    </div>
+    </article>
   );
 });
 
-/* ─── Main view ──────────────────────────────────────────── */
-export function AgentDashboardView({ openers, totals, filters }: AgentDashboardViewProps) {
-  const activeOpeners = useMemo(
-    () => openers
-      .filter(o => o.opener && o.opener !== 'undefined')
-      .sort((a, b) => b.calls - a.calls || b.booked - a.booked),
-    [openers]
+function Metric({ label, value, ratio, tone = 'neutral', icon }: { label: string; value: string; ratio?: number; tone?: 'neutral' | 'gold' | 'success' | 'danger'; icon?: React.ReactNode }) {
+  const toneClass = tone === 'success' ? 'text-success' : tone === 'danger' ? 'text-danger' : tone === 'gold' ? 'text-gold-light' : 'text-white';
+  const barClass = tone === 'success' ? 'bar-fill-success' : tone === 'danger' ? 'bar-fill-danger' : tone === 'gold' ? 'bar-fill-gold' : 'bar-fill-white';
+  return (
+    <div className="bg-card px-4 py-3">
+      <div className="flex items-center gap-1.5 label-caps">{icon}{label}</div>
+      <div className={`font-num text-xl font-bold mt-1 ${toneClass}`}>{value}</div>
+      {ratio !== undefined && <div className="bar-track mt-2"><div className={`bar-fill ${barClass}`} style={{ width: `${Math.min(100, Math.max(0, ratio * 100))}%` }} /></div>}
+    </div>
   );
+}
 
-  const maxCalls = useMemo(() => Math.max(1, ...activeOpeners.map(m => m.calls)), [activeOpeners]);
-  const maxBooked = useMemo(() => Math.max(1, ...activeOpeners.map(m => m.booked)), [activeOpeners]);
-  const periodTitle = useMemo(() => getPeriodTitle(filters), [filters]);
+export function AgentDashboardView({ openers, filters }: AgentDashboardViewProps) {
+  const activeOpeners = useMemo(() => openers
+    .filter((opener) => opener.opener && opener.opener !== 'undefined')
+    .sort((a, b) => b.calls - a.calls || b.booked - a.booked), [openers]);
+  const maxCalls = useMemo(() => Math.max(1, ...activeOpeners.map((agent) => agent.calls)), [activeOpeners]);
+  const maxBooked = useMemo(() => Math.max(1, ...activeOpeners.map((agent) => agent.booked)), [activeOpeners]);
 
   return (
-    <div className="space-y-5">
-      {/* Header row */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+    <section aria-labelledby="team-performance-heading" className="space-y-4">
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <div className="sec-tag mb-1">Agent Performance</div>
-          <h2 className="font-serif text-xl font-bold text-white">{periodTitle}</h2>
+          <p className="sec-tag mb-1">Team performance</p>
+          <h2 id="team-performance-heading" className="font-serif text-xl font-bold text-white">{getPeriodTitle(filters)}</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="label-caps">{activeOpeners.length} Active {activeOpeners.length === 1 ? 'Agent' : 'Agents'}</span>
-        </div>
+        <p className="label-caps">{activeOpeners.length} active agents</p>
       </div>
 
-      {/* Team summary strip */}
-      {activeOpeners.length > 0 && (
-        <div
-          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px rounded-xl overflow-hidden"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
-        >
-          {[
-            { label: 'Total Calls',       value: totals.calls.toLocaleString() },
-            { label: 'Total Pres. Days',  value: `${totals.totalPresentDays} (${totals.callsPerPresentDay}/day)` },
-            { label: 'Meetings Booked',   value: totals.booked.toLocaleString() },
-            { label: 'Avg Show Rate',     value: formatPercent(totals.showRate) },
-            { label: 'Onboarded',         value: totals.onboarded.toLocaleString() },
-          ].map(stat => (
-            <div key={stat.label} className="flex flex-col gap-1.5 px-5 py-4 bg-[#17171a]">
-              <span className="label-caps">{stat.label}</span>
-              <span className="font-num text-xl font-bold text-white">{stat.value}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Cards grid or empty state */}
       {activeOpeners.length === 0 ? (
-        <div
-          className="flex flex-col items-center justify-center py-20 rounded-xl"
-          style={{ background: '#17171a', border: '1px solid rgba(255,255,255,0.06)' }}
-        >
-          <Phone className="w-8 h-8 mb-3 text-[#3f3f46]" />
-          <p className="label-caps text-text-faint">No agent activity found in this period</p>
+        <div className="card flex flex-col items-center justify-center py-20">
+          <Phone className="w-8 h-8 mb-3 text-text-faint" />
+          <p className="label-caps">No agent activity found in this period</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {activeOpeners.map((agent, i) => (
-            <AgentCard
-              key={agent.opener}
-              agent={agent}
-              rank={i + 1}
-              maxCalls={maxCalls}
-              maxBooked={maxBooked}
-            />
-          ))}
+          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} />)}
         </div>
       )}
-    </div>
+    </section>
   );
 }

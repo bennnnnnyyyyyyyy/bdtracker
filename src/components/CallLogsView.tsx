@@ -54,7 +54,8 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
             <Search className="w-3.5 h-3.5 text-[#71717a] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search call / agent..."
+              aria-label="Search calls by agent, number, or ID"
+               placeholder="Search call / agent..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
               className="rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#f4f4f5] placeholder-[#52525b] focus:outline-none w-44 font-num"
@@ -147,6 +148,7 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
         <span>Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} entries</span>
         <div className="flex items-center space-x-2">
           <button
+            aria-label="Previous page"
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage === 1}
             className="p-1 rounded-lg bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] disabled:opacity-30 text-[#f4f4f5] cursor-pointer"
@@ -154,6 +156,7 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
+            aria-label="Next page"
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
             className="p-1 rounded-lg bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] disabled:opacity-30 text-[#f4f4f5] cursor-pointer"

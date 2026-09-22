@@ -27,9 +27,9 @@ type DashboardUiCache = {
 };
 
 const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'agents', label: 'Agents', icon: <LayoutGrid className="w-4 h-4" /> },
-  { id: 'periods', label: 'Day / Week / Month', icon: <BarChart3 className="w-4 h-4" /> },
-  { id: 'table', label: 'Full Table', icon: <TableIcon className="w-4 h-4" /> },
+  { id: 'agents', label: 'Team', icon: <LayoutGrid className="w-4 h-4" /> },
+  { id: 'periods', label: 'Trends', icon: <BarChart3 className="w-4 h-4" /> },
+  { id: 'table', label: 'Details', icon: <TableIcon className="w-4 h-4" /> },
   { id: 'calls', label: 'Call Logs', icon: <PhoneCall className="w-4 h-4" /> },
 ];
 
@@ -274,12 +274,16 @@ export default function DashboardPage() {
             <KpiGrid totals={data.totals} />
 
             <div
+              role="tablist"
+              aria-label="Dashboard views"
               className="flex gap-0 text-sm font-medium overflow-x-auto"
               style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}
             >
               {TABS.map(tab => (
                 <button
                   key={tab.id}
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
                   onClick={() => handleTabChange(tab.id)}
                   className="pb-3 pt-1 px-4 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap"
                   style={
@@ -297,7 +301,6 @@ export default function DashboardPage() {
             {activeTab === 'agents' && (
               <AgentDashboardView
                 openers={data.openers}
-                totals={data.totals}
                 filters={filters}
               />
             )}
