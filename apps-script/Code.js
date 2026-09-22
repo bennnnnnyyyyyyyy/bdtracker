@@ -51,7 +51,11 @@ const CONFIG = {
   CALL_LOG_EXTRA: ['Agent', 'Duration (sec)'],
 
   // Agents to permanently exclude from dashboard calculations & mappings
-  EXCLUDED_AGENTS: ['russ', 'george', 'caroline', 'caroline richards']
+  EXCLUDED_AGENTS: ['russ', 'george', 'caroline', 'caroline richards'],
+
+  // Ultatel export clock and destination clock. Africa/Cairo applies Egypt DST rules.
+  SOURCE_TIME_ZONE: 'Etc/GMT+6',
+  CAIRO_TIME_ZONE: 'Africa/Cairo'
 };
 
 /**
@@ -84,6 +88,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
+    .addItem('Convert Call Dates to Cairo', 'convertAllCallLogDatesToCairo')
     .addItem('Debug BD Connection & Tabs', 'debugBDConnection')
     .addToUi();
 }
@@ -226,6 +231,8 @@ function processStagingImport() {
   let duplicateCount = 0;
 
   rawRows.forEach(r => {
+    // Convert the UTC-6 export clock before dedupe and before storing the call.
+    r[0] = toCairoDate_(r[0]);
     const callDate = String(r[0] ?? '').trim();
     const callId = String(r[1] ?? '').trim();
     const fromNum = String(r[2] ?? '').trim();
@@ -350,6 +357,74 @@ function backfillCallLogFields() {
 
   callLog.getRange(2, 1, data.length, numCols).setValues(data);
   SpreadsheetApp.getUi().alert(`Successfully backfilled ${data.length} call rows.`);
+}
+
+/** Converts all existing Call Logs timestamps from fixed UTC-6 to Cairo time. */
+function convertAllCallLogDatesToCairo() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
+  if (!callLog || callLog.getLastRow() < 2) return;
+
+  const values = callLog.getRange(2, 1, callLog.getLastRow() - 1, 1).getValues();
+  values.forEach(row => { row[0] = toCairoDate_(row[0]); });
+  callLog.getRange(2, 1, values.length, 1).setValues(values);
+  SpreadsheetApp.getUi().alert(`Converted ${values.length} call date(s) to Cairo time.`);
+}
+
+/**
+ * Treats timestamps without an explicit offset as fixed UTC-6, then formats
+ * the resulting instant in Africa/Cairo. Cairo DST is applied by Apps Script.
+ */
+function toCairoDate_(value) {
+  if (value === null || value === undefined || value === '') return '';
+
+  let text;
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    // Read the displayed source clock in UTC-6 before converting it.
+    text = Utilities.formatDate(value, CONFIG.SOURCE_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+  } else {
+    text = String(value).trim();
+  }
+  if (!text) return '';
+
+  // Explicitly zoned values are already instants; only reformat them.
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(text)) {
+    const explicit = new Date(text);
+    if (!isNaN(explicit.getTime())) {
+      return Utilities.formatDate(explicit, CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+    }
+  }
+
+  let match = text.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T]+(\d{1,2}):?(\d{2})?(?::?(\d{2}))?)?/);
+  let year;
+  let month;
+  let day;
+  let hour;
+  let minute;
+  let second;
+
+  if (match) {
+    year = Number(match[1]);
+    month = Number(match[2]);
+    day = Number(match[3]);
+    hour = Number(match[4] || 0);
+    minute = Number(match[5] || 0);
+    second = Number(match[6] || 0);
+  } else {
+    match = text.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})(?:[ T]+(\d{1,2}):?(\d{2})?(?::?(\d{2}))?)?/);
+    if (!match) return text;
+    month = Number(match[1]);
+    day = Number(match[2]);
+    year = Number(match[3]);
+    if (year < 100) year += 2000;
+    hour = Number(match[4] || 0);
+    minute = Number(match[5] || 0);
+    second = Number(match[6] || 0);
+  }
+
+  // UTC-6 local clock -> UTC instant; Africa/Cairo then applies DST rules.
+  const instant = new Date(Date.UTC(year, month - 1, day, hour + 6, minute, second));
+  return Utilities.formatDate(instant, CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
 }
 
 // ==========================================
