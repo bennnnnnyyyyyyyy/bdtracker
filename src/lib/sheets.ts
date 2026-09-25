@@ -231,7 +231,7 @@ export async function fetchAttendanceData(): Promise<AttendanceFetchResult> {
   const localPath = path.join(process.cwd(), CONFIG.LOCAL_ATTENDANCE_FILE);
   if (fs.existsSync(localPath)) {
     try {
-      const wb = xlsx.readFile(localPath);
+      const wb = xlsx.read(fs.readFileSync(localPath), { type: 'buffer' });
       const sheet = wb.Sheets[CONFIG.ATTENDANCE_SHEET_NAME] || wb.Sheets[wb.SheetNames[1]];
       if (sheet) {
         const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
@@ -257,7 +257,7 @@ export function fetchLocalUltatelDeptData(): CallRecord[] | null {
   if (!fs.existsSync(localPath)) return null;
 
   try {
-    const wb = xlsx.readFile(localPath);
+    const wb = xlsx.read(fs.readFileSync(localPath), { type: 'buffer' });
     const sheet = wb.Sheets['Sheet1'] || wb.Sheets[wb.SheetNames[0]];
     if (!sheet) return null;
 
