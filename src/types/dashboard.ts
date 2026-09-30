@@ -155,6 +155,8 @@ export interface DataSourceInfo {
 
 export interface DashboardResponse {
   openers: OpenerStats[];
+  availableOpeners: OpenerStats[];
+  teamBenchmarks: TeamBenchmarks;
   totals: OrgTotals;
   funnel: FunnelSummary;
   calls: CallRecord[];
@@ -168,6 +170,14 @@ export interface DashboardResponse {
   isMockData?: boolean;
   dataSourceInfo?: DataSourceInfo;
   error?: string;
+}
+
+export interface TeamBenchmarks {
+  connectionRate: number;
+  bookingRate: number;
+  showRate: number;
+  closeRate: number;
+  callsPerPresentDay: number;
 }
 
 export interface FunnelSummary {

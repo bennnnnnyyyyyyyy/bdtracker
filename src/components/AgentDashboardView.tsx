@@ -2,10 +2,11 @@
 
 import React, { memo, useMemo } from 'react';
 import { Award, Calendar, CheckCircle2, Phone, TrendingUp, UsersRound } from 'lucide-react';
-import { FilterState, OpenerStats } from '@/types/dashboard';
+import { FilterState, OpenerStats, TeamBenchmarks } from '@/types/dashboard';
 
 interface AgentDashboardViewProps {
   openers: OpenerStats[];
+  teamBenchmarks: TeamBenchmarks;
   filters: FilterState;
 }
 
@@ -25,8 +26,6 @@ function getPeriodTitle(filters: FilterState): string {
   if (filters.startDate && filters.endDate) return `${filters.startDate} → ${filters.endDate}`;
   return 'Current period';
 }
-
-type TeamBenchmarks = { connectionRate: number; bookingRate: number; showRate: number; closeRate: number; callsPerPresentDay: number };
 
 function coachingStatus(agent: OpenerStats, benchmarks: TeamBenchmarks): { label: string; className: string } {
   if (agent.calls > 0 && agent.connectionRate < benchmarks.connectionRate) return { label: 'Connectivity needs attention', className: 'pill-danger' };
@@ -88,22 +87,13 @@ function Metric({ label, value, ratio, tone = 'neutral', icon }: { label: string
   );
 }
 
-export function AgentDashboardView({ openers, filters }: AgentDashboardViewProps) {
+export function AgentDashboardView({ openers, teamBenchmarks, filters }: AgentDashboardViewProps) {
   const activeOpeners = useMemo(() => openers
     .filter((opener) => opener.opener && opener.opener !== 'undefined')
     .sort((a, b) => b.onboarded - a.onboarded || b.booked - a.booked || b.bookingRate - a.bookingRate), [openers]);
   const maxCalls = useMemo(() => Math.max(1, ...activeOpeners.map((agent) => agent.calls)), [activeOpeners]);
   const maxBooked = useMemo(() => Math.max(1, ...activeOpeners.map((agent) => agent.booked)), [activeOpeners]);
-  const benchmarks = useMemo<TeamBenchmarks>(() => {
-    const avg = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-    return {
-      connectionRate: avg(activeOpeners.filter(agent => agent.calls > 0).map(agent => agent.connectionRate)),
-      bookingRate: avg(activeOpeners.filter(agent => agent.answered > 0).map(agent => agent.bookingRate)),
-      showRate: avg(activeOpeners.filter(agent => agent.booked > 0).map(agent => agent.showRate)),
-      closeRate: avg(activeOpeners.filter(agent => agent.booked > 0).map(agent => agent.closeRate)),
-      callsPerPresentDay: avg(activeOpeners.filter(agent => agent.presentDays > 0).map(agent => agent.callsPerPresentDay)),
-    };
-  }, [activeOpeners]);
+  const benchmarks = teamBenchmarks;
 
   return (
     <section aria-labelledby="team-performance-heading" className="space-y-4">

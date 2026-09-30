@@ -56,14 +56,24 @@ CREATE INDEX IF NOT EXISTS idx_meetings_opener ON public.meetings (opener);
 CREATE INDEX IF NOT EXISTS idx_meetings_date ON public.meetings (date_added);
 CREATE INDEX IF NOT EXISTS idx_meetings_stage ON public.meetings (stage);
 
--- Disable Row Level Security (RLS) or enable public read for dashboard
+-- Keep RLS enabled. The application uses the server-only service_role key.
 ALTER TABLE public.agent_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meetings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.calls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.metadata ENABLE ROW LEVEL SECURITY;
 
--- Allow server service_role key full access
-CREATE POLICY IF NOT EXISTS "Allow all for service role" ON public.agent_mappings FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "Allow all for service role" ON public.meetings FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "Allow all for service role" ON public.calls FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "Allow all for service role" ON public.metadata FOR ALL USING (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'agent_mappings' AND policyname = 'Service role full access') THEN
+    CREATE POLICY "Service role full access" ON public.agent_mappings FOR ALL TO service_role USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'meetings' AND policyname = 'Service role full access') THEN
+    CREATE POLICY "Service role full access" ON public.meetings FOR ALL TO service_role USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'calls' AND policyname = 'Service role full access') THEN
+    CREATE POLICY "Service role full access" ON public.calls FOR ALL TO service_role USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'metadata' AND policyname = 'Service role full access') THEN
+    CREATE POLICY "Service role full access" ON public.metadata FOR ALL TO service_role USING (true) WITH CHECK (true);
+  END IF;
+END $$;

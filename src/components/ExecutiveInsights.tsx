@@ -7,6 +7,7 @@ import { FunnelSummary, OpenerStats, PeriodicGroupSummary } from '@/types/dashbo
 interface ExecutiveInsightsProps {
   funnel: FunnelSummary;
   openers: OpenerStats[];
+  benchmarkOpeners: OpenerStats[];
   weeklyBreakdown: PeriodicGroupSummary[];
 }
 
@@ -20,19 +21,20 @@ function average(values: number[]): number {
 
 type Exception = { opener: string; reason: string; tone: 'danger' | 'warn' };
 
-export function ExecutiveInsights({ funnel, openers, weeklyBreakdown }: ExecutiveInsightsProps) {
+export function ExecutiveInsights({ funnel, openers, benchmarkOpeners, weeklyBreakdown }: ExecutiveInsightsProps) {
   const exceptions = useMemo(() => {
-    const active = openers.filter(agent => agent.calls > 0 || agent.booked > 0);
-    const avgCalls = average(active.map(agent => agent.calls));
-    const avgAnswered = average(active.map(agent => agent.answered));
-    const avgBooked = average(active.map(agent => agent.booked));
-    const avgConnection = average(active.filter(agent => agent.calls > 0).map(agent => agent.connectionRate));
-    const avgBooking = average(active.filter(agent => agent.answered > 0).map(agent => agent.bookingRate));
-    const avgShow = average(active.filter(agent => agent.booked > 0).map(agent => agent.showRate));
-    const avgCallsPerDay = average(active.filter(agent => agent.presentDays > 0).map(agent => agent.callsPerPresentDay));
+    const candidates = openers.filter(agent => agent.calls > 0 || agent.booked > 0);
+    const benchmarkPool = benchmarkOpeners.filter(agent => agent.calls > 0 || agent.booked > 0);
+    const avgCalls = average(benchmarkPool.map(agent => agent.calls));
+    const avgAnswered = average(benchmarkPool.map(agent => agent.answered));
+    const avgBooked = average(benchmarkPool.map(agent => agent.booked));
+    const avgConnection = average(benchmarkPool.filter(agent => agent.calls > 0).map(agent => agent.connectionRate));
+    const avgBooking = average(benchmarkPool.filter(agent => agent.answered > 0).map(agent => agent.bookingRate));
+    const avgShow = average(benchmarkPool.filter(agent => agent.booked > 0).map(agent => agent.showRate));
+    const avgCallsPerDay = average(benchmarkPool.filter(agent => agent.presentDays > 0).map(agent => agent.callsPerPresentDay));
     const found: Exception[] = [];
 
-    active.forEach(agent => {
+    candidates.forEach(agent => {
       if (agent.presentDays === 0) found.push({ opener: agent.opener, reason: 'No present-day attendance data', tone: 'warn' });
       if (agent.calls >= avgCalls && agent.calls > 0 && agent.connectionRate < avgConnection) {
         found.push({ opener: agent.opener, reason: `Connect rate ${rate(agent.connectionRate, true)} is below team pace`, tone: 'danger' });
@@ -48,7 +50,7 @@ export function ExecutiveInsights({ funnel, openers, weeklyBreakdown }: Executiv
     });
 
     return found.slice(0, 5);
-  }, [openers]);
+  }, [openers, benchmarkOpeners]);
 
   const trendRows = useMemo(() => weeklyBreakdown.slice(0, 6).reverse(), [weeklyBreakdown]);
   const trendMax = useMemo(() => Math.max(1, ...trendRows.map(row => row.totals.calls)), [trendRows]);

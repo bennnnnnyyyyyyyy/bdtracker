@@ -264,7 +264,6 @@ export function computeDashboardMetrics(
   filter?: {
     startDate?: string;
     endDate?: string;
-    selectedOpener?: string;
   },
   attendance?: AttendanceDataset
 ): {
@@ -779,7 +778,7 @@ function buildPeriodicBreakdown(
         ? calculateAgentPresentDays(opener, attendance, agentMappings, entry.startISO, entry.endISO)
         : 0;
 
-      const callsPerPresentDay = presentDays > 0 ? Number((raw.calls / presentDays).toFixed(1)) : raw.calls;
+      const callsPerPresentDay = presentDays > 0 ? Number((raw.calls / presentDays).toFixed(1)) : 0;
       totPresentDays += presentDays;
 
       agentList.push({
@@ -810,7 +809,7 @@ function buildPeriodicBreakdown(
     const totConnectionRate = totCalls > 0 ? totAnswered / totCalls : 0;
     const totShowRate = totMeetings > 0 ? totAttended / totMeetings : 0;
     const totCloseRate = totMeetings > 0 ? totOnboarded / totMeetings : 0;
-    const totCallsPerPresentDay = totPresentDays > 0 ? Number((totCalls / totPresentDays).toFixed(1)) : totCalls;
+    const totCallsPerPresentDay = totPresentDays > 0 ? Number((totCalls / totPresentDays).toFixed(1)) : 0;
 
     result.push({
       periodKey: entry.key,

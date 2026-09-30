@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { CallRecord, MeetingRecord, AgentMapping } from '../types/dashboard';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://tyideivywfxxvqbfdxag.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 export function getSupabaseAdmin() {
   try {
@@ -19,6 +19,15 @@ export function getSupabaseAdmin() {
     console.warn('Failed to initialize Supabase client:', err);
     return null;
   }
+}
+
+async function requireSuccess<T extends { error: { message: string } | null }>(
+  operation: PromiseLike<T>,
+  label: string,
+): Promise<T> {
+  const result = await operation;
+  if (result.error) throw new Error(`${label}: ${result.error.message}`);
+  return result;
 }
 
 /**
@@ -43,19 +52,19 @@ export async function saveRawDataToSupabase(data: {
         opener: m.opener,
         updated_at: timestamp,
       }));
-      await supabase.from('agent_mappings').upsert(mappingsRows, { onConflict: 'agent' });
+      await requireSuccess(supabase.from('agent_mappings').upsert(mappingsRows, { onConflict: 'agent' }), 'Saving agent mappings failed');
     }
 
     // 2. Sync Tracker Counts in metadata table
-    await supabase.from('metadata').upsert({
+    await requireSuccess(supabase.from('metadata').upsert({
       key: 'tracker_counts',
       value: data.trackerCounts,
       updated_at: timestamp,
-    }, { onConflict: 'key' });
+    }, { onConflict: 'key' }), 'Saving tracker counts failed');
 
     // 3. Sync Meetings
     if (data.meetings.length > 0) {
-      await supabase.from('meetings').delete().neq('id', 0);
+      await requireSuccess(supabase.from('meetings').delete().not('id', 'is', null), 'Clearing meetings failed');
       const meetingsRows = data.meetings.map((m) => ({
         stage: m.stage,
         opener: m.opener,
@@ -67,12 +76,12 @@ export async function saveRawDataToSupabase(data: {
       const CHUNK_SIZE = 500;
       for (let i = 0; i < meetingsRows.length; i += CHUNK_SIZE) {
         const chunk = meetingsRows.slice(i, i + CHUNK_SIZE);
-        await supabase.from('meetings').insert(chunk);
+        await requireSuccess(supabase.from('meetings').insert(chunk), 'Writing meetings failed');
       }
     }
 
     // 4. Sync Calls
-    await supabase.from('calls').delete().neq('id', 0);
+    await requireSuccess(supabase.from('calls').delete().not('call_id', 'is', null), 'Clearing calls failed');
     if (data.calls.length > 0) {
       const callsRows = data.calls.map((c, idx) => ({
         call_id: c.callId || `call_${idx}`,
@@ -97,12 +106,12 @@ export async function saveRawDataToSupabase(data: {
       const CHUNK_SIZE = 1000;
       for (let i = 0; i < callsRows.length; i += CHUNK_SIZE) {
         const chunk = callsRows.slice(i, i + CHUNK_SIZE);
-        await supabase.from('calls').upsert(chunk, { onConflict: 'call_id' });
+        await requireSuccess(supabase.from('calls').upsert(chunk, { onConflict: 'call_id' }), 'Writing calls failed');
       }
     }
 
     // 5. Update sync metadata
-    await supabase.from('metadata').upsert({
+    await requireSuccess(supabase.from('metadata').upsert({
       key: 'sync_status',
       value: {
         lastSynced: timestamp,
@@ -110,7 +119,7 @@ export async function saveRawDataToSupabase(data: {
         totalMeetings: data.meetings.length,
       },
       updated_at: timestamp,
-    }, { onConflict: 'key' });
+    }, { onConflict: 'key' }), 'Saving sync status failed');
 
     return {
       callsCount: data.calls.length,
@@ -119,7 +128,7 @@ export async function saveRawDataToSupabase(data: {
     };
   } catch (err) {
     console.warn('Error saving data to Supabase:', err);
-    return null;
+    throw err;
   }
 }
 
@@ -166,6 +175,9 @@ export async function getRawDataFromSupabase(): Promise<{
         meetingsQuery,
       ]);
 
+      if (mappingsRes.error) throw new Error(`Loading agent mappings failed: ${mappingsRes.error.message}`);
+      if (meetingsRes.error) throw new Error(`Loading meetings failed: ${meetingsRes.error.message}`);
+
       const agentMappings: AgentMapping[] = (mappingsRes.data || []).map((m) => ({
         agent: m.agent,
         opener: m.opener,
@@ -194,7 +206,8 @@ export async function getRawDataFromSupabase(): Promise<{
         const { data: callsPage, error } = await callsQuery
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-        if (error || !callsPage || callsPage.length === 0) {
+        if (error) throw new Error(`Loading calls failed: ${error.message}`);
+        if (!callsPage || callsPage.length === 0) {
           hasMore = false;
           break;
         }

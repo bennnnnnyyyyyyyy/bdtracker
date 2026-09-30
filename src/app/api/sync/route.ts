@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return process.env.NODE_ENV !== 'production';
+  if (!secret) return false;
   return request.headers.get('authorization') === `Bearer ${secret}`;
 }
 
@@ -18,12 +18,18 @@ async function sync(request: NextRequest) {
 
   try {
     const rawData = await getDashboardRawData();
+    if (rawData.calls.length === 0 && rawData.meetings.length === 0) {
+      return NextResponse.json({ success: false, error: 'Sync refused: the source returned no calls and no meetings.' }, { status: 422 });
+    }
     const supabaseResult = await saveRawDataToSupabase({
       calls: rawData.calls,
       meetings: rawData.meetings,
       trackerCounts: rawData.trackerCounts,
       agentMappings: rawData.agentMappings,
     });
+    if (!supabaseResult) {
+      return NextResponse.json({ success: false, error: 'Supabase is not configured with a service-role key.' }, { status: 503 });
+    }
     return NextResponse.json({ success: true, message: 'Successfully synced source data to Supabase', supabase: supabaseResult });
   } catch (error: unknown) {
     console.error('Error in /api/sync:', error);

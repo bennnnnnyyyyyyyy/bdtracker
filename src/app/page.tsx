@@ -195,7 +195,7 @@ export default function DashboardPage() {
       <Header
         filters={filters}
         onFilterChange={handleFilterChange}
-        openers={data?.openers || []}
+        openers={data?.availableOpeners || []}
         onRefresh={() => fetchData(true)}
         onOpenImportModal={() => setImportModalOpen(true)}
         onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
@@ -234,7 +234,7 @@ export default function DashboardPage() {
         {data && (
           <>
             <KpiGrid totals={data.totals} />
-            <ExecutiveInsights funnel={data.funnel} openers={data.openers} weeklyBreakdown={data.weeklyBreakdown} />
+            <ExecutiveInsights funnel={data.funnel} openers={data.openers} benchmarkOpeners={data.availableOpeners} weeklyBreakdown={data.weeklyBreakdown} />
 
             <div
               role="tablist"
@@ -264,6 +264,7 @@ export default function DashboardPage() {
             {activeTab === 'agents' && (
               <AgentDashboardView
                 openers={data.openers}
+                teamBenchmarks={data.teamBenchmarks}
                 filters={filters}
               />
             )}

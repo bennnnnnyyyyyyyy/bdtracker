@@ -7,7 +7,28 @@ import { DashboardResponse, DataSourceInfo } from '@/types/dashboard';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
 import { AttendanceDataset } from '@/lib/attendance';
 
+function isAuthorized(request: NextRequest): boolean {
+  if (process.env.NODE_ENV !== 'production') return true;
+  const user = process.env.DASHBOARD_AUTH_USER;
+  const password = process.env.DASHBOARD_AUTH_PASSWORD;
+  if (!user || !password) return false;
+  const header = request.headers.get('authorization');
+  if (!header?.startsWith('Basic ')) return false;
+  try {
+    const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+    return decoded === `${user}:${password}`;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json(
+      { error: 'Dashboard authentication is required.' },
+      { status: process.env.NODE_ENV === 'production' ? 401 : 500, headers: { 'WWW-Authenticate': 'Basic realm="BD Tracker"' } }
+    );
+  }
   try {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate') || undefined;
@@ -61,7 +82,7 @@ export async function GET(request: NextRequest) {
         rawData.meetings,
         rawData.trackerCounts,
         rawData.agentMappings,
-        { startDate, endDate, selectedOpener },
+        { startDate, endDate },
         attendanceData || rawData.attendance
       );
 
@@ -71,6 +92,14 @@ export async function GET(request: NextRequest) {
 
     const response: DashboardResponse = {
       openers: responseOpeners,
+      availableOpeners: openers,
+      teamBenchmarks: {
+        connectionRate: totals.connectionRate,
+        bookingRate: totals.bookingRate,
+        showRate: totals.showRate,
+        closeRate: totals.closeRate,
+        callsPerPresentDay: totals.callsPerPresentDay,
+      },
       totals,
       funnel,
       calls: filteredCalls,

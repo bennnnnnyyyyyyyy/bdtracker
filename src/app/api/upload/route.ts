@@ -7,7 +7,24 @@ import { CONFIG } from '@/lib/config';
 export const runtime = 'nodejs';
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 
+function isAuthorized(request: NextRequest): boolean {
+  if (process.env.NODE_ENV !== 'production') return true;
+  const user = process.env.DASHBOARD_AUTH_USER;
+  const password = process.env.DASHBOARD_AUTH_PASSWORD;
+  if (!user || !password) return false;
+  const header = request.headers.get('authorization');
+  if (!header?.startsWith('Basic ')) return false;
+  try {
+    return Buffer.from(header.slice(6), 'base64').toString('utf8') === `${user}:${password}`;
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Dashboard authentication is required.' }, { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="BD Tracker"' } });
+  }
   if (process.env.VERCEL) {
     return NextResponse.json({ error: 'Spreadsheet upload is available only in the local dashboard until durable storage and manager authentication are configured.' }, { status: 501 });
   }

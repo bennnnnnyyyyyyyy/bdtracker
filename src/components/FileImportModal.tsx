@@ -143,6 +143,15 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Choose an Excel workbook to upload"
             className={`cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-all flex flex-col items-center justify-center gap-2 ${
               dragOver
                 ? 'border-[#e8c56a] bg-[#1a1608]/50'
@@ -168,13 +177,15 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
           </div>
 
           {/* Status Message */}
-          {statusMessage && (
+            {statusMessage && (
             <div
               className={`p-3 rounded-xl flex items-center gap-2.5 text-xs ${
                 statusMessage.type === 'success'
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                   : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
               }`}
+              role={statusMessage.type === 'error' ? 'alert' : 'status'}
+              aria-live="polite"
             >
               {statusMessage.type === 'success' ? (
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
