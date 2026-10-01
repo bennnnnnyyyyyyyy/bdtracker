@@ -3,10 +3,10 @@
 ## Environment Setup Status (2026-10-01)
 
 - **Google Cloud CLI:** authenticated as `ben.arthur.wiz@gmail.com`; active project is `bd-tracker-auth-2026` (`BD Tracker Auth`, project number `682900500567`).
-- **Supabase CLI:** authenticated and able to see the existing project `tyideivywfxxvqbfdxag` (`judy.collins.wiz@gmail.com's Project`, region `eu-west-3`). This is the project currently referenced by the app, not a new project.
-- **Local Supabase link:** not configured (`supabase link` has not been run in this repository).
-- **Decision:** use the new GCP project and a new Supabase project for this auth rollout. Do not run the schema or OAuth setup against the old Supabase project.
-- **Current blocker:** the new Supabase account has not been logged into the CLI yet; the visible organization is still the old account's organization.
+- **Supabase CLI:** authenticated as the owner of organization `awjabidnhwqepsklbovx` and linked to project `tyideivywfxxvqbfdxag` (`judy.collins.wiz@gmail.com's Project`, region `eu-west-3`). This is the intended project for this rollout.
+- **Hosted Supabase project:** active and healthy; the existing `agent_mappings`, `calls`, `meetings`, `metadata`, and `user_profiles` tables are present.
+- **Local Supabase status:** linked successfully. `supabase status` may still report a Docker/Podman warning because local emulation is not installed; hosted operations do not require Docker.
+- **Decision:** use this existing Supabase project with the new GCP project. Do not create a second Supabase project or modify the old data tables destructively.
 
 ## New Cloud Project Checklist
 
@@ -24,8 +24,8 @@
 # The new GCP project is already created and selected.
 gcloud config set project bd-tracker-auth-2026
 
-# Run after logging into the new Supabase account and creating its project.
-supabase link --project-ref NEW_SUPABASE_PROJECT_REF
+# The intended Supabase project is already linked.
+supabase link --project-ref tyideivywfxxvqbfdxag
 ```
 
 After linking, verify the target before applying anything:
@@ -38,20 +38,20 @@ supabase status
 The Google OAuth redirect URI will be:
 
 ```text
-https://NEW_SUPABASE_PROJECT_REF.supabase.co/auth/v1/callback
+https://tyideivywfxxvqbfdxag.supabase.co/auth/v1/callback
 ```
 
 Use that URI in the Google OAuth client, then paste the Google client ID and secret into the new Supabase project's Google provider settings.
 
 ## Goal
 
-Replace the current HTTP Basic Auth middleware with **Supabase Google OAuth** login.  
+Replace the current HTTP Basic Auth middleware with **Supabase Google OAuth** login.
 After login, the app shows one of two experiences based on the user's role:
 
-| Role | Who | What they see |
-|------|-----|---------------|
-| **Admin** | ben.arthur.wiz@gmail.com, mike.woods.wiz@gmail.com | Full existing dashboard + **Admin menu** (Import Excel, Sync, manage user→agent mappings) |
-| **Agent (User)** | All other approved Google accounts | Their own KPIs only — calls, bookings, connection rate, etc. No other agents visible |
+| Role             | Who                                                | What they see                                                                            |
+| ---------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Admin**        | ben.arthur.wiz@gmail.com, mike.woods.wiz@gmail.com | Full existing dashboard +**Admin menu** (Import Excel, Sync, manage user→agent mappings) |
+| **Agent (User)** | All other approved Google accounts                 | Their own KPIs only — calls, bookings, connection rate, etc. No other agents visible     |
 
 ---
 
@@ -62,8 +62,9 @@ After login, the app shows one of two experiences based on the user's role:
 
 > [!IMPORTANT]
 > **New env vars needed** in `.env.local` (and in Vercel's project settings):
-> - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — already present ✓  
-> - `NEXT_PUBLIC_SUPABASE_URL` — already present ✓  
+>
+> - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — already present ✓
+> - `NEXT_PUBLIC_SUPABASE_URL` — already present ✓
 > - No new server-side vars needed (the anon key + Supabase Auth handles everything)
 
 > [!WARNING]
@@ -92,6 +93,7 @@ Browser
 ```
 
 Auth flow:
+
 1. User hits any page → middleware checks for Supabase session cookie
 2. No session → redirect to `/login`
 3. Login page → Supabase `signInWithOAuth({ provider: 'google' })`
@@ -139,12 +141,12 @@ CREATE POLICY "Service role full access"
 #### [MODIFY] `src/lib/auth.ts` [NEW FILE]
 
 ```ts
-import { createBrowserClient } from '@supabase/ssr';
+import { createBrowserClient } from "@supabase/ssr";
 
 // Admin emails — hardcoded for simplicity
 export const ADMIN_EMAILS = [
-  'ben.arthur.wiz@gmail.com',
-  'mike.woods.wiz@gmail.com',
+  "ben.arthur.wiz@gmail.com",
+  "mike.woods.wiz@gmail.com",
 ];
 
 export function isAdmin(email: string | undefined | null): boolean {
@@ -155,12 +157,13 @@ export function isAdmin(email: string | undefined | null): boolean {
 export function createSupabaseBrowserClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
 }
 ```
 
 #### [MODIFY] `src/lib/supabase-server.ts` [NEW FILE]
+
 Server-side Supabase client using `@supabase/ssr` cookies helper (for middleware + Server Components).
 
 ---
@@ -172,14 +175,14 @@ Server-side Supabase client using `@supabase/ssr` cookies helper (for middleware
 Replace the Basic Auth check with a Supabase session check:
 
 ```ts
-import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Always allow login page and auth callback
-  if (pathname.startsWith('/login') || pathname.startsWith('/auth/callback')) {
+  if (pathname.startsWith("/login") || pathname.startsWith("/auth/callback")) {
     return NextResponse.next();
   }
 
@@ -188,20 +191,26 @@ export async function middleware(request: NextRequest) {
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { /* read from request, write to response */ } }
+    {
+      cookies: {
+        /* read from request, write to response */
+      },
+    },
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   return response;
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
 ```
 
@@ -210,50 +219,62 @@ export const config = {
 ### 4. New pages & components
 
 #### [NEW] `src/app/login/page.tsx`
+
 A full-screen login page matching the existing dark aesthetic:
+
 - "BD Manager Dashboard" branding
 - "Sign in with Google" button → calls `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: '/auth/callback' } })`
 
 #### [NEW] `src/app/auth/callback/route.ts`
+
 OAuth callback handler — exchanges the code for a session and redirects to `/`.
 
 ```ts
-import { createServerClient } from '@supabase/ssr';
-import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from "@supabase/ssr";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
-  const code = request.nextUrl.searchParams.get('code');
+  const code = request.nextUrl.searchParams.get("code");
   if (code) {
     // exchange code for session
     await supabase.auth.exchangeCodeForSession(code);
   }
-  return NextResponse.redirect(new URL('/', request.url));
+  return NextResponse.redirect(new URL("/", request.url));
 }
 ```
 
 #### [MODIFY] `src/app/page.tsx`
+
 Add role-check at the top. After data loads:
+
 - If `isAdmin(user.email)` → render existing full dashboard (no changes to the existing view code)
 - Else → render `<AgentSelfView openerName={profile.opener_name} />`
 
 #### [NEW] `src/components/AgentSelfView.tsx`
+
 Shows only the logged-in agent's stats. Reuses existing `AgentDashboardView` with a single agent filtered. Displays:
+
 - Their personal KPI cards (calls, booked, connection rate, close rate)
 - Their personal call logs
 - A "Hello, [Name]" greeting with their Google avatar + sign-out button
 
 #### [MODIFY] `src/components/Header.tsx`
-Add a **user avatar + sign-out button** in the top-right corner (for both admin and agent views).  
+
+Add a **user avatar + sign-out button** in the top-right corner (for both admin and agent views).
 For admins, also show an **"Admin" badge** that opens the Admin drawer.
 
 #### [NEW] `src/components/AdminMenu.tsx`
+
 A slide-in drawer accessible from the Header. Contains:
-- **Import Excel** (existing `FileImportModal` trigger)  
-- **Sync to Sheets** (existing sync button)  
+
+- **Import Excel** (existing `FileImportModal` trigger)
+- **Sync to Sheets** (existing sync button)
 - **User Mappings** → opens `UserMappingsPanel`
 
 #### [NEW] `src/components/UserMappingsPanel.tsx`
+
 Admin-only panel (inside AdminMenu) that lets admins:
+
 - See all rows in `user_profiles`
 - Add new row: email + opener_name dropdown (from `availableOpeners`)
 - Edit opener_name for existing rows
@@ -262,7 +283,9 @@ Admin-only panel (inside AdminMenu) that lets admins:
 Talks to a new API route: `/api/admin/users`.
 
 #### [NEW] `src/app/api/admin/users/route.ts`
+
 Server-side CRUD for `user_profiles`:
+
 - `GET` → list all profiles (admin only, verified server-side)
 - `POST` → create/update a mapping
 - `DELETE` → remove a mapping
@@ -282,6 +305,7 @@ The `@supabase/ssr` package replaces the deprecated `@supabase/auth-helpers-next
 ## Verification Plan
 
 ### Step 1: Supabase Setup (manual, ~10 min)
+
 1. Go to [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Authentication → Providers**
 2. Enable **Google** provider
 3. You'll get a **Supabase Redirect URI** (e.g. `https://tyideivywfxxvqbfdxag.supabase.co/auth/v1/callback`)
@@ -291,12 +315,15 @@ The `@supabase/ssr` package replaces the deprecated `@supabase/auth-helpers-next
 7. Also add your local dev URL: `http://localhost:3000/auth/callback` as an authorized origin in Google Console
 
 ### Step 2: Run SQL
+
 Run `supabase_schema_users.sql` in Supabase SQL Editor.
 
 ### Automated Tests
+
 None automated (this is UI auth flow) — manual verification steps below.
 
 ### Manual Verification
+
 1. Open `http://localhost:3000` → should redirect to `/login`
 2. Click "Sign in with Google" → Google OAuth → returns to app
 3. **As admin (ben.arthur.wiz@gmail.com)**: full dashboard visible, Admin menu accessible, User Mappings panel works
