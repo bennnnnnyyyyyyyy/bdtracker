@@ -6,29 +6,34 @@ import { CONFIG } from '@/lib/config';
 import { DashboardResponse, DataSourceInfo } from '@/types/dashboard';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
 import { AttendanceDataset } from '@/lib/attendance';
+import { getAccessContext, getAuthenticatedUser } from '@/lib/auth-server';
+import { resolveOpener } from '@/lib/analytics';
 
-function isAuthorized(request: NextRequest): boolean {
-  if (process.env.NODE_ENV !== 'production') return true;
-  const user = process.env.DASHBOARD_AUTH_USER;
-  const password = process.env.DASHBOARD_AUTH_PASSWORD;
-  if (!user || !password) return false;
-  const header = request.headers.get('authorization');
-  if (!header?.startsWith('Basic ')) return false;
-  try {
-    const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
-    return decoded === `${user}:${password}`;
-  } catch {
-    return false;
-  }
+function restrictToAgent(rawData: RawDashboardDataset, openerName: string): RawDashboardDataset {
+  const target = openerName.trim().toLowerCase();
+  const matches = (value: string | undefined | null) => Boolean(value && value.trim().toLowerCase() === target);
+  const mappedOpeners = rawData.agentMappings.filter((mapping) => matches(mapping.opener));
+  const calls = rawData.calls.filter((call) => matches(resolveOpener(call.opener || call.agent, rawData.agentMappings)));
+  const meetings = rawData.meetings.filter((meeting) => matches(meeting.opener));
+  const trackerCounts = Object.fromEntries(Object.entries(rawData.trackerCounts).filter(([key]) => matches(key)));
+  const agentDaily = Object.fromEntries(Object.entries(rawData.attendance.agentDaily).filter(([key]) => matches(key)));
+  const agentMonthly = Object.fromEntries(Object.entries(rawData.attendance.agentMonthly).filter(([key]) => matches(key)));
+
+  return {
+    ...rawData,
+    calls,
+    meetings,
+    trackerCounts,
+    agentMappings: mappedOpeners,
+    attendance: { agentDaily, agentMonthly },
+  };
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json(
-      { error: 'Dashboard authentication is required.' },
-      { status: process.env.NODE_ENV === 'production' ? 401 : 500, headers: { 'WWW-Authenticate': 'Basic realm="BD Tracker"' } }
-    );
-  }
+  const user = await getAuthenticatedUser(request);
+  if (!user) return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+  const access = await getAccessContext(request);
+  if (!access) return NextResponse.json({ error: 'This account is not approved.' }, { status: 403 });
   try {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate') || undefined;
@@ -75,6 +80,10 @@ export async function GET(request: NextRequest) {
       throw new Error('Failed to retrieve dashboard data');
     }
 
+    if (!access.viewer.isAdmin) {
+      rawData = restrictToAgent(rawData, access.viewer.openerName!);
+    }
+
     // 3. Compute metrics with attendance-aware present days logic
     const { openers, totals, funnel, filteredCalls, filteredMeetings, dailyBreakdown, weeklyBreakdown, monthlyBreakdown } =
       computeDashboardMetrics(
@@ -112,6 +121,7 @@ export async function GET(request: NextRequest) {
       monthlyBreakdown,
       isMockData: rawData.isMockData,
       dataSourceInfo: currentDataSourceInfo,
+      viewer: access.viewer,
     };
 
     return NextResponse.json(response, {

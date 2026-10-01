@@ -169,6 +169,14 @@ export interface DashboardResponse {
   monthlyBreakdown: PeriodicGroupSummary[];
   isMockData?: boolean;
   dataSourceInfo?: DataSourceInfo;
+  viewer?: {
+    email: string;
+    displayName: string;
+    avatarUrl: string;
+    role: 'admin' | 'agent';
+    openerName: string | null;
+    isAdmin: boolean;
+  };
   error?: string;
 }
 

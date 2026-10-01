@@ -148,6 +148,10 @@ export default function DashboardPage() {
 
       const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
       if (!res.ok) {
+        if (res.status === 403) {
+          window.location.assign('/access-denied');
+          return;
+        }
         let errDetail = res.statusText;
         try {
           const errBody = await res.json();
@@ -203,6 +207,7 @@ export default function DashboardPage() {
         lastUpdated={data?.lastUpdated || ''}
         isMockData={data?.isMockData}
         dataSourceInfo={data?.dataSourceInfo}
+        viewer={data?.viewer}
       />
 
       <FileImportModal

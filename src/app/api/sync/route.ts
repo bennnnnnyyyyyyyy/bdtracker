@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData } from '@/lib/sheets';
 import { saveRawDataToSupabase } from '@/lib/supabase';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
+import { getAccessContext } from '@/lib/auth-server';
 
 export const runtime = 'nodejs';
 
@@ -12,7 +13,9 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 async function sync(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  const cronAuthorized = isAuthorized(request);
+  const access = cronAuthorized ? null : await getAccessContext(request);
+  if (!cronAuthorized && !access?.viewer.isAdmin) {
     return NextResponse.json({ success: false, error: 'Unauthorized sync request' }, { status: 401 });
   }
 

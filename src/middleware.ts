@@ -1,24 +1,35 @@
+import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
 
-export function middleware(request: NextRequest) {
-  if (process.env.NODE_ENV !== 'production') return NextResponse.next();
+function copyCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => to.cookies.set(cookie));
+  return to;
+}
 
-  const user = process.env.DASHBOARD_AUTH_USER;
-  const password = process.env.DASHBOARD_AUTH_PASSWORD;
-  const header = request.headers.get('authorization');
-  const isAuthorized = Boolean(user && password && header?.startsWith('Basic ') && (() => {
-    try {
-      return Buffer.from(header.slice(6), 'base64').toString('utf8') === `${user}:${password}`;
-    } catch {
-      return false;
-    }
-  })());
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith('/login') || pathname.startsWith('/auth/callback')) {
+    return NextResponse.next();
+  }
 
-  if (isAuthorized) return NextResponse.next();
-  return new NextResponse('Dashboard authentication is required.', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="BD Tracker"' },
-  });
+  const response = NextResponse.next({ request });
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookies) => cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options)),
+      },
+    },
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return copyCookies(response, NextResponse.redirect(new URL('/login', request.url)));
+  }
+
+  return response;
 }
 
 export const config = {

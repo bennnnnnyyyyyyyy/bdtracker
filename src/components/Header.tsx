@@ -1,8 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Calendar, ChevronDown, FileSpreadsheet, PhoneCall, RefreshCw, Upload, User, X } from 'lucide-react';
+import { Calendar, ChevronDown, FileSpreadsheet, LogOut, PhoneCall, RefreshCw, Upload, User, X } from 'lucide-react';
 import { DataSourceInfo, FilterState, OpenerStats } from '@/types/dashboard';
+import { Viewer, createSupabaseBrowserClient } from '@/lib/auth';
+import { AdminUsersPanel } from './AdminUsersPanel';
 
 interface HeaderProps {
   filters: FilterState;
@@ -15,6 +17,7 @@ interface HeaderProps {
   lastUpdated: string;
   isMockData?: boolean;
   dataSourceInfo?: DataSourceInfo;
+  viewer?: Viewer;
 }
 
 type Preset = FilterState['preset'];
@@ -31,7 +34,7 @@ const PRESETS: PresetOption[] = [
   { label: 'Last 30 days', value: 'last_30_days', getRange: () => { const end = new Date(); const start = new Date(end); start.setDate(end.getDate() - 29); return { startDate: formatLocalDateYMD(start), endDate: formatLocalDateYMD(end) }; } },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, loading, lastUpdated, isMockData, dataSourceInfo }) => {
+export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, loading, lastUpdated, isMockData, dataSourceInfo, viewer }) => {
   const updatedAt = lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   const sourceLabel = isMockData ? 'Demo data' : dataSourceInfo?.source === 'supabase' ? 'Cached data' : 'Live data';
   const clearFilters = () => onFilterChange({ selectedOpener: 'ALL', preset: 'this_week' });
@@ -49,7 +52,8 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {(onExportXlsx || onOpenImportModal) && (
+            {viewer?.isAdmin && <AdminUsersPanel />}
+            {viewer?.isAdmin && (onExportXlsx || onOpenImportModal) && (
               <details className="relative">
                 <summary className="list-none flex items-center gap-1.5 min-h-9 px-3 rounded-lg text-xs font-semibold cursor-pointer border border-white/10 text-text-primary"><ChevronDown className="w-3.5 h-3.5" />Actions</summary>
                 <div className="absolute right-0 top-11 z-40 w-44 rounded-lg bg-card border border-white/10 shadow-xl p-1.5">
@@ -58,6 +62,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
                 </div>
               </details>
             )}
+            {viewer && <div className="flex items-center gap-2 border-l border-white/10 pl-2" title={viewer.email}><div className="hidden max-w-32 truncate text-xs text-text-dim sm:block">{viewer.displayName}</div>{viewer.avatarUrl ? <img src={viewer.avatarUrl} alt="" className="h-7 w-7 rounded-full" /> : <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gold-dim text-xs font-bold text-gold">{viewer.displayName.slice(0, 1).toUpperCase()}</div>}<button onClick={async () => { await createSupabaseBrowserClient().auth.signOut(); window.location.assign('/login'); }} aria-label="Sign out" className="text-text-dim hover:text-white"><LogOut className="h-4 w-4" /></button></div>}
             <button onClick={onRefresh} disabled={loading} aria-label="Refresh dashboard data" className="min-h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-gold-dim border border-gold-border text-gold-light disabled:opacity-40">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Refreshing' : 'Refresh'}
             </button>
@@ -68,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
           <div className="flex gap-0.5 p-1 rounded-lg bg-white/4 border border-white/7 overflow-x-auto max-w-full">
             {PRESETS.map((preset) => <button key={preset.value} onClick={() => { const range = preset.getRange(); onFilterChange({ ...range, preset: preset.value }); }} className={`min-h-8 px-3 rounded-md text-xs font-semibold whitespace-nowrap ${filters.preset === preset.value ? 'bg-white text-black' : 'text-text-dim'}`}>{preset.label}</button>)}
           </div>
-          <label className="flex items-center gap-2 min-h-9 px-2.5 rounded-lg text-xs bg-white/4 border border-white/7"><User className="w-3.5 h-3.5 text-text-dim" /><span className="sr-only">Filter by agent</span><select value={filters.selectedOpener} onChange={(event) => onFilterChange({ selectedOpener: event.target.value })} className="bg-transparent text-text-muted font-num focus:outline-none"><option value="ALL" className="bg-base">All agents</option>{openers.map((opener) => <option key={opener.opener} value={opener.opener} className="bg-base">{opener.opener}</option>)}</select></label>
+          {viewer?.isAdmin && <label className="flex items-center gap-2 min-h-9 px-2.5 rounded-lg text-xs bg-white/4 border border-white/7"><User className="w-3.5 h-3.5 text-text-dim" /><span className="sr-only">Filter by agent</span><select value={filters.selectedOpener} onChange={(event) => onFilterChange({ selectedOpener: event.target.value })} className="bg-transparent text-text-muted font-num focus:outline-none"><option value="ALL" className="bg-base">All agents</option>{openers.map((opener) => <option key={opener.opener} value={opener.opener} className="bg-base">{opener.opener}</option>)}</select></label>}
           <div className="flex items-center gap-2 min-h-9 px-2.5 rounded-lg bg-white/4 border border-white/7"><Calendar className="w-3.5 h-3.5 text-text-dim" /><label className="sr-only" htmlFor="start-date">Start date</label><input id="start-date" type="date" value={filters.startDate} onChange={(event) => onFilterChange({ startDate: event.target.value, preset: 'custom' })} className="bg-transparent text-text-muted text-xs font-num focus:outline-none" /><span className="text-text-faint text-xs">to</span><label className="sr-only" htmlFor="end-date">End date</label><input id="end-date" type="date" value={filters.endDate} onChange={(event) => onFilterChange({ endDate: event.target.value, preset: 'custom' })} className="bg-transparent text-text-muted text-xs font-num focus:outline-none" /></div>
           {filters.selectedOpener !== 'ALL' && <button onClick={clearFilters} className="min-h-9 px-2 text-xs text-text-dim hover:text-text-primary flex items-center gap-1"><X className="w-3.5 h-3.5" />Clear agent</button>}
         </div>
