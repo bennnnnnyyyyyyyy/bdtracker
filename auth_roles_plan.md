@@ -5,6 +5,7 @@
 - **Google Cloud CLI:** authenticated as `ben.arthur.wiz@gmail.com`; active project is `bd-tracker-auth-2026` (`BD Tracker Auth`, project number `682900500567`).
 - **Supabase CLI:** authenticated as the owner of organization `awjabidnhwqepsklbovx` and linked to project `tyideivywfxxvqbfdxag` (`judy.collins.wiz@gmail.com's Project`, region `eu-west-3`). This is the intended project for this rollout.
 - **Hosted Supabase project:** active and healthy; the existing `agent_mappings`, `calls`, `meetings`, `metadata`, and `user_profiles` tables are present.
+- **Google OAuth client:** created in `bd-tracker-auth-2026`; the downloaded client JSON matches the Supabase callback URI. Its secret must be entered only in Supabase and must not be committed.
 - **Local Supabase status:** linked successfully. `supabase status` may still report a Docker/Podman warning because local emulation is not installed; hosted operations do not require Docker.
 - **Decision:** use this existing Supabase project with the new GCP project. Do not create a second Supabase project or modify the old data tables destructively.
 

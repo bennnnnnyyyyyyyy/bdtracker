@@ -40,6 +40,7 @@ next-env.d.ts
 # auth & credentials
 auth/token.json
 credentials.json
+client_secret_*.json
 # google2.json
 google2.json
 # agents
