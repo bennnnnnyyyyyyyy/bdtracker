@@ -1,5 +1,48 @@
 # Google Auth + Admin/User Role System
 
+## Environment Setup Status (2026-10-01)
+
+- **Google Cloud CLI:** authenticated as `ben.arthur.wiz@gmail.com`; active project is `bd-tracker-auth-2026` (`BD Tracker Auth`, project number `682900500567`).
+- **Supabase CLI:** authenticated and able to see the existing project `tyideivywfxxvqbfdxag` (`judy.collins.wiz@gmail.com's Project`, region `eu-west-3`). This is the project currently referenced by the app, not a new project.
+- **Local Supabase link:** not configured (`supabase link` has not been run in this repository).
+- **Decision:** use the new GCP project and a new Supabase project for this auth rollout. Do not run the schema or OAuth setup against the old Supabase project.
+- **Current blocker:** the new Supabase account has not been logged into the CLI yet; the visible organization is still the old account's organization.
+
+## New Cloud Project Checklist
+
+### You need to have open
+
+1. **Google Cloud Console:** the new project selected, with its project ID recorded.
+2. **Google Cloud OAuth consent screen:** app name, support email, and developer contact email ready.
+3. **Google Cloud OAuth client:** Web application client creation page ready; the client ID and secret will be copied into Supabase.
+4. **Supabase Dashboard:** the new project open at **Authentication → Providers → Google**.
+5. **This repository:** `.env.local` available for the new Supabase URL and anon key. Keep the service-role key private and do not commit it.
+
+### CLI steps after the projects exist
+
+```powershell
+# The new GCP project is already created and selected.
+gcloud config set project bd-tracker-auth-2026
+
+# Run after logging into the new Supabase account and creating its project.
+supabase link --project-ref NEW_SUPABASE_PROJECT_REF
+```
+
+After linking, verify the target before applying anything:
+
+```powershell
+supabase projects list
+supabase status
+```
+
+The Google OAuth redirect URI will be:
+
+```text
+https://NEW_SUPABASE_PROJECT_REF.supabase.co/auth/v1/callback
+```
+
+Use that URI in the Google OAuth client, then paste the Google client ID and secret into the new Supabase project's Google provider settings.
+
 ## Goal
 
 Replace the current HTTP Basic Auth middleware with **Supabase Google OAuth** login.  
