@@ -49,6 +49,24 @@ CREATE TABLE IF NOT EXISTS public.metadata (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 5. Google-authenticated dashboard users and their dashboard roles.
+-- The following ALTER statements also make this safe to run on older projects.
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  opener_name TEXT,
+  role TEXT NOT NULL DEFAULT 'agent' CHECK (role IN ('admin', 'agent')),
+  display_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS opener_name TEXT;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'agent';
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS display_name TEXT;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_profiles_email_lower ON public.user_profiles (LOWER(email));
+
 -- 5. Indexes for fast queries
 CREATE INDEX IF NOT EXISTS idx_calls_opener ON public.calls (opener);
 CREATE INDEX IF NOT EXISTS idx_calls_date ON public.calls (call_date);
@@ -61,6 +79,7 @@ ALTER TABLE public.agent_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meetings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.calls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.metadata ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
@@ -75,5 +94,11 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'metadata' AND policyname = 'Service role full access') THEN
     CREATE POLICY "Service role full access" ON public.metadata FOR ALL TO service_role USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_profiles' AND policyname = 'Users can read own profile') THEN
+    CREATE POLICY "Users can read own profile" ON public.user_profiles FOR SELECT TO authenticated USING (LOWER(email) = LOWER(auth.jwt() ->> 'email'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_profiles' AND policyname = 'Service role full access') THEN
+    CREATE POLICY "Service role full access" ON public.user_profiles FOR ALL TO service_role USING (true) WITH CHECK (true);
   END IF;
 END $$;

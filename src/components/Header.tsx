@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {viewer?.isAdmin && <AdminUsersPanel />}
+            {viewer?.isAdmin && <AdminUsersPanel openers={openers.map((opener) => opener.opener)} />}
             {viewer?.isAdmin && (onExportXlsx || onOpenImportModal) && (
               <details className="relative">
                 <summary className="list-none flex items-center gap-1.5 min-h-9 px-3 rounded-lg text-xs font-semibold cursor-pointer border border-white/10 text-text-primary"><ChevronDown className="w-3.5 h-3.5" />Actions</summary>

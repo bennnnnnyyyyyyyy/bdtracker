@@ -34,7 +34,7 @@ export async function getAccessContext(request: NextRequest): Promise<AccessCont
   if (!user?.email) return null;
 
   const email = user.email.trim().toLowerCase();
-  const admin = isAdminEmail(email);
+  const bootstrapAdmin = isAdminEmail(email);
   let profile: UserProfile | null = null;
 
   const adminClient = getSupabaseAdmin();
@@ -47,6 +47,9 @@ export async function getAccessContext(request: NextRequest): Promise<AccessCont
     profile = data as UserProfile | null;
   }
 
+  // Bootstrap admins retain access even if the profile table is temporarily unavailable.
+  // Additional admins are managed in user_profiles by an existing administrator.
+  const admin = bootstrapAdmin || profile?.role === 'admin';
   if (!admin && (!profile || profile.role !== 'agent' || !profile.opener_name)) return null;
 
   const metadata = user.user_metadata || {};
