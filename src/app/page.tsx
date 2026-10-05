@@ -1,17 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { Header } from '@/components/Header';
 import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
 import { CallLogsView } from '@/components/CallLogsView';
 import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
-import { ExecutiveInsights } from '@/components/ExecutiveInsights';
 import { FileImportModal } from '@/components/FileImportModal';
-import { exportDashboardAnalyticsXlsx } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse } from '@/types/dashboard';
 import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3 } from 'lucide-react';
+
+const ExecutiveInsights = dynamic(
+  () => import('@/components/ExecutiveInsights').then((module) => module.ExecutiveInsights),
+  { loading: () => <div className="card min-h-72 animate-pulse" aria-label="Loading executive insights" /> },
+);
 
 type ActiveTab = 'agents' | 'periods' | 'table' | 'calls';
 
@@ -113,6 +117,7 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('agents');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
+  const requestController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -135,6 +140,9 @@ export default function DashboardPage() {
   }, [filters, activeTab, hasHydrated]);
 
   const fetchData = useCallback(async (forceRefresh = false) => {
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     setLoading(true);
 
     try {
@@ -146,7 +154,7 @@ export default function DashboardPage() {
       }
       if (forceRefresh) params.set('refresh', 'true');
 
-      const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
+      const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store', signal: controller.signal });
       if (!res.ok) {
         if (res.status === 403) {
           window.location.assign('/access-denied');
@@ -163,13 +171,15 @@ export default function DashboardPage() {
       }
 
       const json: DashboardResponse = await res.json();
+      if (controller.signal.aborted) return;
       setData(json);
       setError(null);
     } catch (err: unknown) {
+      if (controller.signal.aborted) return;
       console.error('Error fetching dashboard:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
     } finally {
-      setLoading(false);
+      if (requestController.current === controller) setLoading(false);
     }
   }, [filters.startDate, filters.endDate, filters.selectedOpener]);
 
@@ -179,7 +189,10 @@ export default function DashboardPage() {
       fetchData();
     });
 
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      requestController.current?.abort();
+    };
   }, [fetchData, hasHydrated]);
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
@@ -188,6 +201,12 @@ export default function DashboardPage() {
 
   const handleTabChange = (tab: ActiveTab) => {
     setActiveTab(tab);
+  };
+
+  const handleExportXlsx = async () => {
+    if (!data) return;
+    const { exportDashboardAnalyticsXlsx } = await import('@/lib/exportXlsx');
+    exportDashboardAnalyticsXlsx(data, filters);
   };
 
   if (!hasHydrated || (loading && !data)) {
@@ -202,7 +221,7 @@ export default function DashboardPage() {
         openers={data?.availableOpeners || []}
         onRefresh={() => fetchData(true)}
         onOpenImportModal={() => setImportModalOpen(true)}
-        onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
+        onExportXlsx={data ? handleExportXlsx : undefined}
         loading={loading}
         lastUpdated={data?.lastUpdated || ''}
         isMockData={data?.isMockData}
@@ -253,7 +272,7 @@ export default function DashboardPage() {
                   role="tab"
                   aria-selected={activeTab === tab.id}
                   onClick={() => handleTabChange(tab.id)}
-                  className="pb-3 pt-1 px-4 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap"
+                  className="min-h-11 pb-3 pt-1 px-4 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap"
                   style={
                     activeTab === tab.id
                       ? { borderColor: '#c9a84c', color: '#e8c56a', fontWeight: 600 }

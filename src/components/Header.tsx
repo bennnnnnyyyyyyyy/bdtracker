@@ -42,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
   return (
     <header className="sticky top-0 z-30 border-b border-white/7 bg-base/95 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 bg-gold-dim border border-gold-border"><PhoneCall className="w-4 h-4 text-gold" /></div>
             <div className="min-w-0">
@@ -51,19 +51,19 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:shrink-0">
             {viewer?.isAdmin && <AdminUsersPanel openers={openers.map((opener) => opener.opener)} />}
             {viewer?.isAdmin && (onExportXlsx || onOpenImportModal) && (
               <details className="relative">
-                <summary className="list-none flex items-center gap-1.5 min-h-9 px-3 rounded-lg text-xs font-semibold cursor-pointer border border-white/10 text-text-primary"><ChevronDown className="w-3.5 h-3.5" />Actions</summary>
+                <summary className="list-none flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-xs font-semibold cursor-pointer border border-white/10 text-text-primary"><ChevronDown className="w-3.5 h-3.5" />Actions</summary>
                 <div className="absolute right-0 top-11 z-40 w-44 rounded-lg bg-card border border-white/10 shadow-xl p-1.5">
                   {onExportXlsx && <button onClick={onExportXlsx} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><FileSpreadsheet className="w-3.5 h-3.5 text-success" />Export XLSX</button>}
                   {onOpenImportModal && <button onClick={onOpenImportModal} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><Upload className="w-3.5 h-3.5 text-gold-light" />Import Excel</button>}
                 </div>
               </details>
             )}
-            {viewer && <div className="flex items-center gap-2 border-l border-white/10 pl-2" title={viewer.email}><div className="hidden max-w-32 truncate text-xs text-text-dim sm:block">{viewer.displayName}</div>{viewer.avatarUrl ? <img src={viewer.avatarUrl} alt="" className="h-7 w-7 rounded-full" /> : <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gold-dim text-xs font-bold text-gold">{viewer.displayName.slice(0, 1).toUpperCase()}</div>}<button onClick={async () => { await createSupabaseBrowserClient().auth.signOut(); window.location.assign('/login'); }} aria-label="Sign out" className="text-text-dim hover:text-white"><LogOut className="h-4 w-4" /></button></div>}
-            <button onClick={onRefresh} disabled={loading} aria-label="Refresh dashboard data" className="min-h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-gold-dim border border-gold-border text-gold-light disabled:opacity-40">
+            {viewer && <div className="flex items-center gap-2 border-l border-white/10 pl-2" title={viewer.email}><div className="hidden max-w-32 truncate text-xs text-text-dim sm:block">{viewer.displayName}</div>{viewer.avatarUrl ? <img src={viewer.avatarUrl} alt="" width={28} height={28} loading="lazy" className="h-7 w-7 rounded-full" /> : <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gold-dim text-xs font-bold text-gold">{viewer.displayName.slice(0, 1).toUpperCase()}</div>}<button onClick={async () => { await createSupabaseBrowserClient().auth.signOut(); window.location.assign('/login'); }} aria-label="Sign out" className="flex min-h-11 min-w-11 items-center justify-center text-text-dim hover:text-white"><LogOut className="h-4 w-4" /></button></div>}
+            <button onClick={onRefresh} disabled={loading} aria-label="Refresh dashboard data" className="min-h-11 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-gold-dim border border-gold-border text-gold-light disabled:opacity-40">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Refreshing' : 'Refresh'}
             </button>
           </div>
@@ -71,11 +71,11 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
 
         <div aria-label="Dashboard filters" className="flex flex-wrap items-center gap-2">
           <div className="flex gap-0.5 p-1 rounded-lg bg-white/4 border border-white/7 overflow-x-auto max-w-full">
-            {PRESETS.map((preset) => <button key={preset.value} onClick={() => { const range = preset.getRange(); onFilterChange({ ...range, preset: preset.value }); }} className={`min-h-8 px-3 rounded-md text-xs font-semibold whitespace-nowrap ${filters.preset === preset.value ? 'bg-white text-black' : 'text-text-dim'}`}>{preset.label}</button>)}
+            {PRESETS.map((preset) => <button key={preset.value} onClick={() => { const range = preset.getRange(); onFilterChange({ ...range, preset: preset.value }); }} className={`min-h-11 px-3 rounded-md text-xs font-semibold whitespace-nowrap ${filters.preset === preset.value ? 'bg-white text-black' : 'text-text-dim'}`}>{preset.label}</button>)}
           </div>
-          {viewer?.isAdmin && <label className="flex items-center gap-2 min-h-9 px-2.5 rounded-lg text-xs bg-white/4 border border-white/7"><User className="w-3.5 h-3.5 text-text-dim" /><span className="sr-only">Filter by agent</span><select value={filters.selectedOpener} onChange={(event) => onFilterChange({ selectedOpener: event.target.value })} className="bg-transparent text-text-muted font-num focus:outline-none"><option value="ALL" className="bg-base">All agents</option>{openers.map((opener) => <option key={opener.opener} value={opener.opener} className="bg-base">{opener.opener}</option>)}</select></label>}
-          <div className="flex items-center gap-2 min-h-9 px-2.5 rounded-lg bg-white/4 border border-white/7"><Calendar className="w-3.5 h-3.5 text-text-dim" /><label className="sr-only" htmlFor="start-date">Start date</label><input id="start-date" type="date" value={filters.startDate} onChange={(event) => onFilterChange({ startDate: event.target.value, preset: 'custom' })} className="bg-transparent text-text-muted text-xs font-num focus:outline-none" /><span className="text-text-faint text-xs">to</span><label className="sr-only" htmlFor="end-date">End date</label><input id="end-date" type="date" value={filters.endDate} onChange={(event) => onFilterChange({ endDate: event.target.value, preset: 'custom' })} className="bg-transparent text-text-muted text-xs font-num focus:outline-none" /></div>
-          {filters.selectedOpener !== 'ALL' && <button onClick={clearFilters} className="min-h-9 px-2 text-xs text-text-dim hover:text-text-primary flex items-center gap-1"><X className="w-3.5 h-3.5" />Clear agent</button>}
+          {viewer?.isAdmin && <label className="flex items-center gap-2 min-h-11 px-2.5 rounded-lg text-xs bg-white/4 border border-white/7"><User className="w-3.5 h-3.5 text-text-dim" /><span className="sr-only">Filter by agent</span><select value={filters.selectedOpener} onChange={(event) => onFilterChange({ selectedOpener: event.target.value })} className="min-h-11 max-w-44 bg-transparent text-text-muted font-num focus:outline-none"><option value="ALL" className="bg-base">All agents</option>{openers.map((opener) => <option key={opener.opener} value={opener.opener} className="bg-base">{opener.opener}</option>)}</select></label>}
+          <div className="flex w-full flex-wrap items-center gap-2 min-h-11 px-2.5 rounded-lg bg-white/4 border border-white/7 sm:w-auto sm:flex-nowrap"><Calendar className="w-3.5 h-3.5 text-text-dim" /><label className="sr-only" htmlFor="start-date">Start date</label><input id="start-date" type="date" value={filters.startDate} onChange={(event) => onFilterChange({ startDate: event.target.value, preset: 'custom' })} className="min-h-11 min-w-0 bg-transparent text-text-muted text-xs font-num focus:outline-none" /><span className="text-text-faint text-xs">to</span><label className="sr-only" htmlFor="end-date">End date</label><input id="end-date" type="date" value={filters.endDate} onChange={(event) => onFilterChange({ endDate: event.target.value, preset: 'custom' })} className="min-h-11 min-w-0 bg-transparent text-text-muted text-xs font-num focus:outline-none" /></div>
+          {filters.selectedOpener !== 'ALL' && <button onClick={clearFilters} className="min-h-11 px-2 text-xs text-text-dim hover:text-text-primary flex items-center gap-1"><X className="w-3.5 h-3.5" />Clear agent</button>}
         </div>
       </div>
     </header>
