@@ -24,6 +24,11 @@ export const CONFIG = {
     'Temporary Inactive'
   ],
 
+  // A record is treated as attended only after it has progressed beyond the
+  // initial meeting stage. Pending and indeterminate records are excluded from
+  // show-rate calculations instead of being counted as attended by default.
+  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded'],
+
   OPENER_COL: 2, // Column B in each BD_TABS sheet (1-indexed for sheets, 0-indexed column 1)
 
   CALL_LOG_SHEET: 'Call Logs',

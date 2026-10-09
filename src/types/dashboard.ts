@@ -38,14 +38,14 @@ export interface OpenerStats {
   connectionRate: number; // Answer rate (Connection rate)
   totalTalkSec: number;
   avgCallSec: number;
-  booked: number;
+  booked: number; // Current pipeline records (all stages)
   medBCount: number;
   medBRate: number; // Med B percentage: medBCount / booked
   ppoCount: number;
   ppoRate: number; // PPO percentage: ppoCount / booked
   noShow: number;
   attended: number;
-  showRate: number; // Attended / Booked
+  showRate: number; // Attended / (Attended + No-Show); pending records excluded
   onboarded: number;
   closeRate: number; // Onboarded / Booked
   callsPerMeeting: number;
@@ -81,7 +81,7 @@ export interface PeriodicAgentMetrics {
   answered: number;
   noAnswer: number;
   connectionRate: number;
-  meetings: number; // booked in this period
+  meetings: number; // pipeline records created in this period
   noShow: number;
   attended: number;
   showRate: number;

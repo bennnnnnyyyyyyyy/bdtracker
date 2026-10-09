@@ -138,6 +138,30 @@ export function formatPercent(rate: number): string {
 }
 
 /**
+ * Returns attendance outcome metrics from the mutually exclusive current
+ * pipeline stages. Records that are still pending or have an indeterminate
+ * outcome must not be silently counted as attended.
+ */
+function getAttendanceMetrics(stageCounts: Record<string, number>): {
+  attended: number;
+  noShow: number;
+  showRate: number;
+} {
+  const attended = CONFIG.ATTENDED_STAGES.reduce(
+    (sum, stage) => sum + (stageCounts[stage] || 0),
+    0
+  );
+  const noShow = stageCounts['No-Show'] || 0;
+  const completedMeetings = attended + noShow;
+
+  return {
+    attended,
+    noShow,
+    showRate: completedMeetings > 0 ? attended / completedMeetings : 0
+  };
+}
+
+/**
  * Returns ISO week key (e.g., "2026-W33"), readable range label, and boundary ISO strings.
  */
 export function getIsoWeekKey(dateStr: string): { key: string; label: string; startISO: string; endISO: string } {
@@ -298,6 +322,14 @@ export function computeDashboardMetrics(
     });
   }
 
+  const selectedCanonicalOpener = filter?.selectedOpener && filter.selectedOpener !== 'ALL'
+    ? (resolveOpener(filter.selectedOpener, agentMappings) || filter.selectedOpener.trim())
+    : null;
+
+  if (selectedCanonicalOpener) {
+    filteredCalls = filteredCalls.filter(c => c.opener === selectedCanonicalOpener);
+  }
+
   // Normalize and filter meetings
   let filteredMeetings: MeetingRecord[] = [];
   rawMeetings.forEach(m => {
@@ -316,6 +348,10 @@ export function computeDashboardMetrics(
     });
   }
 
+  if (selectedCanonicalOpener) {
+    filteredMeetings = filteredMeetings.filter(m => m.opener === selectedCanonicalOpener);
+  }
+
   // Calculate normalized tracker counts per canonical opener
   const dynamicTrackerCounts: Record<string, Record<string, number>> = {};
   if (isDateFiltered) {
@@ -328,6 +364,7 @@ export function computeDashboardMetrics(
     Object.keys(trackerCounts).forEach(rawOpener => {
       const canonical = resolveOpener(rawOpener, agentMappings);
       if (!canonical || isExcludedAgent(canonical)) return;
+      if (selectedCanonicalOpener && canonical !== selectedCanonicalOpener) return;
       if (!dynamicTrackerCounts[canonical]) dynamicTrackerCounts[canonical] = {};
       
       CONFIG.BD_TABS.forEach(tab => {
@@ -363,7 +400,7 @@ export function computeDashboardMetrics(
   Object.keys(dynamicTrackerCounts).forEach(op => { if (!isExcludedAgent(op)) allOpeners.add(op); });
   agentMappings.forEach(m => {
     const canonical = resolveOpener(m.opener || m.agent, agentMappings);
-    if (canonical && !isExcludedAgent(canonical)) allOpeners.add(canonical);
+    if (canonical && !isExcludedAgent(canonical) && (!selectedCanonicalOpener || canonical === selectedCanonicalOpener)) allOpeners.add(canonical);
   });
 
   // Calculate unique days for fallback and per-agent active days
@@ -442,8 +479,7 @@ export function computeDashboardMetrics(
       booked += count;
     });
 
-    const noShow = tc['No-Show'] || 0;
-    const attended = Math.max(0, booked - noShow);
+    const { noShow, attended, showRate } = getAttendanceMetrics(tc);
     const onboarded = tc['Onboarded'] || 0;
 
     const medBCount = openerMedBCounts[op] || 0;
@@ -454,7 +490,6 @@ export function computeDashboardMetrics(
     const answerRate = s.calls > 0 ? s.answered / s.calls : 0;
     const connectionRate = answerRate;
     const avgCallSec = s.calls > 0 ? Math.round(s.totalSec / s.calls) : 0;
-    const showRate = booked > 0 ? attended / booked : 0;
     const closeRate = booked > 0 ? onboarded / booked : 0;
     const callsPerMeeting = booked > 0 ? Number((s.calls / booked).toFixed(1)) : 0;
 
@@ -664,6 +699,7 @@ function buildPeriodicBreakdown(
       noAnswer: number;
       meetings: number;
       noShow: number;
+      attended: number;
       onboarded: number;
     }>;
   }>();
@@ -686,7 +722,7 @@ function buildPeriodicBreakdown(
     const p = periodMap.get(period.key)!;
     const opener = c.opener || 'Unmapped';
     if (!p.agentStats[opener]) {
-      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, onboarded: 0 };
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0 };
     }
     const a = p.agentStats[opener];
     a.calls++;
@@ -714,11 +750,12 @@ function buildPeriodicBreakdown(
     const p = periodMap.get(period.key)!;
     const opener = m.opener || 'Unmapped';
     if (!p.agentStats[opener]) {
-      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, onboarded: 0 };
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0 };
     }
     const a = p.agentStats[opener];
     a.meetings++;
     if (m.stage === 'No-Show') a.noShow++;
+    if (CONFIG.ATTENDED_STAGES.includes(m.stage)) a.attended++;
     if (m.stage === 'Onboarded') a.onboarded++;
   });
 
@@ -740,7 +777,7 @@ function buildPeriodicBreakdown(
     const agentList: PeriodicAgentMetrics[] = [];
 
     allOpeners.forEach(opener => {
-      const raw = entry.agentStats[opener] || { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, onboarded: 0 };
+      const raw = entry.agentStats[opener] || { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0 };
       if (raw.calls === 0 && raw.meetings === 0) return;
 
       totCalls += raw.calls;
@@ -750,9 +787,10 @@ function buildPeriodicBreakdown(
       totNoShow += raw.noShow;
       totOnboarded += raw.onboarded;
 
-      const attended = Math.max(0, raw.meetings - raw.noShow);
+      const attended = raw.attended;
       const connectionRate = raw.calls > 0 ? raw.answered / raw.calls : 0;
-      const showRate = raw.meetings > 0 ? attended / raw.meetings : 0;
+      const completedMeetings = attended + raw.noShow;
+      const showRate = completedMeetings > 0 ? attended / completedMeetings : 0;
       const closeRate = raw.meetings > 0 ? raw.onboarded / raw.meetings : 0;
       const callsPerMeeting = raw.meetings > 0 ? Number((raw.calls / raw.meetings).toFixed(1)) : 0;
 
@@ -787,9 +825,10 @@ function buildPeriodicBreakdown(
 
     agentList.sort((a, b) => b.meetings - a.meetings || b.calls - a.calls);
 
-    const totAttended = Math.max(0, totMeetings - totNoShow);
+    const totAttended = agentList.reduce((sum, agent) => sum + agent.attended, 0);
     const totConnectionRate = totCalls > 0 ? totAnswered / totCalls : 0;
-    const totShowRate = totMeetings > 0 ? totAttended / totMeetings : 0;
+    const completedMeetings = totAttended + totNoShow;
+    const totShowRate = completedMeetings > 0 ? totAttended / completedMeetings : 0;
     const totCloseRate = totMeetings > 0 ? totOnboarded / totMeetings : 0;
     const totCallsPerPresentDay = totPresentDays > 0 ? Number((totCalls / totPresentDays).toFixed(1)) : totCalls;
 

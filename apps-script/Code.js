@@ -28,6 +28,10 @@ const CONFIG = {
     'Temporary Inactive'
   ],
 
+  // Show rate is based only on completed attendance outcomes. Pending and
+  // indeterminate pipeline stages are intentionally excluded.
+  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded'],
+
   CALL_LOG_SHEET: 'Call Logs',
   STAGING_SHEET: 'Import Staging',
   MAPPING_SHEET: 'Agent Mapping',
@@ -579,8 +583,9 @@ function refreshDashboard() {
     const bdCols = CONFIG.BD_TABS.map(t => tc[t] ?? 0);
     const booked = CONFIG.BD_TABS.reduce((sum, t) => sum + (tc[t] ?? 0), 0);
     const noShow = tc['No-Show'] ?? 0;
-    const attended = Math.max(0, booked - noShow);
-    const showRate = booked > 0 ? attended / booked : 0;
+    const attended = CONFIG.ATTENDED_STAGES.reduce((sum, stage) => sum + (tc[stage] ?? 0), 0);
+    const completedMeetings = attended + noShow;
+    const showRate = completedMeetings > 0 ? attended / completedMeetings : 0;
     const onboarded = tc['Onboarded'] ?? 0;
     const closeRate = booked > 0 ? onboarded / booked : 0;
     const callsPerMeeting = booked > 0 ? Number((s.calls / booked).toFixed(1)) : 0;
