@@ -5,6 +5,7 @@ import * as xlsx from 'xlsx';
 import { CONFIG, isExcludedAgent } from './config';
 import { CallRecord, AgentMapping, MeetingRecord, DataSourceInfo } from '../types/dashboard';
 import { parseAgentName, durationToSeconds, parseDateToISO } from './analytics';
+import { dedupeAndRedateCalls } from './callKeys';
 import { AttendanceDataset, parseAttendanceRows } from './attendance';
 import { parseUltatelDeptRows, deptSummariesToCallRecords } from './ultatel';
 
@@ -59,6 +60,7 @@ function getSheetsClient() {
 export async function fetchCallDashboardData(): Promise<{
   calls: CallRecord[];
   agentMappings: AgentMapping[];
+  duplicatesRemoved: number;
 }> {
   const sheets = getSheetsClient();
   if (!sheets) throw new Error('Google Sheets API credentials not configured');
@@ -118,7 +120,10 @@ export async function fetchCallDashboardData(): Promise<{
     })
     .filter(c => !isExcludedAgent(c.agent));
 
-  return { calls, agentMappings };
+  // The sheet can contain the same call twice (e.g. one copy with a raw export clock). Count each call once
+  // and date it from its Call ID timestamp in Cairo time.
+  const cleaned = dedupeAndRedateCalls(calls);
+  return { calls: cleaned.calls, agentMappings, duplicatesRemoved: cleaned.duplicatesRemoved };
 }
 
 /**
@@ -301,7 +306,7 @@ async function loadDashboardRawData(): Promise<RawDashboardDataset> {
       fetchCallDashboardData().catch((err) => {
         console.warn('[Google Sheets] Call logs fetch failed:', err.message);
         failedSources.push('call logs');
-        return { calls: [], agentMappings: [] };
+        return { calls: [], agentMappings: [], duplicatesRemoved: 0 };
       }),
       fetchBDTrackerData().catch((err) => {
         console.warn('[Google Sheets] BD Tracker fetch failed:', err.message);
@@ -332,6 +337,9 @@ async function loadDashboardRawData(): Promise<RawDashboardDataset> {
       attendanceSource: attendanceResult.source,
       callsSource,
       notes: [
+        callData.duplicatesRemoved > 0
+          ? `Call Logs contains ${callData.duplicatesRemoved} duplicate call row(s); they are ignored here. Run "Repair duplicate calls" from the BD Call Dashboard menu in the sheet to remove them.`
+          : '',
         callsSource === 'ultatel_dept_report'
           ? 'Calls come from the Ultatel department summary report, which has no per-call dates: every call is dated today and date filters do not apply.'
           : '',

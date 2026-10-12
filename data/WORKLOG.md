@@ -77,6 +77,10 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Live updates: 30 s polling while the tab is visible, 30 s server cache, header shows when the data was actually read.
 - New `data/SETUP_USERS_AND_CONFIRMATIONS.md`.
 
+### 12. Duplicate Calls
+- Duplicates came from the same calls being in `Call Logs` twice: one copy on the raw export clock (seconds lost, not converted) and one converted to Cairo time. The old import compared only the exact Call ID text, which can differ in precision.
+- Calls are now identified and dated from the Call ID timestamp in the sheet import, in the sheet repair menu (`Preview duplicate-call repair`, `Repair duplicate calls`, `Fix call times`) and in the web app (which ignores duplicate rows and shows a banner).
+
 ---
 
 ## Documentation Manifest in `data/`

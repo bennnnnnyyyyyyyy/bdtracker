@@ -92,7 +92,9 @@ function onOpen() {
     .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
-    .addItem('Convert Call Dates to Cairo', 'convertAllCallLogDatesToCairo')
+    .addItem('Preview duplicate-call repair', 'previewCallLogRepair')
+    .addItem('Repair duplicate calls', 'repairCallLogs')
+    .addItem('Fix call times (from Call ID)', 'convertAllCallLogDatesToCairo')
     .addItem('Debug BD Connection & Tabs', 'debugBDConnection')
     .addToUi();
 }
@@ -202,22 +204,12 @@ function processStagingImport() {
 
   const rawRows = staging.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length).getValues();
 
-  // Cache existing call IDs and compound keys for deduplication
+  // Identity keys of every call already in Call Logs (see callKey_).
   const existingLastRow = callLog.getLastRow();
-  const existingIds = new Set();
-  const existingCompoundKeys = new Set();
-
+  const existingKeys = new Set();
   if (existingLastRow > 1) {
-    const existingData = callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length).getValues();
-    existingData.forEach(r => {
-      const id = String(r[1] ?? '').trim().toLowerCase();
-      if (id) {
-        existingIds.add(id);
-      }
-      // Compound key fallback: Date|From|To|Duration|Extension
-      const compoundKey = `${String(r[0] ?? '').trim()}|${String(r[2] ?? '').trim()}|${String(r[3] ?? '').trim()}|${String(r[10] ?? '').trim()}|${String(r[4] ?? '').trim()}`.toLowerCase();
-      existingCompoundKeys.add(compoundKey);
-    });
+    callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length).getValues()
+      .forEach(r => existingKeys.add(callKey_(r)));
   }
 
   // Cache known mapped agents
@@ -235,26 +227,20 @@ function processStagingImport() {
   let duplicateCount = 0;
 
   rawRows.forEach(r => {
-    // Convert the UTC-6 export clock before dedupe and before storing the call.
-    r[0] = toCairoDate_(r[0]);
+    // The Call ID's timestamp is exact; use it for the Cairo time. Only fall back to converting the
+    // export's UTC-6 clock when the ID has no timestamp.
+    const epoch = callEpoch_(r[1]);
+    r[0] = epoch !== null ? cairoFromEpoch_(epoch) : toCairoDate_(r[0]);
     const callDate = String(r[0] ?? '').trim();
     const callId = String(r[1] ?? '').trim();
     const fromNum = String(r[2] ?? '').trim();
     const toNum = String(r[3] ?? '').trim();
-    const extension = String(r[4] ?? '').trim();
-    const duration = String(r[10] ?? '').trim();
 
     // Skip empty rows
     if (!callDate && !callId && !fromNum && !toNum) return;
 
-    const normalizedId = callId.toLowerCase();
-    const compoundKey = `${callDate}|${fromNum}|${toNum}|${duration}|${extension}`.toLowerCase();
-
-    // Check duplicate by Call ID or compound key
-    const isDuplicate = (normalizedId && existingIds.has(normalizedId)) ||
-                        (!normalizedId && existingCompoundKeys.has(compoundKey));
-
-    if (isDuplicate) {
+    const key = callKey_(r);
+    if (existingKeys.has(key)) {
       duplicateCount++;
       return;
     }
@@ -270,8 +256,7 @@ function processStagingImport() {
     toAppend.push([...r, agent, durationSec]);
 
     // Prevent intra-batch duplicates
-    if (normalizedId) existingIds.add(normalizedId);
-    existingCompoundKeys.add(compoundKey);
+    existingKeys.add(key);
   });
 
   // Batch insert new call rows
@@ -305,6 +290,39 @@ function processStagingImport() {
   SpreadsheetApp.getUi().alert(message);
 
   refreshDashboard();
+}
+
+/**
+ * Ultatel Call IDs look like "1791808392.170981": the part before the dot is the call's start time in
+ * Unix seconds. Returns that number, or null when the ID has no usable timestamp.
+ * @param {unknown} callId
+ * @returns {number|null}
+ */
+function callEpoch_(callId) {
+  const m = String(callId ?? '').trim().match(/^(\d{9,10})(?:\.\d+)?$/);
+  if (!m) return null;
+  const epoch = Number(m[1]);
+  return epoch >= 1400000000 && epoch <= 4100000000 ? epoch : null;
+}
+
+/** Exact Cairo time (DST aware) of a Unix timestamp, in the same text format the Call Logs use. */
+function cairoFromEpoch_(epochSeconds) {
+  return Utilities.formatDate(new Date(epochSeconds * 1000), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+}
+
+/**
+ * Identity of a call row (columns A-M). The same call copied twice has the same key even if one copy
+ * has a rounded clock, a different time zone or a shortened ID.
+ * @param {unknown[]} r
+ * @returns {string}
+ */
+function callKey_(r) {
+  const norm = v => String(v ?? '').trim().toLowerCase();
+  const epoch = callEpoch_(r[1]);
+  if (epoch !== null) return `e|${epoch}|${norm(r[2])}|${norm(r[3])}|${norm(r[4])}`;
+  const id = norm(r[1]);
+  if (id) return `i|${id}`;
+  return `c|${norm(r[0])}|${norm(r[2])}|${norm(r[3])}|${norm(r[10])}|${norm(r[4])}`;
 }
 
 /**
@@ -363,16 +381,127 @@ function backfillCallLogFields() {
   SpreadsheetApp.getUi().alert(`Successfully backfilled ${data.length} call rows.`);
 }
 
-/** Converts all existing Call Logs timestamps from fixed UTC-6 to Cairo time. */
+/**
+ * Re-dates Call Logs rows from their Call ID timestamp (exact Cairo time). Safe to run repeatedly.
+ * Rows whose ID has no timestamp are left untouched (they are never converted twice).
+ */
 function convertAllCallLogDatesToCairo() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
   if (!callLog || callLog.getLastRow() < 2) return;
 
-  const values = callLog.getRange(2, 1, callLog.getLastRow() - 1, 1).getValues();
-  values.forEach(row => { row[0] = toCairoDate_(row[0]); });
-  callLog.getRange(2, 1, values.length, 1).setValues(values);
-  SpreadsheetApp.getUi().alert(`Converted ${values.length} call date(s) to Cairo time.`);
+  const values = callLog.getRange(2, 1, callLog.getLastRow() - 1, 2).getValues();
+  let changed = 0;
+  values.forEach(row => {
+    const epoch = callEpoch_(row[1]);
+    if (epoch === null) return;
+    const exact = cairoFromEpoch_(epoch);
+    if (String(row[0]) !== exact) changed++;
+    row[0] = exact;
+  });
+  callLog.getRange(2, 1, values.length, 1).setValues(values.map(r => [r[0]]));
+  SpreadsheetApp.getUi().alert(`Call dates now come from each Call ID's timestamp (Cairo time). ${changed} row(s) were changed.`);
+}
+
+// ==========================================
+// DUPLICATE CALL REPAIR
+// ==========================================
+
+/**
+ * Builds the repaired Call Logs without writing anything.
+ * - One row per call (see callKey_); empty cells of the kept row are filled from its duplicates.
+ * - Rows whose Call ID has a timestamp get their exact Cairo time (fixes rounded / unconverted clocks).
+ * @returns {{rows: unknown[][], original: number, duplicates: number, redated: number}|null}
+ */
+function buildRepairedCallLog_() {
+  const callLog = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.CALL_LOG_SHEET);
+  if (!callLog || callLog.getLastRow() < 2) return null;
+
+  const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
+  const data = callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols).getValues();
+  const byKey = new Map();
+  const order = [];
+  let duplicates = 0;
+
+  data.forEach(row => {
+    if (row.every(c => c === '' || c === null)) return;
+    const key = callKey_(row);
+    const kept = byKey.get(key);
+    if (!kept) {
+      byKey.set(key, row.slice());
+      order.push(key);
+      return;
+    }
+    duplicates++;
+    row.forEach((cell, i) => {
+      if ((kept[i] === '' || kept[i] === null) && cell !== '' && cell !== null) kept[i] = cell;
+    });
+  });
+
+  let redated = 0;
+  const rows = order.map(key => {
+    const row = byKey.get(key);
+    const epoch = callEpoch_(row[1]);
+    if (epoch !== null) {
+      const exact = cairoFromEpoch_(epoch);
+      if (String(row[0]) !== exact) redated++;
+      row[0] = exact;
+    }
+    if (row[13] === '' || row[13] === null) row[13] = parseAgentName_(String(row[4] ?? ''));
+    if (row[14] === '' || row[14] === null) row[14] = durationToSeconds_(row[10]);
+    return row;
+  });
+
+  return { rows, original: data.length, duplicates, redated };
+}
+
+/** Shows what "Repair duplicate calls" would do, without changing anything. */
+function previewCallLogRepair() {
+  const plan = buildRepairedCallLog_();
+  if (!plan) {
+    SpreadsheetApp.getUi().alert('Call Logs is empty.');
+    return;
+  }
+  SpreadsheetApp.getUi().alert(
+    `Preview (nothing was changed):\n\n• ${plan.original} rows in Call Logs now\n• ${plan.duplicates} duplicate row(s) would be removed\n• ${plan.redated} row(s) would get their exact Cairo time from the Call ID\n• ${plan.rows.length} rows would remain`
+  );
+}
+
+/**
+ * Removes duplicate calls from Call Logs and fixes call times. A full copy of the sheet is saved first
+ * ("Call Logs backup ...") so everything can be restored.
+ */
+function repairCallLogs() {
+  const ui = SpreadsheetApp.getUi();
+  const plan = buildRepairedCallLog_();
+  if (!plan) {
+    ui.alert('Call Logs is empty.');
+    return;
+  }
+  if (plan.duplicates === 0 && plan.redated === 0) {
+    ui.alert('Nothing to repair: no duplicate calls and every call time is already exact.');
+    return;
+  }
+  const answer = ui.alert(
+    'Repair Call Logs?',
+    `This will remove ${plan.duplicates} duplicate row(s) and correct ${plan.redated} call time(s), leaving ${plan.rows.length} rows.\n\nA backup copy of the sheet is saved first.`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (answer !== ui.Button.OK) return;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
+  const stamp = Utilities.formatDate(new Date(), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HHmm');
+  const backup = callLog.copyTo(ss).setName(`Call Logs backup ${stamp}`);
+  backup.hideSheet();
+
+  const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
+  const lastRow = callLog.getLastRow();
+  callLog.getRange(2, 1, lastRow - 1, numCols).clearContent();
+  callLog.getRange(2, 1, plan.rows.length, numCols).setValues(plan.rows);
+
+  ui.alert(`Done. ${plan.duplicates} duplicate row(s) removed, ${plan.redated} call time(s) corrected.\n\nBackup saved as a hidden sheet named "${backup.getName()}" (right-click any tab > Show hidden sheets).`);
+  refreshDashboard();
 }
 
 /**
