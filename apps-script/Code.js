@@ -90,6 +90,9 @@ function onOpen() {
     .addItem('2. Process Staged Call Import', 'processStagingImport')
     .addItem('3. Refresh BD Dashboard', 'refreshDashboard')
     .addSeparator()
+    .addItem('Audit Call Logs for Duplicates', 'auditCallLogs')
+    .addItem('Clean Duplicate Call Logs', 'deduplicateCallLogs')
+    .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
     .addItem('Convert Call Dates to Cairo', 'convertAllCallLogDatesToCairo')
@@ -210,12 +213,19 @@ function processStagingImport() {
   if (existingLastRow > 1) {
     const existingData = callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length).getValues();
     existingData.forEach(r => {
-      const id = String(r[1] ?? '').trim().toLowerCase();
-      if (id) {
-        existingIds.add(id);
-      }
-      // Compound key fallback: Date|From|To|Duration|Extension
-      const compoundKey = `${String(r[0] ?? '').trim()}|${String(r[2] ?? '').trim()}|${String(r[3] ?? '').trim()}|${String(r[10] ?? '').trim()}|${String(r[4] ?? '').trim()}`.toLowerCase();
+      const rawId = r[1];
+      const exactId = String(rawId ?? '').trim().toLowerCase();
+      const normId = normalizeCallId_(rawId);
+      if (exactId) existingIds.add(exactId);
+      if (normId) existingIds.add(normId);
+
+      // Normalized compound key fallback: Minute|From|To|DurationSec|Agent
+      const minKey = toMinuteKey_(r[0]);
+      const fromNum = cleanPhone_(r[2]);
+      const toNum = cleanPhone_(r[3]);
+      const durSec = durationToSeconds_(r[10]);
+      const agent = parseAgentName_(r[4]).toLowerCase();
+      const compoundKey = `${minKey}|${fromNum}|${toNum}|${durSec}|${agent}`;
       existingCompoundKeys.add(compoundKey);
     });
   }
@@ -238,29 +248,30 @@ function processStagingImport() {
     // Convert the UTC-6 export clock before dedupe and before storing the call.
     r[0] = toCairoDate_(r[0]);
     const callDate = String(r[0] ?? '').trim();
-    const callId = String(r[1] ?? '').trim();
-    const fromNum = String(r[2] ?? '').trim();
-    const toNum = String(r[3] ?? '').trim();
+    const rawCallId = r[1];
+    const exactId = String(rawCallId ?? '').trim().toLowerCase();
+    const normalizedId = normalizeCallId_(rawCallId);
+    const fromNum = cleanPhone_(r[2]);
+    const toNum = cleanPhone_(r[3]);
     const extension = String(r[4] ?? '').trim();
-    const duration = String(r[10] ?? '').trim();
+    const agent = parseAgentName_(extension);
+    const durationSec = durationToSeconds_(r[10]);
 
     // Skip empty rows
-    if (!callDate && !callId && !fromNum && !toNum) return;
+    if (!callDate && !rawCallId && !fromNum && !toNum) return;
 
-    const normalizedId = callId.toLowerCase();
-    const compoundKey = `${callDate}|${fromNum}|${toNum}|${duration}|${extension}`.toLowerCase();
+    const minKey = toMinuteKey_(r[0]);
+    const compoundKey = `${minKey}|${fromNum}|${toNum}|${durationSec}|${agent.toLowerCase()}`;
 
-    // Check duplicate by Call ID or compound key
-    const isDuplicate = (normalizedId && existingIds.has(normalizedId)) ||
-                        (!normalizedId && existingCompoundKeys.has(compoundKey));
+    // Check duplicate by Call ID (exact or base normalized integer) or compound key
+    const isDuplicate = (exactId && existingIds.has(exactId)) ||
+                        (normalizedId && existingIds.has(normalizedId)) ||
+                        (!exactId && !normalizedId && existingCompoundKeys.has(compoundKey));
 
     if (isDuplicate) {
       duplicateCount++;
       return;
     }
-
-    const agent = parseAgentName_(extension);
-    const durationSec = durationToSeconds_(r[10]);
 
     if (agent && !isExcludedAgent_(agent) && !knownAgents.has(agent)) {
       newAgents.add(agent);
@@ -270,6 +281,7 @@ function processStagingImport() {
     toAppend.push([...r, agent, durationSec]);
 
     // Prevent intra-batch duplicates
+    if (exactId) existingIds.add(exactId);
     if (normalizedId) existingIds.add(normalizedId);
     existingCompoundKeys.add(compoundKey);
   });
