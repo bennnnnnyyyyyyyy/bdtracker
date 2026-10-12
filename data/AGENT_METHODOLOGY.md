@@ -21,7 +21,7 @@ Without a canonical resolver, the system would treat `"Ben"`, `"Ben Arthur"`, an
 
 ## 2. Canonical Resolution Rules
 
-Every raw entity passes through the **Canonical Opener Resolver** ([`src/lib/analytics.ts`](file:///c:/Users/ben.arthur/Desktop/bd%20tracker/src/lib/analytics.ts)):
+Every raw entity passes through the **Canonical Opener Resolver** ([`src/lib/analytics.ts`](../src/lib/analytics.ts)):
 
 ```mermaid
 flowchart TD
@@ -41,7 +41,7 @@ flowchart TD
 ### Resolution Steps:
 
 1. **Excluded Agent Check**:
-   - Matches against `['russ', 'george', 'caroline', 'caroline richards']` case-insensitively (including prefixes/suffixes).
+   - Matches against `['russ', 'george', 'caroline', 'caroline richards']` (`CONFIG.EXCLUDED_AGENTS`) case-insensitively, by equality, `startsWith` or `endsWith` (so e.g. `Georgette` is also excluded).
    - If matched, the record is immediately dropped.
 
 2. **System & Non-Agent Filtering**:
@@ -51,17 +51,24 @@ flowchart TD
 3. **Direct Table Matching**:
    - Checks the `Agent Mapping` sheet (`Call Log Agent Name` $\leftrightarrow$ `Opener Name`).
    - Example: `"Kaity James"` $\to$ `"Jane"`, `"Ben Arthur"` $\to$ `"Ben"`.
+   - The same resolver is used for call agents, tracker openers and Attendance-tab names (`attendance.ts`), which also falls back to a first-name `startsWith` match.
 
 4. **First-Name & Prefix Fallback**:
-   - Matches `"Ben Arthur"` or `"Ben A."` to `"Ben"`.
+   - Matches `"Ben Arthur"` or `"Ben A."` to `"Ben"` (first word equals a known opener name, or a mapped agent name *starts with* that first word).
    - Matches `"Selene Myles"` to `"Selene"`.
+   - Caveat: this is a plain `startsWith`, so a short first name can match a longer unrelated one (e.g. `Ben` → `Benjamin`).
 
-5. **Deduplication & Consolidation**:
+5. **Last-resort Fallback**:
+   - Any remaining string made only of letters, spaces, dots and hyphens is accepted as-is as a new opener. Unmapped people therefore appear on the dashboard under their raw name instead of being dropped; add them to the Agent Mapping tab to merge them.
+
+6. **Deduplication & Consolidation**:
    - All call logs and meetings mapped to the same canonical Opener are aggregated together into a single, unified row.
 
 ---
 
 ## 3. Active Agent Mapping Table
+
+Illustrative — the Google Sheet `Agent Mapping` tab is the source of truth.
 
 | PBX Call Log Agent Name | Canonical Opener Name |
 | :--- | :--- |
@@ -80,4 +87,4 @@ flowchart TD
    - Open the **Agent Mapping** tab in your Call Dashboard sheet.
    - Add a new row with column A (PBX name) and column B (Opener name).
 2. **In Code (Offline / Fallback)**:
-   - Update `agentMappings` array in [`src/lib/sheets.ts`](file:///c:/Users/ben.arthur/Desktop/bd%20tracker/src/lib/sheets.ts).
+   - There is no hard-coded mapping array. Mappings come only from the `Agent Mapping` tab (or the Supabase `agent_mappings` snapshot when the live pull fails). To change excluded agents, edit `EXCLUDED_AGENTS` in [`src/lib/config.ts`](../src/lib/config.ts) (and `CONFIG.EXCLUDED_AGENTS` in `apps-script/Code.js`).

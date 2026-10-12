@@ -1,62 +1,119 @@
 # BD Call & Pipeline Performance Dashboard — Technical Overview
 
-A real-time business development analytics engine and dashboard connecting **Ultatel PBX Call Logs** with **Google Sheets BD Tracker** pipelines.
+A business development analytics dashboard (Next.js 16 / React 19 / Tailwind 4 / Recharts) that joins **Ultatel PBX call data**, the **Google Sheets BD Meetings Tracker**, and the **BD French attendance workbook** into per-opener performance metrics.
 
 ---
 
 ## 1. Core Purpose
 
-The dashboard answers four key questions for every active sales/BD agent across **Daily**, **Weekly**, and **Monthly** intervals:
+For every active opener (BD agent), over a chosen date range, the dashboard reports:
 
-1. **Calls Volume**: Total Calls Made (Outbound vs. Inbound, Answered vs. No Answer).
-2. **Connection Rate**: $\% \text{ of calls answered}$.
-3. **Meetings Booked**: Total meetings scheduled across all 8 pipeline stages.
-4. **Show Rate & Closing Rate**:
-   - **Show Rate**: $\frac{\text{Attended Meetings}}{\text{Meetings Booked}} \times 100\%$ (where $\text{Attended} = \text{Booked} - \text{No-Show}$).
-   - **Closing Rate**: $\frac{\text{Onboarded}}{\text{Meetings Booked}} \times 100\%$.
+| Metric | Definition (as implemented in `src/lib/analytics.ts`) |
+| :--- | :--- |
+| **Calls** | Outbound + Inbound call records (`type` = `OUT-Bound` / `IN-Bound`, exact match). |
+| **Connection rate** | `answered / calls` (`outcome === 'ANSWERED'`). `answerRate` is identical. |
+| **Meetings booked** | Sum of rows across all 8 tracker stage tabs in the range. |
+| **Attended** | Rows currently in `ATTENDED_STAGES` = Follow Ups, Contract Sent, Invoice Sent, Onboarded. |
+| **No-show** | Rows in the `No-Show` tab. |
+| **Show rate (per opener, per period)** | `attended / (attended + noShow)`. Meetings still in *New Meetings*, *Dead Leads* or *Temporary Inactive* are **not** counted as attended. |
+| **Show rate (org total, KPI card)** | `attended / booked` — see "Known inconsistencies" in `data/AUDIT_FINDINGS.md`. |
+| **Closing rate** | `onboarded / booked`. |
+| **Calls per meeting** | `calls / booked`. |
+| **Med B / PPO** | Count and `% of booked` of tracker rows whose `MEDB` / `PPO` checkbox column is ticked. |
+| **Present days** | Weighted attendance from the Attendance tab (P/L1/L2 = 1, Q = 0.75, H = 0.5) within the range. |
+| **Calls per present day** | `calls / presentDays`; falls back to calls per active calendar day when no attendance is found. |
+| **Adherence** | `presentDays / Mon–Fri days in range`, capped at 100%. Requires both a start and end date. |
 
 ---
 
 ## 2. Architecture & Data Flow
 
 ```
-[Ultatel Call Exports] ───┐
-                          ├─► [Google Sheets API v4] ─► [sheets.ts] ─► [analytics.ts Engine] ─► [Next.js REST API] ─► [React UI]
-[BD Meetings Tracker]  ───┘            │                                        ▲
-                                       │ (Timeout / Fallback)                   │
-                                       └────────────────► [Local Excel Data] ───┘
+Ultatel call log (Google Sheet "Call Logs")  ─┐
+Agent Mapping tab                            ─┤
+BD Tracker sheet (8 stage tabs, MEDB/PPO)    ─┼─► sheets.ts ─► getDashboardRawData()
+Attendance tab (or local French Dashboard    ─┤                     │
+  workbook)                                  ─┤                     ▼
+Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDashboardMetrics()
+                                                                    │
+            Supabase (emergency fallback, only if the              ▼
+            live pull THROWS) ◄───── /api/sync (daily cron)   GET /api/dashboard ─► page.tsx
 ```
 
-### Data Sources:
-- **Call Logs Sheet** (`1aI0879YxZdu17GHm-QLhOoE8CuFlkpyROvCtRjjuRbw`): Raw call logs and agent mapping table.
-- **BD Tracker Sheet** (`1uicpBruuFeno2ES4hNw-TIAwNkGEI37gw8Z-A4yMpC8`): 8 stage tabs (`New Meetings`, `Follow Ups`, `Contract Sent`, `Invoice Sent`, `Onboarded`, `No-Show`, `Dead Leads`, `Temporary Inactive`).
-- **Local Fallback**: `data/BD MEETINGS 2026 (7).xlsx` and `data/Call Details...xlsx`.
+### Data sources (`src/lib/config.ts`)
+- **Call Logs sheet** (`CALL_DASHBOARD_SHEET_ID`): `Call Logs` (A:O) and `Agent Mapping` (A:B).
+- **BD Tracker sheet** (`BD_TRACKER_SHEET_ID`): tabs `New Meetings`, `Follow Ups`, `Contract Sent`, `Invoice Sent`, `Onboarded`, `No-Show`, `Dead Leads`, `Temporary Inactive`, read as `A1:Z`. Header names are auto-detected (opener, date, company, contact, `MEDB`, `PPO`).
+- **Attendance** (`ATTENDANCE_SHEET_ID`, tab `Attendance`, `A1:AT`): copied into the tracker by the French Dashboard Apps Script bridge. Falls back to the local `BD _ French Dashboard 2026 (3).xlsx`.
+- **Local Ultatel department report** `OutBound Calls Per Department ( BusinessDevelopmentTeam ).xlsx`: only used when the `Call Logs` sheet returns **zero** calls. It contains per-agent totals, not individual calls, so `ultatel.ts` synthesizes one `CallRecord` per call, **all dated today** (server date). Date filters are therefore not meaningful in this mode.
+- **Supabase** (`agent_mappings`, `meetings`, `calls`, `metadata`; schema in `supabase_schema.sql`): a daily snapshot written by `/api/sync` and read only when `getDashboardRawData()` throws.
+
+### Credentials
+`getSheetsClient()` uses, in order: a `google2.json` service-account file in the project root (gitignored), then `GOOGLE_CLIENT_EMAIL` + `GOOGLE_PRIVATE_KEY`. Supabase uses `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or the anon key). `CRON_SECRET` protects `/api/sync` in production.
+
+### Source reporting
+`DashboardResponse.dataSourceInfo` tells the UI where each part came from (`source`, `attendanceSource`, `callsSource`), shown in the header.
 
 ---
 
-## 3. Directory Structure
+## 3. API Routes
+
+| Route | Method | Purpose |
+| :--- | :--- | :--- |
+| `/api/dashboard` | GET | Query params `startDate`, `endDate` (YYYY-MM-DD), `opener`. Pulls live data, computes metrics, returns `DashboardResponse` (`Cache-Control: no-store`). On a thrown ingest error, falls back to Supabase. |
+| `/api/sync` | GET, POST | Reads live data and writes it to Supabase. Requires `Authorization: Bearer $CRON_SECRET` in production. Scheduled daily at 05:00 UTC by `vercel.json`. |
+| `/api/upload` | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
+
+---
+
+## 4. UI (`src/app/page.tsx`)
+
+Four tabs, switched by CSS show/hide (no unmount):
+
+| Tab | Component | Content |
+| :--- | :--- | :--- |
+| **Team** | `AgentDashboardView` | One card per opener with status pill, key metrics, per-person XLSX export. |
+| **Trends** | `PeriodicBreakdownTable` (+ `DashboardCharts`) | Daily / Weekly (Mon–Sun) / Monthly drill-downs, paginated 20 per page. |
+| **Details** | `OpenerTable` | Full sortable opener table, totals row, CSV export. |
+| **Call Logs** | `CallLogsView` | Raw filtered call records with search. |
+
+`Header` provides presets (Today, This week, This month, Last 30 days), custom dates, agent filter, refresh, and the data-source label. `FileImportModal` posts to `/api/upload`. `exportXlsx.ts` builds the per-person workbook (*Agent Overview*, *Meeting Pipeline*, *Daily Performance*). Filters and active tab are cached in `localStorage` (`bd-tracker-dashboard-ui-cache-v1`).
+
+---
+
+## 5. Directory Structure
 
 ```
-├── apps-script/                 # Google Apps Script code for in-sheet automation
-├── data/                        # Local datasets & technical documentation
-│   ├── AGENT_METHODOLOGY.md     # Agent mapping & resolution engine rules
-│   ├── PROJECT_OVERVIEW.md      # System architecture & mathematical definitions
-│   ├── MANUAL_AUDIT.md          # Step-by-step verification checklist
+├── apps-script/                 # Google Apps Script (clasp project): staging import, Call Logs backfill, in-sheet dashboard
+├── data/                        # Docs + local data workbooks (treat spreadsheets as user data)
+│   ├── PROJECT_OVERVIEW.md      # This file
+│   ├── AGENT_METHODOLOGY.md     # Opener resolution rules
+│   ├── MANUAL_AUDIT.md          # Verification checklist
+│   ├── AUDIT_FINDINGS.md        # Known issues and recommended fixes
 │   └── WORKLOG.md               # Engineering changelog
 ├── src/
-│   ├── app/
-│   │   ├── api/dashboard/       # API endpoint computing and serving dashboard data
-│   │   └── page.tsx             # Main dashboard UI with zero-lag tab switching
-│   ├── components/
-│   │   ├── Header.tsx           # Logo, live status, presets (Today, Week, Month)
-│   │   ├── KpiGrid.tsx          # 5 core pillar cards
-│   │   ├── PeriodicBreakdownTable.tsx # Daily / Weekly / Monthly drill-downs
-│   │   ├── OpenerTable.tsx      # Full agent summary table & CSV export
-│   │   └── CallLogsView.tsx     # Raw call log drill-down table
+│   ├── app/                     # page.tsx, layout.tsx, api/{dashboard,sync,upload}/route.ts
+│   ├── components/              # Header, KpiGrid, AgentDashboardView, OpenerTable, PeriodicBreakdownTable,
+│   │                            #   DashboardCharts, CallLogsView, FileImportModal
 │   ├── lib/
-│   │   ├── analytics.ts         # Math engine, date parser & canonical agent resolver
-│   │   ├── config.ts            # Spreadsheet IDs, tabs list, excluded agents
-│   │   └── sheets.ts            # Google Sheets API client, batch fetch & local cache
-│   └── types/
-│       └── dashboard.ts         # TypeScript data contracts & interfaces
+│   │   ├── analytics.ts         # Date/duration parsing, resolveOpener, computeDashboardMetrics
+│   │   ├── attendance.ts        # Attendance sheet parsing and present-day calculation
+│   │   ├── config.ts            # Sheet IDs, tab list, attended stages, excluded agents
+│   │   ├── sheets.ts            # Google Sheets / local Excel ingestion, getDashboardRawData()
+│   │   ├── ultatel.ts           # Department-report parser and call synthesis
+│   │   ├── supabase.ts          # Snapshot save/restore (emergency fallback)
+│   │   ├── exportXlsx.ts        # Per-person XLSX export
+│   │   ├── errors.ts            # Error message / quota detection helpers
+│   │   ├── firestore.ts         # Legacy, unused by the routes
+│   │   └── firebase.ts          # Deprecated stub
+│   └── types/dashboard.ts       # Data contracts
+├── supabase_schema.sql          # Fallback database schema
+└── vercel.json                  # Daily /api/sync cron
 ```
+
+`my-dashboard/src/types/dashboard.ts` is a stale partial copy of the types and is not used.
+
+---
+
+## 6. Running
+
+`npm run dev` / `npm run build` / `npm run lint`. There is no test suite. On the project PC use the pinned Node install described in `agents.md`.
