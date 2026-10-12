@@ -204,13 +204,15 @@ function processStagingImport() {
 
   const rawRows = staging.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length).getValues();
 
-  // Identity keys of every call already in Call Logs (see callKey_).
+  // How many rows of each call (see callRowKey_) are already in Call Logs.
   const existingLastRow = callLog.getLastRow();
-  const existingKeys = new Set();
+  const existingCount = new Map();
   if (existingLastRow > 1) {
-    callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length).getValues()
-      .forEach(r => existingKeys.add(callKey_(r)));
+    const existingItems = callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length).getValues()
+      .map(r => { const text = dateText_(r[0]); return { key: callRowKey_(r, text), text }; });
+    effectiveCounts_(existingItems).forEach((n, key) => existingCount.set(key, n));
   }
+  const seenInBatch = new Map();
 
   // Cache known mapped agents
   const mapLastRow = mapping.getLastRow();
@@ -227,20 +229,25 @@ function processStagingImport() {
   let duplicateCount = 0;
 
   rawRows.forEach(r => {
-    // The Call ID's timestamp is exact; use it for the Cairo time. Only fall back to converting the
-    // export's UTC-6 clock when the ID has no timestamp.
-    const epoch = callEpoch_(r[1]);
-    r[0] = epoch !== null ? cairoFromEpoch_(epoch) : toCairoDate_(r[0]);
-    const callDate = String(r[0] ?? '').trim();
+    const rawText = dateText_(r[0]);
     const callId = String(r[1] ?? '').trim();
     const fromNum = String(r[2] ?? '').trim();
     const toNum = String(r[3] ?? '').trim();
+    const extension = String(r[4] ?? '').trim();
 
     // Skip empty rows
-    if (!callDate && !callId && !fromNum && !toNum) return;
+    if (!rawText && !callId && !fromNum && !toNum) return;
 
-    const key = callKey_(r);
-    if (existingKeys.has(key)) {
+    // Cairo time: the Call ID's timestamp is exact; otherwise convert the export's UTC-6 clock.
+    const epoch = callEpoch_(callId);
+    r[0] = epoch !== null ? exactCairoTime_(rawText, callId) : toCairoDate_(r[0]);
+
+    // A call may legitimately have several rows. Add rows only beyond the number already stored,
+    // so re-importing an overlapping export adds nothing, while repeated legs in one export all stay.
+    const key = callRowKey_(r, String(r[0]));
+    const seen = (seenInBatch.get(key) ?? 0) + 1;
+    seenInBatch.set(key, seen);
+    if (seen <= (existingCount.get(key) ?? 0)) {
       duplicateCount++;
       return;
     }
@@ -255,8 +262,7 @@ function processStagingImport() {
 
     toAppend.push([...r, agent, durationSec]);
 
-    // Prevent intra-batch duplicates
-    existingKeys.add(key);
+
   });
 
   // Batch insert new call rows
@@ -293,8 +299,12 @@ function processStagingImport() {
 }
 
 /**
- * Ultatel Call IDs look like "1791808392.170981": the part before the dot is the call's start time in
- * Unix seconds. Returns that number, or null when the ID has no usable timestamp.
+ * Ultatel Call IDs look like "1791808392.14495": the number before the dot is the call's start time in
+ * Unix seconds. Returns it, or null when the ID has no usable timestamp.
+ *
+ * NOTE: one Call ID can legitimately appear on SEVERAL rows (ring attempts / call legs, each with its own
+ * time, duration and outcome). Ultatel counts every row, so every row is kept. Only extra COPIES of a row
+ * (the same export pasted twice, on a different clock or with a shortened ID) are removed.
  * @param {unknown} callId
  * @returns {number|null}
  */
@@ -310,19 +320,99 @@ function cairoFromEpoch_(epochSeconds) {
   return Utilities.formatDate(new Date(epochSeconds * 1000), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
 }
 
+/** Text of a Call Date cell, whether it holds a Date or text. */
+function dateText_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+  }
+  return String(value ?? '').trim();
+}
+
+/** Reads "YYYY-MM-DD HH:mm[:ss]" or "MM-DD-YYYY HH:mm[:ss]" as if the clock fields were UTC. */
+function naiveMs_(text) {
+  const s = String(text ?? '').trim();
+  let m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  let y;
+  let mo;
+  let d;
+  if (m) {
+    y = +m[1]; mo = +m[2]; d = +m[3];
+  } else {
+    m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!m) return null;
+    mo = +m[1]; d = +m[2]; y = +m[3];
+    if (mo > 12 && d <= 12) { const t = mo; mo = d; d = t; }
+  }
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return Date.UTC(y, mo - 1, d, +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+}
+
+function formatNaive_(ms) {
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+/** Which clock a written call time is on ('cairo' | 'source' | 'unknown'), judged against the time in the Call ID. */
+function classifyClock_(text, epoch) {
+  const BEFORE = 90000;
+  const AFTER = 6 * 3600 * 1000;
+  const naive = naiveMs_(text);
+  if (naive === null) return 'unknown';
+  const cairoOffset = naiveMs_(cairoFromEpoch_(epoch)) - epoch * 1000;
+  const asCairo = naive - cairoOffset - epoch * 1000;
+  if (asCairo >= -BEFORE && asCairo <= AFTER) return 'cairo';
+  const asSource = naive + 6 * 3600 * 1000 - epoch * 1000; // export clock is fixed UTC-6
+  if (asSource >= -BEFORE && asSource <= AFTER) return 'source';
+  return 'unknown';
+}
+
+/** Cairo time of a call: kept if already Cairo, converted if on the export clock, otherwise taken from the Call ID. */
+function exactCairoTime_(text, callId) {
+  const epoch = callEpoch_(callId);
+  if (epoch === null) return text;
+  const clock = classifyClock_(text, epoch);
+  const naive = naiveMs_(text);
+  const fromId = cairoFromEpoch_(epoch);
+  let written = null;
+  if (clock === 'cairo' && naive !== null) written = formatNaive_(naive);
+  else if (clock === 'source' && naive !== null) written = cairoFromEpoch_((naive + 6 * 3600 * 1000) / 1000);
+  if (written === null) return fromId;
+  // A time whose seconds were rounded away (":00") within the same minute as the ID's time: use the exact one.
+  if (/:00$/.test(written) && written.slice(0, 16) === fromId.slice(0, 16)) return fromId;
+  return written;
+}
+
 /**
- * Identity of a call row (columns A-M). The same call copied twice has the same key even if one copy
- * has a rounded clock, a different time zone or a shortened ID.
- * @param {unknown[]} r
- * @returns {string}
+ * Identity of a call row WITHOUT its clock: two copies of the same export row share it. For Ultatel IDs the
+ * ID part is the timestamp only (the sequence after the dot is sometimes lost or reformatted).
+ * @param {unknown[]} r columns A-M of a Call Logs row
+ * @param {string} dateText text of the Call Date
  */
-function callKey_(r) {
+function callRowKey_(r, dateText) {
   const norm = v => String(v ?? '').trim().toLowerCase();
   const epoch = callEpoch_(r[1]);
-  if (epoch !== null) return `e|${epoch}|${norm(r[2])}|${norm(r[3])}|${norm(r[4])}`;
-  const id = norm(r[1]);
-  if (id) return `i|${id}`;
-  return `c|${norm(r[0])}|${norm(r[2])}|${norm(r[3])}|${norm(r[10])}|${norm(r[4])}`;
+  const id = epoch !== null ? String(epoch) : norm(r[1]);
+  const base = [norm(r[2]), norm(r[3]), norm(r[4]), norm(r[8]), norm(r[9]), durationToSeconds_(r[10])].join('|');
+  return id ? `${id}|${base}` : `nid|${norm(dateText)}|${base}`;
+}
+
+/**
+ * Number of real rows for each key in a list of rows. Rows with the same key but a different clock text
+ * are copies of each other; rows with identical text are separate legs and all count.
+ * @param {{key: string, text: string, callId: unknown}[]} items
+ * @returns {Map<string, number>}
+ */
+function effectiveCounts_(items) {
+  const byKey = new Map();
+  items.forEach(it => {
+    if (!byKey.has(it.key)) byKey.set(it.key, new Map());
+    const byText = byKey.get(it.key);
+    byText.set(it.text, (byText.get(it.text) ?? 0) + 1);
+  });
+  const counts = new Map();
+  byKey.forEach((byText, key) => counts.set(key, Math.max(...byText.values())));
+  return counts;
 }
 
 /**
@@ -382,8 +472,9 @@ function backfillCallLogFields() {
 }
 
 /**
- * Re-dates Call Logs rows from their Call ID timestamp (exact Cairo time). Safe to run repeatedly.
- * Rows whose ID has no timestamp are left untouched (they are never converted twice).
+ * Puts every Call Logs time on exact Cairo time (using the Call ID's timestamp as the reference).
+ * Times already on Cairo time are left alone, so this is safe to run repeatedly. Rows whose ID has no
+ * timestamp are never changed.
  */
 function convertAllCallLogDatesToCairo() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -392,15 +483,15 @@ function convertAllCallLogDatesToCairo() {
 
   const values = callLog.getRange(2, 1, callLog.getLastRow() - 1, 2).getValues();
   let changed = 0;
-  values.forEach(row => {
-    const epoch = callEpoch_(row[1]);
-    if (epoch === null) return;
-    const exact = cairoFromEpoch_(epoch);
-    if (String(row[0]) !== exact) changed++;
-    row[0] = exact;
+  const out = values.map(row => {
+    if (callEpoch_(row[1]) === null) return [row[0]];
+    const text = dateText_(row[0]);
+    const exact = exactCairoTime_(text, row[1]);
+    if (exact !== text) changed++;
+    return [exact];
   });
-  callLog.getRange(2, 1, values.length, 1).setValues(values.map(r => [r[0]]));
-  SpreadsheetApp.getUi().alert(`Call dates now come from each Call ID's timestamp (Cairo time). ${changed} row(s) were changed.`);
+  callLog.getRange(2, 1, out.length, 1).setValues(out);
+  SpreadsheetApp.getUi().alert(`Call times are now on Cairo time. ${changed} row(s) were changed.`);
 }
 
 // ==========================================
@@ -409,8 +500,10 @@ function convertAllCallLogDatesToCairo() {
 
 /**
  * Builds the repaired Call Logs without writing anything.
- * - One row per call (see callKey_); empty cells of the kept row are filled from its duplicates.
- * - Rows whose Call ID has a timestamp get their exact Cairo time (fixes rounded / unconverted clocks).
+ * - Extra COPIES of a row are removed (same call on another clock / with a shortened ID). Rows that share a
+ *   Call ID but are separate legs (different time, duration or outcome, or identical text) all stay.
+ * - Empty cells of the kept row are filled from its copies.
+ * - Every time is put on exact Cairo time using the Call ID's timestamp.
  * @returns {{rows: unknown[][], original: number, duplicates: number, redated: number}|null}
  */
 function buildRepairedCallLog_() {
@@ -418,41 +511,64 @@ function buildRepairedCallLog_() {
   if (!callLog || callLog.getLastRow() < 2) return null;
 
   const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
-  const data = callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols).getValues();
-  const byKey = new Map();
-  const order = [];
-  let duplicates = 0;
+  const data = callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols).getValues()
+    .filter(row => !row.every(c => c === '' || c === null));
 
-  data.forEach(row => {
-    if (row.every(c => c === '' || c === null)) return;
-    const key = callKey_(row);
-    const kept = byKey.get(key);
-    if (!kept) {
-      byKey.set(key, row.slice());
-      order.push(key);
-      return;
-    }
-    duplicates++;
-    row.forEach((cell, i) => {
-      if ((kept[i] === '' || kept[i] === null) && cell !== '' && cell !== null) kept[i] = cell;
+  // Group rows by call identity, then by clock text.
+  const groups = new Map();
+  data.forEach((row, i) => {
+    const text = dateText_(row[0]);
+    const key = callRowKey_(row, text);
+    if (!groups.has(key)) groups.set(key, new Map());
+    const byText = groups.get(key);
+    if (!byText.has(text)) byText.set(text, []);
+    byText.get(text).push(i);
+  });
+
+  // Keep the clock text with the most rows (a Cairo-clock copy wins ties) and fill gaps from the other copies.
+  const keep = new Set();
+  groups.forEach(byText => {
+    let best = null;
+    let bestText = '';
+    let bestIsCairo = false;
+    byText.forEach((idxs, text) => {
+      const epoch = callEpoch_(data[idxs[0]][1]);
+      const isCairo = epoch !== null && classifyClock_(text, epoch) === 'cairo';
+      if (!best || idxs.length > best.length || (idxs.length === best.length && isCairo && !bestIsCairo)) {
+        best = idxs;
+        bestText = text;
+        bestIsCairo = isCairo;
+      }
+    });
+    best.forEach(i => keep.add(i));
+    byText.forEach((idxs, text) => {
+      if (text === bestText) return;
+      idxs.forEach(j => {
+        const target = data[best[0]];
+        data[j].forEach((cell, c) => {
+          if ((target[c] === '' || target[c] === null) && cell !== '' && cell !== null) target[c] = cell;
+        });
+      });
     });
   });
 
   let redated = 0;
-  const rows = order.map(key => {
-    const row = byKey.get(key);
-    const epoch = callEpoch_(row[1]);
-    if (epoch !== null) {
-      const exact = cairoFromEpoch_(epoch);
-      if (String(row[0]) !== exact) redated++;
-      row[0] = exact;
+  const rows = [];
+  data.forEach((row, i) => {
+    if (!keep.has(i)) return;
+    const out = row.slice();
+    if (callEpoch_(out[1]) !== null) {
+      const text = dateText_(out[0]);
+      const exact = exactCairoTime_(text, out[1]);
+      if (exact !== text) redated++;
+      out[0] = exact;
     }
-    if (row[13] === '' || row[13] === null) row[13] = parseAgentName_(String(row[4] ?? ''));
-    if (row[14] === '' || row[14] === null) row[14] = durationToSeconds_(row[10]);
-    return row;
+    if (out[13] === '' || out[13] === null) out[13] = parseAgentName_(String(out[4] ?? ''));
+    if (out[14] === '' || out[14] === null) out[14] = durationToSeconds_(out[10]);
+    rows.push(out);
   });
 
-  return { rows, original: data.length, duplicates, redated };
+  return { rows, original: data.length, duplicates: data.length - rows.length, redated };
 }
 
 /** Shows what "Repair duplicate calls" would do, without changing anything. */
