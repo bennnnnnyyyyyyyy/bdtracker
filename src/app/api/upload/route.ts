@@ -3,6 +3,7 @@ import { writeFile } from 'fs/promises';
 import path from 'path';
 import * as xlsx from 'xlsx';
 import { CONFIG } from '@/lib/config';
+import { invalidateDashboardCache } from '@/lib/sheets';
 
 export const runtime = 'nodejs';
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
     if (fileType === 'unknown') return NextResponse.json({ error: 'Unrecognized Excel format. Upload an Ultatel outbound or BD French attendance workbook.' }, { status: 400 });
 
     await writeFile(path.join(process.cwd(), targetFileName), buffer);
+    invalidateDashboardCache();
     return NextResponse.json({ success: true, fileType, fileName: targetFileName, message: `Updated ${fileType === 'attendance' ? 'attendance workbook' : 'Ultatel calls report'}.` });
   } catch (error: unknown) {
     console.error('API Error in /api/upload:', error);

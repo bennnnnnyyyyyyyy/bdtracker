@@ -149,7 +149,11 @@ export async function fetchBDTrackerData(): Promise<{
     }
 
     const companyIdx = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('client'));
-    const personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead') || h.includes('name'));
+    // Prefer an explicit contact column; only fall back to a generic "name" column that is not the company.
+    let personIdx = headers.findIndex(h => h.includes('authorized') || h.includes('contact') || h.includes('person') || h.includes('lead'));
+    if (personIdx === -1) {
+      personIdx = headers.findIndex((h, i) => h.includes('name') && i !== companyIdx && !h.includes('company') && !h.includes('business'));
+    }
     const medbIdx = headers.findIndex(h => h.includes('medb') || h.includes('med b') || h.includes('med_b'));
     const ppoIdx = headers.findIndex(h => h === 'ppo' || h.includes('ppo'));
 
@@ -175,7 +179,8 @@ export async function fetchBDTrackerData(): Promise<{
       }
       if (!dateAdded) {
         for (let c = 0; c < row.length; c++) {
-          if (c === openerIdx) continue;
+          // Skip free-text columns so a company or contact name can never be read as a date.
+          if (c === openerIdx || c === companyIdx || c === personIdx) continue;
           const parsed = parseDateToISO(row[c]);
           if (parsed) {
             dateAdded = parsed;
@@ -275,10 +280,10 @@ export function fetchLocalUltatelDeptData(): CallRecord[] | null {
 }
 
 /**
- * Orchestrates multi-source data retrieval:
- * Combines Google Sheets (or fallback files), local Ultatel departmental reports, and attendance.
+ * Reads every source (Google Sheets, local Ultatel departmental report, attendance).
+ * Uncached: use getDashboardRawData().
  */
-export async function getDashboardRawData(): Promise<RawDashboardDataset> {
+async function loadDashboardRawData(): Promise<RawDashboardDataset> {
   try {
     // 1. Fetch Call Logs and BD Tracker
     const failedSources: string[] = [];
@@ -341,5 +346,75 @@ export async function getDashboardRawData(): Promise<RawDashboardDataset> {
   } catch (err: unknown) {
     console.error('[Data Ingestion] Failed to load data:', err);
     throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// In-memory cache. Every dashboard request used to re-read all Sheets ranges,
+// which is what exhausts the Sheets API quota. The cache is per server instance.
+// ---------------------------------------------------------------------------
+
+const CACHE_TTL_MS = Math.max(0, Number(process.env.DASHBOARD_CACHE_TTL_SECONDS ?? 60)) * 1000;
+const MIN_USER_REFRESH_MS = 10_000; // a manual refresh cannot hammer the Sheets API
+
+let cached: { data: RawDashboardDataset; loadedAt: number } | null = null;
+let inFlight: Promise<RawDashboardDataset> | null = null;
+
+/** Drops the cached dataset (call after local source files change). */
+export function invalidateDashboardCache(): void {
+  cached = null;
+}
+
+function loadAndCache(): Promise<RawDashboardDataset> {
+  if (!inFlight) {
+    inFlight = loadDashboardRawData()
+      .then((data) => {
+        // Never cache a partial load; the next request should try the sources again.
+        if (data.failedSources.length === 0) cached = { data, loadedAt: Date.now() };
+        return data;
+      })
+      .finally(() => {
+        inFlight = null;
+      });
+  }
+  return inFlight;
+}
+
+function asStale(entry: NonNullable<typeof cached>, reason: string): RawDashboardDataset {
+  const note = `Live refresh failed (${reason}); showing data loaded at ${new Date(entry.loadedAt).toISOString()}.`;
+  return {
+    ...entry.data,
+    dataSourceInfo: {
+      ...entry.data.dataSourceInfo,
+      notes: [entry.data.dataSourceInfo.notes, note].filter(Boolean).join(' '),
+    },
+  };
+}
+
+/**
+ * Cached multi-source retrieval.
+ * - default: serve data younger than DASHBOARD_CACHE_TTL_SECONDS (60 s).
+ * - forceRefresh (manual refresh button): reload unless the cache is under 10 s old.
+ * - fresh (used by /api/sync): always reload and never accept stale data.
+ * If a reload fails or is partial and an older good copy exists, the older copy is served with a note.
+ */
+export async function getDashboardRawData(
+  opts: { forceRefresh?: boolean; fresh?: boolean } = {}
+): Promise<RawDashboardDataset> {
+  const now = Date.now();
+  if (!opts.fresh && cached) {
+    const age = now - cached.loadedAt;
+    const maxAge = opts.forceRefresh ? MIN_USER_REFRESH_MS : CACHE_TTL_MS;
+    if (age < maxAge) return cached.data;
+  }
+
+  const previous = cached;
+  try {
+    const data = await loadAndCache();
+    if (opts.fresh || data.failedSources.length === 0 || !previous) return data;
+    return asStale(previous, data.failedSources.join(', '));
+  } catch (err) {
+    if (opts.fresh || !previous) throw err;
+    return asStale(previous, err instanceof Error ? err.message : 'unknown error');
   }
 }

@@ -132,15 +132,14 @@ export function calculateAgentPresentDays(
     }
   }
 
-  // Fallback: match by first name if full name not found
+  // Fallback: match by whole first name, only when exactly one attendance row has it
+  // (a prefix match would let "Ben" pick up "Benjamin").
   if (!matchedAgentKey) {
     const firstName = targetLower.split(/\s+/)[0];
-    for (const key of Object.keys(attendance.agentDaily)) {
-      if (key.toLowerCase().trim().startsWith(firstName)) {
-        matchedAgentKey = key;
-        break;
-      }
-    }
+    const candidates = Object.keys(attendance.agentDaily).filter(
+      key => key.toLowerCase().trim().split(/\s+/)[0] === firstName
+    );
+    if (candidates.length === 1) matchedAgentKey = candidates[0];
   }
 
   if (!matchedAgentKey) {

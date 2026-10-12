@@ -83,39 +83,38 @@ export function parseDateToISO(val: unknown): string | null {
   const s = String(val).trim();
   if (!s) return null;
 
-  // 1. Try ISO YYYY-MM-DD (with optional time)
-  const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  const toISO = (y: number, m: number, d: number): string | null => {
+    if (y < 1990 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return null;
+    const check = new Date(y, m - 1, d);
+    if (check.getFullYear() !== y || check.getMonth() !== m - 1 || check.getDate() !== d) return null;
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+
+  // 1. ISO YYYY-MM-DD (with optional time)
+  const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?!\d)/);
   if (isoMatch) {
-    const yyyy = isoMatch[1];
-    const mm = isoMatch[2].padStart(2, '0');
-    const dd = isoMatch[3].padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+    return toISO(parseInt(isoMatch[1], 10), parseInt(isoMatch[2], 10), parseInt(isoMatch[3], 10));
   }
 
-  // 2. Try MM/DD/YYYY or MM/DD/YY or DD/MM/YYYY
-  const mdyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+  // 2. MM/DD/YYYY, MM/DD/YY, or DD/MM/YYYY when the first part cannot be a month
+  const mdyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4}|\d{2})(?!\d)/);
   if (mdyMatch) {
     const p1 = parseInt(mdyMatch[1], 10);
     const p2 = parseInt(mdyMatch[2], 10);
     let yr = parseInt(mdyMatch[3], 10);
-    if (yr < 100) yr += 2000;
-
-    let mm = p1;
-    let dd = p2;
-    if (p1 > 12 && p2 <= 12) {
-      dd = p1;
-      mm = p2;
-    }
-    return `${yr}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    if (mdyMatch[3].length === 2) yr += 2000;
+    return p1 > 12 && p2 <= 12 ? toISO(yr, p2, p1) : toISO(yr, p1, p2);
   }
 
-  // 3. Try standard Date.parse
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  // 3. Textual dates such as "March 5, 2026" or "5 Mar 2026". Date.parse is very lenient
+  // (it turns text like "Suite 2" into a date), so require a month name and an explicit year.
+  if (
+    s.length <= 40 &&
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b/i.test(s) &&
+    /\b(19|20)\d{2}\b/.test(s)
+  ) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return toISO(d.getFullYear(), d.getMonth() + 1, d.getDate());
   }
 
   return null;
@@ -255,16 +254,20 @@ export function resolveOpener(
     }
   }
 
-  // 2. First-name or Prefix matching against known Openers
-  const firstName = clean.split(/\s+/)[0].toLowerCase();
+  // 2. First-name matching against known Openers. The first word must equal a whole name
+  // (never a prefix, so "Ben" cannot match "Benjamin") and must point at exactly one opener.
+  const firstName = cleanLower.split(/\s+/)[0];
+  const firstNameTargets = new Set<string>();
   for (const m of agentMappings) {
     if (m.opener && m.opener.toLowerCase() === firstName) {
-      return isExcludedAgent(m.opener) ? null : m.opener.trim();
+      firstNameTargets.add(m.opener.trim());
+    } else if (m.agent && m.agent.toLowerCase().split(/\s+/)[0] === firstName) {
+      firstNameTargets.add((m.opener || m.agent).trim());
     }
-    if (m.agent && m.agent.toLowerCase().startsWith(firstName)) {
-      const target = (m.opener || m.agent).trim();
-      return isExcludedAgent(target) ? null : target;
-    }
+  }
+  if (firstNameTargets.size === 1) {
+    const target = Array.from(firstNameTargets)[0];
+    return isExcludedAgent(target) ? null : target;
   }
 
   // 3. Fallback: Capitalized clean name if valid person name

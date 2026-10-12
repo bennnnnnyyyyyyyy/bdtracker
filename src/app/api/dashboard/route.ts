@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     let liveData: RawDashboardDataset | null = null;
     let liveError: unknown = null;
     try {
-      liveData = await getDashboardRawData();
+      liveData = await getDashboardRawData({ forceRefresh: searchParams.get('refresh') === 'true' });
     } catch (ingestErr) {
       liveError = ingestErr;
       console.warn('[Data Ingest] Live pull failed:', ingestErr);

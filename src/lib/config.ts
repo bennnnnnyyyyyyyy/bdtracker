@@ -57,13 +57,17 @@ export const CONFIG = {
   EXCLUDED_AGENTS: ['russ', 'george', 'caroline', 'caroline richards']
 };
 
+function normalizeNameForMatch(name: string): string {
+  return ` ${name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+}
+
 /**
  * Checks if a given agent or opener name should be excluded from the dashboard.
+ * Matches whole words only: "George Smith" and "112 (MMS-George)" are excluded, "Georgette" is not.
  */
 export function isExcludedAgent(name: string | null | undefined): boolean {
   if (!name) return false;
-  const clean = name.trim().toLowerCase();
-  if (!clean) return false;
-  return CONFIG.EXCLUDED_AGENTS.some(excluded => clean === excluded || clean.startsWith(excluded) || clean.endsWith(excluded));
+  const normalized = normalizeNameForMatch(name);
+  if (normalized.trim() === '') return false;
+  return CONFIG.EXCLUDED_AGENTS.some(excluded => normalized.includes(normalizeNameForMatch(excluded)));
 }
-

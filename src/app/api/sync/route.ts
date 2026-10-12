@@ -17,7 +17,7 @@ async function sync(request: NextRequest) {
   }
 
   try {
-    const rawData = await getDashboardRawData();
+    const rawData = await getDashboardRawData({ fresh: true });
 
     // Never replace a good snapshot with a partial pull.
     if (rawData.failedSources.length > 0) {

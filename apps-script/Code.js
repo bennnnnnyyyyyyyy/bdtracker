@@ -69,11 +69,11 @@ const CONFIG = {
  */
 function isExcludedAgent_(name) {
   if (!name) return false;
-  const clean = String(name).trim().toLowerCase();
-  if (!clean) return false;
-  return CONFIG.EXCLUDED_AGENTS.some(
-    excluded => clean === excluded || clean.startsWith(excluded) || clean.endsWith(excluded)
-  );
+  const normalize = value => ` ${String(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+  const normalized = normalize(name);
+  if (normalized.trim() === '') return false;
+  // Whole-word match (keep in sync with isExcludedAgent in src/lib/config.ts).
+  return CONFIG.EXCLUDED_AGENTS.some(excluded => normalized.includes(normalize(excluded)));
 }
 
 // ==========================================

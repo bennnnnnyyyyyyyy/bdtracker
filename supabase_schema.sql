@@ -68,8 +68,14 @@ ALTER TABLE public.meetings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.calls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.metadata ENABLE ROW LEVEL SECURITY;
 
--- Allow server service_role key full access
-CREATE POLICY IF NOT EXISTS "Allow all for service role" ON public.agent_mappings FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "Allow all for service role" ON public.meetings FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "Allow all for service role" ON public.calls FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "Allow all for service role" ON public.metadata FOR ALL USING (true);
+-- Allow only the server's service_role key (the app's SUPABASE_SERVICE_ROLE_KEY) full access.
+-- Postgres has no CREATE POLICY IF NOT EXISTS, so drop-then-create keeps this re-runnable.
+-- NOTE: no policy is granted to anon/authenticated, so the public anon key cannot read or write these tables.
+DROP POLICY IF EXISTS "Allow all for service role" ON public.agent_mappings;
+DROP POLICY IF EXISTS "Allow all for service role" ON public.meetings;
+DROP POLICY IF EXISTS "Allow all for service role" ON public.calls;
+DROP POLICY IF EXISTS "Allow all for service role" ON public.metadata;
+CREATE POLICY "Allow all for service role" ON public.agent_mappings FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for service role" ON public.meetings FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for service role" ON public.calls FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for service role" ON public.metadata FOR ALL TO service_role USING (true) WITH CHECK (true);

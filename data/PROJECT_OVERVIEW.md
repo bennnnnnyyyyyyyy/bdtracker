@@ -47,6 +47,12 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 - **Local Ultatel department report** `OutBound Calls Per Department ( BusinessDevelopmentTeam ).xlsx`: only used when the `Call Logs` sheet returns **zero** calls. It contains per-agent totals, not individual calls, so `ultatel.ts` synthesizes one `CallRecord` per call, **all dated today** (server date). Date filters are therefore not meaningful in this mode.
 - **Supabase** (`agent_mappings`, `meetings`, `calls`, `metadata`; schema in `supabase_schema.sql`): a daily snapshot written by `/api/sync` and read only as a fallback (see above). `meetings` needs the `med_b` / `ppo` columns — run the migration in the schema file.
 
+### Access control
+Set `DASHBOARD_PASSWORD`. `src/proxy.ts` redirects unauthenticated page requests to `/login` and returns 401 for API calls; a successful login sets an httpOnly 30-day cookie (HMAC of the password, so changing the password signs everyone out) and failed logins are throttled per IP. `/api/sync` is exempt and uses `CRON_SECRET`. With no password set, auth is off in development and **fails closed (503) in production**. `GET /api/logout` clears the session.
+
+### Caching
+`getDashboardRawData()` keeps the loaded dataset in memory per server instance for `DASHBOARD_CACHE_TTL_SECONDS` (default 60). Concurrent requests share one load; partial loads are never cached; if a reload fails, the last good copy is served with a note; `/api/sync` always loads fresh; `/api/upload` clears the cache.
+
 ### Credentials
 `getSheetsClient()` uses, in order: a `google2.json` service-account file in the project root (gitignored), then `GOOGLE_CLIENT_EMAIL` + `GOOGLE_PRIVATE_KEY`. Supabase uses `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or the anon key). `CRON_SECRET` protects `/api/sync` in production.
 
@@ -61,6 +67,7 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 | :--- | :--- | :--- |
 | `/api/dashboard` | GET | Query params `startDate`, `endDate` (YYYY-MM-DD), `opener`. Pulls live data, computes metrics, returns `DashboardResponse` (`Cache-Control: no-store`). If the live pull throws, or the call logs / BD tracker failed to load, serves the Supabase snapshot instead (noted in `dataSourceInfo.notes`); with no snapshot it shows the partial live data plus a warning. |
 | `/api/sync` | GET, POST | Reads live data and writes it to Supabase. Requires `Authorization: Bearer $CRON_SECRET` in production. Returns 503 and leaves the snapshot untouched if any live source failed or calls/meetings are empty; Supabase writes are checked, and old rows are removed only after the new ones are saved. Scheduled daily at 05:00 UTC by `vercel.json`. |
+| `/api/login`, `/api/logout` | POST, GET | Sign in / out (see Access control). |
 | `/api/upload` | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
 
 ---

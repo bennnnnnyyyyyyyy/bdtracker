@@ -51,6 +51,13 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - `getDashboardRawData()` reports `failedSources`; `/api/dashboard` falls back to the Supabase snapshot when a core source fails.
 - `/api/sync` refuses partial pulls (503) and unconfigured Supabase; `saveRawDataToSupabase` checks every response, never deletes before the new rows are in, and persists/restores `med_b` / `ppo` (migration in `supabase_schema.sql`).
 
+### 8. Caching, Auth, Date & Name Matching
+- In-memory dataset cache (60 s TTL, refresh throttle, stale-on-error, invalidated by uploads).
+- Shared-password auth via `src/proxy.ts`, `/login`, `/api/login`, `/api/logout` (`DASHBOARD_PASSWORD`); fails closed in production.
+- `parseDateToISO` validates ranges and no longer accepts arbitrary text as a date; tracker row-scan skips text columns; contact column no longer resolves to the company column.
+- Exclusions and first-name matching are whole-word (`Georgette` ≠ `George`, `Ben` ≠ `Benjamin`); Apps Script exclusion logic updated to match.
+- `supabase_schema.sql`: fixed invalid `CREATE POLICY IF NOT EXISTS`; policies now apply to `service_role` only.
+
 ---
 
 ## Documentation Manifest in `data/`

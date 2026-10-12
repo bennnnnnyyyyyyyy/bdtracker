@@ -146,6 +146,10 @@ export default function DashboardPage() {
       if (forceRefresh) params.set('refresh', 'true');
 
       const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
+      if (res.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
       if (!res.ok) {
         let errDetail = res.statusText;
         try {
