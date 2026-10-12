@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from '@/components/Header';
 import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
@@ -8,11 +8,15 @@ import { CallLogsView } from '@/components/CallLogsView';
 import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
+import { ConfirmationsView } from '@/components/ConfirmationsView';
 import { exportDashboardAnalyticsXlsx } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse, CallRecord } from '@/types/dashboard';
-import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3 } from 'lucide-react';
+import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2 } from 'lucide-react';
 
-type ActiveTab = 'agents' | 'periods' | 'table' | 'calls';
+type ActiveTab = 'agents' | 'periods' | 'table' | 'confirm' | 'calls';
+
+// Live updates: the open dashboard re-reads the server every 30 s (the server caches sheet reads for ~30 s).
+const LIVE_POLL_MS = 30_000;
 
 const DASHBOARD_UI_CACHE_KEY = 'bd-tracker-dashboard-ui-cache-v1';
 const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -27,6 +31,7 @@ const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
   { id: 'agents', label: 'Team', icon: <LayoutGrid className="w-4 h-4" /> },
   { id: 'periods', label: 'Trends', icon: <BarChart3 className="w-4 h-4" /> },
   { id: 'table', label: 'Details', icon: <TableIcon className="w-4 h-4" /> },
+  { id: 'confirm', label: 'Confirm shows', icon: <CheckCircle2 className="w-4 h-4" /> },
   { id: 'calls', label: 'Call Logs', icon: <PhoneCall className="w-4 h-4" /> },
 ];
 
@@ -114,6 +119,7 @@ export default function DashboardPage() {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [callLogs, setCallLogs] = useState<{ key: string; calls: CallRecord[] } | null>(null);
   const [callLogsError, setCallLogsError] = useState<string | null>(null);
+  const [pollFailed, setPollFailed] = useState(false);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -135,8 +141,9 @@ export default function DashboardPage() {
     writeUiCache(filters, activeTab);
   }, [filters, activeTab, hasHydrated]);
 
-  const fetchData = useCallback(async (forceRefresh = false) => {
-    setLoading(true);
+  const fetchData = useCallback(async (forceRefresh = false, silent = false) => {
+    // Silent (background) refreshes keep the current screen; only manual loads show the spinner.
+    if (!silent) setLoading(true);
 
     try {
       const params = new URLSearchParams();
@@ -148,6 +155,12 @@ export default function DashboardPage() {
       if (forceRefresh) params.set('refresh', 'true');
 
       const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
+      if (res.status === 401) {
+        // Session expired: full reload to the sign-in page.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+        window.location.href = '/login';
+        return;
+      }
       if (!res.ok) {
         let errDetail = res.statusText;
         try {
@@ -162,13 +175,36 @@ export default function DashboardPage() {
       const json: DashboardResponse = await res.json();
       setData(json);
       setError(null);
+      setPollFailed(false);
     } catch (err: unknown) {
       console.error('Error fetching dashboard:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
+      if (silent) {
+        setPollFailed(true); // keep showing the last good numbers
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [filters.startDate, filters.endDate, filters.selectedOpener]);
+
+  // Background polling while the tab is visible, plus an immediate refresh when it becomes visible again.
+  const fetchRef = useRef(fetchData);
+  useEffect(() => {
+    fetchRef.current = fetchData;
+  }, [fetchData]);
+  useEffect(() => {
+    if (!hasHydrated) return;
+    const tick = () => {
+      if (document.visibilityState === 'visible') fetchRef.current(false, true);
+    };
+    const timer = window.setInterval(tick, LIVE_POLL_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [hasHydrated]);
 
   useEffect(() => {
     if (!hasHydrated) return;
@@ -181,7 +217,7 @@ export default function DashboardPage() {
 
   // The Call Logs tab needs every call record, which is large; load it only when that tab is opened.
   const hasData = Boolean(data);
-  const lastUpdated = data?.lastUpdated;
+  const lastUpdated = data?.dataAsOf ?? data?.lastUpdated;
   const callsKey = `${filters.startDate}|${filters.endDate}|${filters.selectedOpener}|${lastUpdated}`;
   const callsLoaded = callLogs?.key === callsKey;
   useEffect(() => {
@@ -194,6 +230,11 @@ export default function DashboardPage() {
         if (filters.endDate) params.set('endDate', filters.endDate);
         if (filters.selectedOpener && filters.selectedOpener !== 'ALL') params.set('opener', filters.selectedOpener);
         const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
+        if (res.status === 401) {
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+          window.location.href = '/login';
+          return;
+        }
         if (!res.ok) throw new Error('Failed to load call logs');
         const json: DashboardResponse = await res.json();
         if (!cancelled) {
@@ -231,7 +272,9 @@ export default function DashboardPage() {
         onOpenImportModal={() => setImportModalOpen(true)}
         onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
         loading={loading}
-        lastUpdated={data?.lastUpdated || ''}
+        lastUpdated={data?.dataAsOf || data?.lastUpdated || ''}
+        viewer={data?.viewer}
+        pollFailed={pollFailed}
         isMockData={data?.isMockData}
         dataSourceInfo={data?.dataSourceInfo}
       />
@@ -298,6 +341,11 @@ export default function DashboardPage() {
                 >
                   {tab.icon}
                   {tab.label}
+                  {tab.id === 'confirm' && data.totals.awaitingConfirmation > 0 && (
+                    <span className="font-num text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(232,197,106,0.18)', color: '#e8c56a' }}>
+                      {data.totals.awaitingConfirmation}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -326,6 +374,14 @@ export default function DashboardPage() {
             )}
             {activeTab === 'table' && (
               <OpenerTable openers={data.openers} totals={data.totals} />
+            )}
+            {activeTab === 'confirm' && (
+              <ConfirmationsView
+                meetings={data.meetings || []}
+                viewer={data.viewer}
+                confirmationsAvailable={data.confirmationsAvailable !== false}
+                onChanged={() => fetchData(false, true)}
+              />
             )}
             {activeTab === 'calls' && (
               callsLoaded ? (

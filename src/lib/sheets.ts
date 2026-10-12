@@ -18,6 +18,8 @@ export interface RawDashboardDataset {
   isMockData: boolean;
   /** Live sources that failed to load (e.g. 'call logs', 'BD tracker'). Empty when everything loaded. */
   failedSources: string[];
+  /** Epoch ms when the sources were actually read. */
+  loadedAt: number;
 }
 
 function getSheetsClient() {
@@ -353,7 +355,8 @@ async function loadDashboardRawData(): Promise<RawDashboardDataset> {
       attendance: attendanceResult.attendance,
       dataSourceInfo,
       isMockData: false,
-      failedSources
+      failedSources,
+      loadedAt: Date.now()
     };
 
     return result;
@@ -368,7 +371,7 @@ async function loadDashboardRawData(): Promise<RawDashboardDataset> {
 // which is what exhausts the Sheets API quota. The cache is per server instance.
 // ---------------------------------------------------------------------------
 
-const CACHE_TTL_MS = Math.max(0, Number(process.env.DASHBOARD_CACHE_TTL_SECONDS ?? 60)) * 1000;
+const CACHE_TTL_MS = Math.max(0, Number(process.env.DASHBOARD_CACHE_TTL_SECONDS ?? 30)) * 1000;
 const MIN_USER_REFRESH_MS = 10_000; // a manual refresh cannot hammer the Sheets API
 
 let cached: { data: RawDashboardDataset; loadedAt: number } | null = null;

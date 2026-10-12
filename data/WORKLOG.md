@@ -70,6 +70,13 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - `Temporary Inactive` now counts as a show (`ATTENDED_STAGES`, in the web app and Apps Script).
 - The shared-password login (proxy, `/login`, `/api/login`, `/api/logout`, `DASHBOARD_PASSWORD`) was removed at the owner's request; `/api/sync` is still protected by `CRON_SECRET`.
 
+### 11. Per-user Accounts, Show Confirmation, Live Updates
+- Per-user sign-in (scrypt passwords, signed session cookie, admin / manager / viewer roles, admin Users page, change-password page, `npm run create-user`).
+- Shows now require management confirmation in a new **Confirm shows** tab; confirmations and an audit log live in Supabase; "awaiting confirmation" counts on the Show rate card, team cards and tab badge; one-time import for existing show-stage meetings.
+- Every show rate uses confirmed shows (`attended ÷ (attended + no-show)`); Dead Leads / No-Show can never be confirmed.
+- Live updates: 30 s polling while the tab is visible, 30 s server cache, header shows when the data was actually read.
+- New `data/SETUP_USERS_AND_CONFIRMATIONS.md`.
+
 ---
 
 ## Documentation Manifest in `data/`
@@ -77,6 +84,7 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - [`data/AGENT_METHODOLOGY.md`](AGENT_METHODOLOGY.md) — Comprehensive guide on agent mapping, normalization rules, and exclusion logic.
 - [`data/PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) — System architecture, data flow diagram, formulas, and directory structure.
 - [`data/MANUAL_AUDIT.md`](MANUAL_AUDIT.md) — Step-by-step verification checklist.
+- [`data/SETUP_USERS_AND_CONFIRMATIONS.md`](SETUP_USERS_AND_CONFIRMATIONS.md) — Accounts, show confirmations, env vars, first admin.
 - [`data/HOW_NUMBERS_WORK.md`](HOW_NUMBERS_WORK.md) — How every number is recorded, read and calculated.
 - [`data/AUDIT_FINDINGS.md`](AUDIT_FINDINGS.md) — Audit results and resolution status.
 - [`data/WORKLOG.md`](WORKLOG.md) — Full engineering changelog and decision log.

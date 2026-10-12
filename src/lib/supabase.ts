@@ -4,6 +4,16 @@ import { CallRecord, MeetingRecord, AgentMapping } from '../types/dashboard';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://tyideivywfxxvqbfdxag.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
+/**
+ * Client for the user and confirmation tables. Those tables are locked to the service role,
+ * so unlike the snapshot fallback this never falls back to the anon key.
+ */
+export function getSupabaseService() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return null;
+  return createClient(SUPABASE_URL, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
 export function getSupabaseAdmin() {
   try {
     if (!SUPABASE_KEY) {

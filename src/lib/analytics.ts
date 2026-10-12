@@ -9,6 +9,7 @@ import {
   PeriodicAgentMetrics
 } from '../types/dashboard';
 import { AttendanceDataset, calculateAgentPresentDays } from './attendance';
+import { isAwaitingConfirmation, isConfirmedShow } from './meetings';
 
 /**
  * Extracts agent name from Ultatel extension cell.
@@ -167,30 +168,6 @@ export function formatMinutes(totalSec: number): string {
 export function formatPercent(rate: number): string {
   if (isNaN(rate) || !isFinite(rate)) return '0.0%';
   return `${(rate * 100).toFixed(1)}%`;
-}
-
-/**
- * Returns attendance outcome metrics from the mutually exclusive current
- * pipeline stages. Records that are still pending or have an indeterminate
- * outcome must not be silently counted as attended.
- */
-function getAttendanceMetrics(stageCounts: Record<string, number>): {
-  attended: number;
-  noShow: number;
-  showRate: number;
-} {
-  const attended = CONFIG.ATTENDED_STAGES.reduce(
-    (sum, stage) => sum + (stageCounts[stage] || 0),
-    0
-  );
-  const noShow = stageCounts['No-Show'] || 0;
-  const completedMeetings = attended + noShow;
-
-  return {
-    attended,
-    noShow,
-    showRate: completedMeetings > 0 ? attended / completedMeetings : 0
-  };
 }
 
 /**
@@ -508,8 +485,13 @@ export function computeDashboardMetrics(
   // Count Med B and PPO checks per canonical opener
   const openerMedBCounts: Record<string, number> = {};
   const openerPPOCounts: Record<string, number> = {};
+  const openerShows: Record<string, number> = {};
+  const openerAwaiting: Record<string, number> = {};
   filteredMeetings.forEach(m => {
     if (!m.opener) return;
+    // A show exists only once management confirmed it; stages alone never create one.
+    if (isConfirmedShow(m)) openerShows[m.opener] = (openerShows[m.opener] || 0) + 1;
+    if (isAwaitingConfirmation(m)) openerAwaiting[m.opener] = (openerAwaiting[m.opener] || 0) + 1;
     if (m.medB) {
       openerMedBCounts[m.opener] = (openerMedBCounts[m.opener] || 0) + 1;
     }
@@ -534,7 +516,10 @@ export function computeDashboardMetrics(
       booked += count;
     });
 
-    const { noShow, attended, showRate } = getAttendanceMetrics(tc);
+    const noShow = tc['No-Show'] || 0;
+    const attended = openerShows[op] || 0;
+    const awaitingConfirmation = openerAwaiting[op] || 0;
+    const showRate = attended + noShow > 0 ? attended / (attended + noShow) : 0;
     const onboarded = tc['Onboarded'] || 0;
 
     const medBCount = openerMedBCounts[op] || 0;
@@ -586,6 +571,7 @@ export function computeDashboardMetrics(
       ppoRate,
       noShow,
       attended,
+      awaitingConfirmation,
       showRate,
       onboarded,
       closeRate,
@@ -632,6 +618,7 @@ export function computeDashboardMetrics(
     ppoRate: 0,
     noShow: 0,
     attended: 0,
+    awaitingConfirmation: 0,
     showRate: 0,
     onboarded: 0,
     closeRate: 0,
@@ -658,6 +645,7 @@ export function computeDashboardMetrics(
     totals.ppoCount += o.ppoCount;
     totals.noShow += o.noShow;
     totals.attended += o.attended;
+    totals.awaitingConfirmation += o.awaitingConfirmation;
     totals.onboarded += o.onboarded;
     CONFIG.BD_TABS.forEach(tab => {
       totals.stageCounts[tab] = (totals.stageCounts[tab] || 0) + (o.stageCounts[tab] || 0);
@@ -811,7 +799,7 @@ function buildPeriodicBreakdown(
     const a = p.agentStats[opener];
     a.meetings++;
     if (m.stage === 'No-Show') a.noShow++;
-    if (CONFIG.ATTENDED_STAGES.includes(m.stage)) a.attended++;
+    if (isConfirmedShow(m)) a.attended++;
     if (m.stage === 'Onboarded') a.onboarded++;
   });
 

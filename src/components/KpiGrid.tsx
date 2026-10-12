@@ -22,7 +22,7 @@ export const KpiGrid: React.FC<{ totals: OrgTotals }> = React.memo(({ totals }) 
   <section aria-label="Team summary" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
     <KpiCard label="Calls" value={totals.calls.toLocaleString()} sub={`${totals.callsPerPresentDay}/present day`} icon={<Phone className="w-4 h-4" />} />
     <KpiCard label="Meetings booked" value={totals.booked.toLocaleString()} sub={`${totals.medBCount} Med B · ${totals.ppoCount} PPO`} icon={<CalendarCheck className="w-4 h-4" />} tone="gold" />
-    <KpiCard label="Show rate" value={formatPercent(totals.showRate)} sub={`${totals.attended} attended · ${totals.noShow} no-show`} icon={<TrendingUp className="w-4 h-4" />} tone="success" />
+    <KpiCard label="Show rate" value={formatPercent(totals.showRate)} sub={`${totals.attended} confirmed · ${totals.noShow} no-show${totals.awaitingConfirmation > 0 ? ` · ${totals.awaitingConfirmation} awaiting confirmation` : ''}`} icon={<TrendingUp className="w-4 h-4" />} tone="success" />
     <KpiCard label="Onboarded" value={totals.onboarded.toLocaleString()} sub={`${formatPercent(totals.closeRate)} close rate`} icon={<CheckCircle className="w-4 h-4" />} tone="gold" />
   </section>
 ));

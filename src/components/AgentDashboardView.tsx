@@ -53,7 +53,7 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: 
             <h3 className="font-serif text-base font-bold text-white truncate">{agent.opener}</h3>
             {isTop && <Award className="w-4 h-4 shrink-0 text-gold-light" aria-label="Top performer" />}
           </div>
-          <p className="label-caps mt-1">#{rank} · {productivity}</p>
+          <p className="label-caps mt-1">#{rank} · {productivity}{agent.awaitingConfirmation > 0 ? ` · ${agent.awaitingConfirmation} awaiting confirmation` : ''}</p>
         </div>
         <span className={`pill ${status.className} shrink-0`}>{status.label}</span>
       </header>

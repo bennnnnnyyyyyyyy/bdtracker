@@ -28,8 +28,8 @@ const CONFIG = {
     'Temporary Inactive'
   ],
 
-  // Show rate is based only on completed attendance outcomes. Pending (New Meetings)
-  // and Dead Leads are intentionally excluded. Keep in sync with src/lib/config.ts.
+  // NOTE: this in-sheet mirror estimates shows from the pipeline stage only. The web dashboard counts
+  // a show only after management confirms it there, so use the dashboard for official show numbers.
   ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
 
   CALL_LOG_SHEET: 'Call Logs',
@@ -564,7 +564,7 @@ function refreshDashboard() {
     'Meetings Booked',
     'No-Show',
     'Attended',
-    'Show Rate',
+    'Show Rate (stage-based, unconfirmed)',
     'Onboarded',
     'Close Rate',
     'Calls / Meeting',

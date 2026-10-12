@@ -54,15 +54,17 @@ The French Dashboard workbook is copied into the tracker's `Attendance` tab by a
 
 ## 3. Reading: what the server does on each request
 
-1. **Cache** (`sheets.ts › getDashboardRawData`): reuses the last load if it is under 60 s old (Refresh forces a reload, at most every 10 s). Concurrent requests share one load.
-2. **Load** (parallel):
+1. **Auth**: the proxy requires a signed session cookie (`/api/sync` has its own secret).
+2. **Cache** (`sheets.ts › getDashboardRawData`): reuses the last load if it is under 30 s old (Refresh forces a reload, at most every 10 s). The open page also re-requests every 30 s, so the screen follows the sheets within about a minute. Concurrent requests share one load.
+3. **Load** (parallel):
    - `Agent Mapping!A2:B` and `Call Logs!A2:O`, read in 20 000-row chunks.
    - The 8 stage tabs with one batch call, range `A1:Z`.
    - `Attendance!A1:AT`, falling back to the local workbook.
-3. **Failure handling**: if the call log or tracker cannot be read, the server serves the last good in-memory copy, else the Supabase snapshot, else partial data — and always says so in the yellow banner. A partial load is never cached and never written to Supabase.
-4. **Compute** (`analytics.ts › computeDashboardMetrics`) with the filters from the URL: start date, end date, opener.
-5. **Respond**: the Call Logs tab's raw rows are only sent when that tab is opened (`includeCalls=true`).
-6. **Snapshot**: once a day `/api/sync` re-reads everything and writes it to Supabase (refusing partial data). The dashboard reads Supabase only as an emergency fallback.
+4. **Failure handling**: if the call log or tracker cannot be read, the server serves the last good in-memory copy, else the Supabase snapshot, else partial data — and always says so in the yellow banner. A partial load is never cached and never written to Supabase.
+5. **Confirmations**: every current show confirmation is read from Supabase and attached to the meetings (if that fails, the banner says so and no meeting counts as a show).
+6. **Compute** (`analytics.ts › computeDashboardMetrics`) with the filters from the URL: start date, end date, opener.
+7. **Respond**: the Call Logs tab's raw rows are only sent when that tab is opened (`includeCalls=true`).
+8. **Snapshot**: once a day `/api/sync` re-reads everything and writes it to Supabase (refusing partial data). The dashboard reads Supabase only as an emergency fallback.
 
 ---
 
@@ -101,14 +103,15 @@ Opener = one person. Org = the "Team" figures in the top cards and totals rows.
 | :--- | :--- |
 | **Stage counts** | Rows per stage tab for the opener in the date range (by *Date Added*). |
 | **Booked** | Sum of all 8 stage counts. |
-| **Attended (a "show")** | Rows now in Follow Ups + Contract Sent + Invoice Sent + Onboarded + Temporary Inactive (a client who showed and later went inactive is still a show). |
+| **Attended (a "show")** | Meetings that **management confirmed** in the dashboard (Confirm shows tab) and that are not in No-Show or Dead Leads. The stage alone never makes a show; New Meetings or Temporary Inactive count once confirmed. |
+| **Awaiting confirmation** | Unconfirmed meetings sitting in Follow Ups, Contract Sent, Invoice Sent, Onboarded or Temporary Inactive: the follow-up queue for management. |
 | **No-show** | Rows in the No-Show tab. |
-| **Show rate (every card, row and total)** | `attended ÷ (attended + no-show)`. Meetings still in New Meetings, or in Dead Leads, are not counted either way. The same formula is used for each person, each period, the Team card and the totals row. |
+| **Show rate (every card, row and total)** | `attended ÷ (attended + no-show)`. Unconfirmed meetings and Dead Leads are not counted either way. The same formula is used for each person, each period, the Team card and the totals row. |
 | **Onboarded / Close rate** | `Onboarded ÷ booked`. |
 | **Calls per meeting** | `calls ÷ booked` (1 decimal). |
 | **Med B / PPO** | Count of ticked rows; rate = `count ÷ booked × 100` (1 decimal). |
 
-A meeting is counted in the **tab it sits in today but in the period of its Date Added**. If a lead booked in July is onboarded in August, it counts as a July meeting that is now onboarded.
+A meeting is counted in the **tab it sits in today but in the period of its Date Added**; its confirmation follows the row (see `SETUP_USERS_AND_CONFIRMATIONS.md` for how rows are identified). If a lead booked in July is onboarded in August, it counts as a July meeting that is now onboarded.
 
 ### Attendance and productivity
 | Metric | Formula |
@@ -154,6 +157,7 @@ Ben's calls: 486 outbound + 15 inbound = 501; the 2 internal calls are dropped. 
 ---
 
 ## 7. Known limits (be aware when reading the numbers)
+- Show confirmations are keyed on opener + date added + company + contact; editing any of those cells makes the meeting need confirming again.
 - Stage counts are a snapshot of where each meeting is *now*, grouped by the date it was added.
 - Meetings without a valid Date Added disappear as soon as a date range is applied.
 - With only the department summary report, calls have no real dates (shown with a warning).

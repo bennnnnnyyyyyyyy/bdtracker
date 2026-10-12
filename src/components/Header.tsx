@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Calendar, ChevronDown, FileSpreadsheet, PhoneCall, RefreshCw, Upload, User, X } from 'lucide-react';
-import { DataSourceInfo, FilterState, OpenerStats } from '@/types/dashboard';
+import Link from 'next/link';
+import { Calendar, ChevronDown, FileSpreadsheet, LogOut, PhoneCall, RefreshCw, Upload, User, Users, X } from 'lucide-react';
+import { DataSourceInfo, FilterState, OpenerStats, ViewerInfo } from '@/types/dashboard';
 
 interface HeaderProps {
   filters: FilterState;
@@ -15,6 +16,9 @@ interface HeaderProps {
   lastUpdated: string;
   isMockData?: boolean;
   dataSourceInfo?: DataSourceInfo;
+  viewer?: ViewerInfo;
+  /** True when the last background refresh failed (numbers shown are the last good ones). */
+  pollFailed?: boolean;
 }
 
 type Preset = FilterState['preset'];
@@ -31,8 +35,14 @@ const PRESETS: PresetOption[] = [
   { label: 'Last 30 days', value: 'last_30_days', getRange: () => { const end = new Date(); const start = new Date(end); start.setDate(end.getDate() - 29); return { startDate: formatLocalDateYMD(start), endDate: formatLocalDateYMD(end) }; } },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, loading, lastUpdated, isMockData, dataSourceInfo }) => {
-  const updatedAt = lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, loading, lastUpdated, isMockData, dataSourceInfo, viewer, pollFailed }) => {
+  const updatedAt = lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  const signOut = async () => {
+    await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    // Full page load so every bit of signed-in state is dropped.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = '/login';
+  };
   const sourceLabel = isMockData ? 'Demo data' : dataSourceInfo?.source === 'supabase' ? 'Cached data' : 'Live data';
   const clearFilters = () => onFilterChange({ selectedOpener: 'ALL', preset: 'this_week' });
 
@@ -44,7 +54,10 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
             <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 bg-gold-dim border border-gold-border"><PhoneCall className="w-4 h-4 text-gold" /></div>
             <div className="min-w-0">
               <h1 className="font-serif text-lg font-bold text-white truncate">BD Manager Dashboard</h1>
-              <p className="label-caps mt-0.5">{sourceLabel}{updatedAt ? ` · Updated ${updatedAt}` : ''}</p>
+              <p className="label-caps mt-0.5">
+                {pollFailed ? <span className="text-[#fca5a5]">Live updates paused · </span> : <span className="text-[#4ade80]">● Live · </span>}
+                {sourceLabel}{updatedAt ? ` · Data as of ${updatedAt}` : ''}
+              </p>
             </div>
           </div>
 
@@ -55,6 +68,19 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
                 <div className="absolute right-0 top-11 z-40 w-44 rounded-lg bg-card border border-white/10 shadow-xl p-1.5">
                   {onExportXlsx && <button onClick={onExportXlsx} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><FileSpreadsheet className="w-3.5 h-3.5 text-success" />Export XLSX</button>}
                   {onOpenImportModal && <button onClick={onOpenImportModal} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><Upload className="w-3.5 h-3.5 text-gold-light" />Import Excel</button>}
+                </div>
+              </details>
+            )}
+            {viewer && (
+              <details className="relative">
+                <summary className="list-none flex items-center gap-1.5 min-h-9 px-3 rounded-lg text-xs font-semibold cursor-pointer border border-white/10 text-text-primary">
+                  <User className="w-3.5 h-3.5" /><span className="hidden sm:inline max-w-32 truncate">{viewer.name}</span><span className="text-[10px] uppercase text-text-dim">{viewer.role}</span>
+                </summary>
+                <div className="absolute right-0 top-11 z-40 w-48 rounded-lg bg-card border border-white/10 shadow-xl p-1.5">
+                  <p className="px-2.5 py-1.5 text-[11px] text-text-dim truncate">{viewer.email}</p>
+                  {viewer.role === 'admin' && <Link href="/admin/users" className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><Users className="w-3.5 h-3.5 text-gold-light" />Manage users</Link>}
+                  {viewer.id !== 'dev' && <Link href="/account" className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5">Change password</Link>}
+                  {viewer.id !== 'dev' && <button onClick={signOut} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><LogOut className="w-3.5 h-3.5" />Sign out</button>}
                 </div>
               </details>
             )}

@@ -25,6 +25,21 @@ export interface MeetingRecord {
   authorizedPerson?: string;
   medB?: boolean;
   ppo?: boolean;
+  /** Stable identity used to attach a management show-confirmation to a tracker row. */
+  meetingKey?: string;
+  /** True once management confirmed the meeting was a show (never inferred from the stage). */
+  showConfirmed?: boolean;
+  confirmedBy?: string;
+  confirmedAt?: string;
+}
+
+export type UserRole = 'admin' | 'manager' | 'viewer';
+
+export interface ViewerInfo {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
 }
 
 export interface OpenerStats {
@@ -44,7 +59,8 @@ export interface OpenerStats {
   ppoCount: number;
   ppoRate: number; // PPO percentage: ppoCount / booked
   noShow: number;
-  attended: number;
+  attended: number; // Meetings confirmed as shows by management
+  awaitingConfirmation: number; // Meetings in likely-show stages not yet confirmed
   showRate: number; // Attended / (Attended + No-Show); pending records excluded
   onboarded: number;
   closeRate: number; // Onboarded / Booked
@@ -128,6 +144,8 @@ export interface OrgTotals {
   ppoRate: number;
   noShow: number;
   attended: number;
+  /** Meetings in likely-show stages that management has not confirmed yet. */
+  awaitingConfirmation: number;
   showRate: number;
   onboarded: number;
   closeRate: number;
@@ -167,6 +185,11 @@ export interface DashboardResponse {
   monthlyBreakdown: PeriodicGroupSummary[];
   isMockData?: boolean;
   dataSourceInfo?: DataSourceInfo;
+  /** When the underlying sheets were actually read (not when this response was built). */
+  dataAsOf?: string;
+  /** False when the confirmation store could not be read; no meeting is counted as a show then. */
+  confirmationsAvailable?: boolean;
+  viewer?: ViewerInfo;
   error?: string;
 }
 

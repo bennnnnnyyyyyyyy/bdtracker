@@ -1,3 +1,5 @@
+import { LIKELY_SHOW_STAGES, NEVER_SHOW_STAGES } from './stages';
+
 export const CONFIG = {
   // Call Dashboard Sheet (Call Logs, Import Staging, Agent Mapping, BD Dashboard)
   CALL_DASHBOARD_SHEET_ID: process.env.CALL_DASHBOARD_SHEET_ID || '1aI0879YxZdu17GHm-QLhOoE8CuFlkpyROvCtRjjuRbw',
@@ -24,11 +26,10 @@ export const CONFIG = {
     'Temporary Inactive'
   ],
 
-  // A record is treated as attended once it has progressed beyond the initial meeting
-  // stage (including clients that later went Temporary Inactive). Pending records (New
-  // Meetings) and Dead Leads are excluded from show-rate calculations instead of being
-  // counted as attended by default. Keep in sync with apps-script/Code.js.
-  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
+  // A meeting counts as a show only after management confirms it in the dashboard.
+  // Stage rules live in ./stages (client-safe); keep apps-script/Code.js in mind when changing them.
+  NEVER_SHOW_STAGES,
+  LIKELY_SHOW_STAGES,
 
   CALL_LOG_SHEET: 'Call Logs',
   MAPPING_SHEET: 'Agent Mapping',

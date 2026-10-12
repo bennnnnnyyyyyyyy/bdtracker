@@ -1,5 +1,7 @@
 # Manual Audit & Verification Guide
 
+> Shows: pick a person, count the meetings you personally recognise as shows in the tracker, confirm them in the **Confirm shows** tab, and check that Attended on the Details tab equals that count.
+
 Formulas and edge cases are explained in [`HOW_NUMBERS_WORK.md`](HOW_NUMBERS_WORK.md); `npm test` checks the same formulas automatically.
 
 A step-by-step checklist to manually audit every calculation, data extraction, exclusion filter, and UI component in the dashboard.
@@ -32,7 +34,7 @@ All three granularities live in the **Trends** tab.
 | **Total Calls** | all non-internal call rows for the opener in range | Outbound + Inbound = Calls (`INTERNAL` calls are excluded before counting). |
 | **Connection Rate** | $\frac{\text{Answered Calls}}{\text{Total Calls}} \times 100\%$ | Divide Answered by Total Calls. |
 | **Meetings Booked** | $\sum \text{All 8 BD Stage Counts}$ | Sum `New Meetings` through `Temporary Inactive`. |
-| **Show Rate** (everywhere: openers, Trends, Team card, totals) | $\frac{\text{Attended}}{\text{Attended} + \text{No-Show}}$ | Attended = Follow Ups + Contract Sent + Invoice Sent + Onboarded + Temporary Inactive. New Meetings / Dead Leads / Temporary Inactive are ignored. |
+| **Show Rate** (everywhere: openers, Trends, Team card, totals) | $\frac{\text{Attended}}{\text{Attended} + \text{No-Show}}$ | Attended = meetings management confirmed in the Confirm shows tab (not No-Show / Dead Leads). New Meetings / Dead Leads / Temporary Inactive are ignored. |
 | **Med B / PPO rate** | $\frac{\text{ticked rows}}{\text{Booked}} \times 100\%$ | Count rows with the checkbox ticked in the tracker. |
 | **Present Days** | $\sum$ weights (P, L1, L2 = 1; Q = 0.75; H = 0.5) in range | Compare to the Attendance tab. |
 | **Calls / Present Day** | $\frac{\text{Calls}}{\text{Present Days}}$ | Falls back to calls per active calendar day if no attendance. |

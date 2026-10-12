@@ -15,9 +15,9 @@ For every active opener (BD agent), over a chosen date range, the dashboard repo
 | **Calls** | Outbound + Inbound call records (`type` = `OUT-Bound` / `IN-Bound`, exact match). |
 | **Connection rate** | `answered / calls` (`outcome === 'ANSWERED'`). `answerRate` is identical. |
 | **Meetings booked** | Sum of rows across all 8 tracker stage tabs in the range. |
-| **Attended** | Rows currently in `ATTENDED_STAGES` = Follow Ups, Contract Sent, Invoice Sent, Onboarded, Temporary Inactive. |
+| **Attended (show)** | Meetings confirmed by management (and not in No-Show / Dead Leads). Unconfirmed meetings in `LIKELY_SHOW_STAGES` are reported as *awaiting confirmation*. |
 | **No-show** | Rows in the `No-Show` tab. |
-| **Show rate (everywhere: openers, periods, Team card, totals)** | `attended / (attended + noShow)`. Meetings still in *New Meetings* or *Dead Leads* are **not** counted as attended. |
+| **Show rate (everywhere: openers, periods, Team card, totals)** | `attended / (attended + noShow)`. Unconfirmed meetings and Dead Leads are **not** counted as attended. |
 | **Closing rate** | `onboarded / booked`. |
 | **Calls per meeting** | `calls / booked`. |
 | **Med B / PPO** | Count and `% of booked` of tracker rows whose `MEDB` / `PPO` checkbox column is ticked. |
@@ -49,7 +49,10 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 - **Supabase** (`agent_mappings`, `meetings`, `calls`, `metadata`; schema in `supabase_schema.sql`): a daily snapshot written by `/api/sync` and read only as a fallback (see above). `meetings` needs the `med_b` / `ppo` columns — run the migration in the schema file.
 
 ### Caching
-`getDashboardRawData()` keeps the loaded dataset in memory per server instance for `DASHBOARD_CACHE_TTL_SECONDS` (default 60). Concurrent requests share one load; partial loads are never cached; if a reload fails, the last good copy is served with a note; `/api/sync` always loads fresh; `/api/upload` clears the cache.
+`getDashboardRawData()` keeps the loaded dataset in memory per server instance for `DASHBOARD_CACHE_TTL_SECONDS` (default 30). Concurrent requests share one load; partial loads are never cached; if a reload fails, the last good copy is served with a note; `/api/sync` always loads fresh; `/api/upload` clears the cache.
+
+### Access control, confirmations and live updates
+Per-user accounts (`app_users` in Supabase; scrypt-hashed passwords; roles admin / manager / viewer) with a signed session cookie (`AUTH_SECRET`). `src/proxy.ts` blocks every page and API route except `/login`, `/api/auth/login` and `/api/sync` (which keeps `CRON_SECRET`). Admins manage users at `/admin/users`; every signed-in user can change their password at `/account`. Show confirmations live in `show_confirmations` with an append-only audit log. The open dashboard polls every 30 s. Setup steps: [`SETUP_USERS_AND_CONFIRMATIONS.md`](SETUP_USERS_AND_CONFIRMATIONS.md).
 
 ### Credentials
 `getSheetsClient()` uses, in order: a `google2.json` service-account file in the project root (gitignored), then `GOOGLE_CLIENT_EMAIL` + `GOOGLE_PRIVATE_KEY`. Supabase uses `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or the anon key). `CRON_SECRET` protects `/api/sync` in production.
@@ -65,6 +68,10 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 | :--- | :--- | :--- |
 | `/api/dashboard` | GET | Query params `startDate`, `endDate` (YYYY-MM-DD), `opener`, `refresh=true` (force reload, max every 10 s), `includeCalls=true` (adds the raw call rows; only the Call Logs tab asks for them). Pulls live data, computes metrics, returns `DashboardResponse` (`Cache-Control: no-store`). If the live pull throws, or the call logs / BD tracker failed to load, serves the Supabase snapshot instead (noted in `dataSourceInfo.notes`); with no snapshot it shows the partial live data plus a warning. |
 | `/api/sync` | GET, POST | Reads live data and writes it to Supabase. Requires `Authorization: Bearer $CRON_SECRET` in production. Returns 503 and leaves the snapshot untouched if any live source failed or calls/meetings are empty; Supabase writes are checked, and old rows are removed only after the new ones are saved. Scheduled daily at 05:00 UTC by `vercel.json`. |
+| `/api/auth/login`, `/api/auth/logout`, `/api/auth/password` | POST | Sign in, sign out, change own password. |
+| `/api/admin/users`, `/api/admin/users/[id]` | GET, POST, PATCH | Admin only: list, create, edit role / disable / reset password. |
+| `/api/confirmations` | POST | Admin/manager: confirm or undo shows (validated against current tracker data). |
+| `/api/confirmations/bulk` | POST | Admin: one-time confirmation of existing show-stage meetings. |
 | `/api/upload` | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
 
 ---
@@ -92,11 +99,14 @@ Four tabs, switched by CSS show/hide (no unmount):
 │   ├── PROJECT_OVERVIEW.md      # This file
 │   ├── AGENT_METHODOLOGY.md     # Opener resolution rules
 │   ├── MANUAL_AUDIT.md          # Verification checklist
+│   ├── SETUP_USERS_AND_CONFIRMATIONS.md  # Accounts, confirmations, env vars
 │   ├── HOW_NUMBERS_WORK.md      # How every number is recorded, read and calculated
 │   ├── AUDIT_FINDINGS.md        # Audit results and what was fixed
 │   └── WORKLOG.md               # Engineering changelog
 ├── src/
-│   ├── app/                     # page.tsx, layout.tsx, api/{dashboard,sync,upload}/route.ts
+│   ├── proxy.ts                 # Session gate for pages and APIs
+│   ├── app/                     # page.tsx, login/, account/, admin/users/, api/{dashboard,sync,upload,auth,admin,confirmations}
+│   ├── scripts/ (repo root)     # create-user.ts: create the first admin
 │   ├── components/              # Header, KpiGrid, AgentDashboardView, OpenerTable, PeriodicBreakdownTable,
 │   │                            #   DashboardCharts, CallLogsView, FileImportModal
 │   ├── lib/
@@ -107,6 +117,9 @@ Four tabs, switched by CSS show/hide (no unmount):
 │   │   ├── ultatel.ts           # Department-report parser and call synthesis
 │   │   ├── supabase.ts          # Snapshot save/restore (emergency fallback)
 │   │   ├── exportXlsx.ts        # Per-person XLSX export
+│   │   ├── session.ts / password.ts / users.ts / api-auth.ts  # accounts and sessions
+│   │   ├── meetings.ts / confirmations.ts / stages.ts  # meeting keys and show confirmations
+│   │   ├── dashboard-data.ts    # live → snapshot → partial loading + confirmation attach
 │   │   └── errors.ts            # Error message / quota detection helpers
 │   └── types/dashboard.ts       # Data contracts
 ├── tests/                       # Vitest unit tests (parsing, opener resolution, attendance, metrics)

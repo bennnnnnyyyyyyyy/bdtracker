@@ -79,3 +79,60 @@ CREATE POLICY "Allow all for service role" ON public.agent_mappings FOR ALL TO s
 CREATE POLICY "Allow all for service role" ON public.meetings FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for service role" ON public.calls FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for service role" ON public.metadata FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- User accounts and management show confirmations
+-- (safe to re-run; run this whole file again after pulling updates)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.app_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
+  password_hash TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_login_at TIMESTAMPTZ
+);
+
+-- A meeting counts as a show only if a row exists here.
+CREATE TABLE IF NOT EXISTS public.show_confirmations (
+  meeting_key TEXT PRIMARY KEY,
+  opener TEXT,
+  company_name TEXT,
+  authorized_person TEXT,
+  date_added TEXT,
+  stage_at_confirmation TEXT,
+  confirmed_by_id UUID REFERENCES public.app_users (id),
+  confirmed_by_name TEXT NOT NULL,
+  confirmed_by_email TEXT,
+  confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  source TEXT NOT NULL DEFAULT 'manual'
+);
+
+-- Append-only audit trail of every confirm / undo.
+CREATE TABLE IF NOT EXISTS public.show_confirmation_events (
+  id BIGSERIAL PRIMARY KEY,
+  meeting_key TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('confirm', 'revoke')),
+  user_id UUID,
+  user_name TEXT,
+  user_email TEXT,
+  stage TEXT,
+  source TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_show_events_key ON public.show_confirmation_events (meeting_key);
+
+ALTER TABLE public.app_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.show_confirmations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.show_confirmation_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role only" ON public.app_users;
+DROP POLICY IF EXISTS "Service role only" ON public.show_confirmations;
+DROP POLICY IF EXISTS "Service role only" ON public.show_confirmation_events;
+CREATE POLICY "Service role only" ON public.app_users FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role only" ON public.show_confirmations FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role only" ON public.show_confirmation_events FOR ALL TO service_role USING (true) WITH CHECK (true);
