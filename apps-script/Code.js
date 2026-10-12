@@ -388,16 +388,56 @@ function convertAllCallLogDatesToCairo() {
 }
 
 /**
+ * Normalizes Call ID to base identifier string, handling float timestamps (e.g. 1784375989.170981 -> 1784375989).
+ * @param {unknown} val
+ * @returns {string}
+ */
+function normalizeCallId_(val) {
+  if (val === null || val === undefined || val === '') return '';
+  const s = String(val).trim().toLowerCase();
+  const num = Number(s);
+  if (!isNaN(num) && num > 1e8) {
+    return String(Math.floor(num));
+  }
+  return s.split('.')[0];
+}
+
+/**
+ * Strips formatting non-digit characters from telephone numbers.
+ * @param {unknown} val
+ * @returns {string}
+ */
+function cleanPhone_(val) {
+  if (!val) return '';
+  return String(val).replace(/\D+/g, '');
+}
+
+/**
+ * Returns a canonical Cairo minute string 'yyyy-MM-dd HH:mm' for composite key matching.
+ * @param {unknown} dateVal
+ * @returns {string}
+ */
+function toMinuteKey_(dateVal) {
+  if (!dateVal) return '';
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+    return Utilities.formatDate(dateVal, CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm');
+  }
+  const cairoStr = toCairoDate_(dateVal);
+  return cairoStr.length >= 16 ? cairoStr.substring(0, 16) : cairoStr;
+}
+
+/**
  * Treats timestamps without an explicit offset as fixed UTC-6, then formats
  * the resulting instant in Africa/Cairo. Cairo DST is applied by Apps Script.
+ * Guards against double-conversion if timestamp is already formatted in Cairo.
  */
 function toCairoDate_(value) {
   if (value === null || value === undefined || value === '') return '';
 
   let text;
   if (value instanceof Date && !isNaN(value.getTime())) {
-    // Read the displayed source clock in UTC-6 before converting it.
-    text = Utilities.formatDate(value, CONFIG.SOURCE_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+    // If it's already a Date object, read its displayed wall-clock in the spreadsheet's timezone
+    text = Utilities.formatDate(value, Session.getScriptTimeZone() || CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
   } else {
     text = String(value).trim();
   }
@@ -409,6 +449,11 @@ function toCairoDate_(value) {
     if (!isNaN(explicit.getTime())) {
       return Utilities.formatDate(explicit, CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
     }
+  }
+
+  // If already formatted in Cairo standard 'yyyy-MM-dd HH:mm:ss', prevent double conversion!
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(text)) {
+    return text;
   }
 
   let match = text.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T]+(\d{1,2}):?(\d{2})?(?::?(\d{2}))?)?/);
@@ -441,6 +486,120 @@ function toCairoDate_(value) {
   // UTC-6 local clock -> UTC instant; Africa/Cairo then applies DST rules.
   const instant = new Date(Date.UTC(year, month - 1, day, hour + 6, minute, second));
   return Utilities.formatDate(instant, CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+}
+
+/**
+ * Audits Call Logs for duplicate records and date formatting issues.
+ */
+function auditCallLogs() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
+  if (!callLog || callLog.getLastRow() < 2) {
+    SpreadsheetApp.getUi().alert('Call Logs is empty or missing.');
+    return;
+  }
+
+  const lastRow = callLog.getLastRow();
+  const data = callLog.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length).getValues();
+
+  const idMap = new Map();
+  let duplicateCount = 0;
+  let zeroSecCount = 0;
+
+  data.forEach((r, idx) => {
+    const rawId = r[1];
+    const normId = normalizeCallId_(rawId);
+    const dateStr = String(r[0] ?? '');
+    if (/:00$/.test(dateStr)) zeroSecCount++;
+
+    if (normId) {
+      if (idMap.has(normId)) {
+        duplicateCount++;
+      } else {
+        idMap.set(normId, idx + 2);
+      }
+    }
+  });
+
+  const msg = `📊 Call Logs Audit Summary:\n\n` +
+    `• Total Rows: ${data.length}\n` +
+    `• Duplicate Call IDs Detected: ${duplicateCount}\n` +
+    `• Unique Calls: ${data.length - duplicateCount}\n` +
+    `• Timestamps with :00 seconds (rounded display): ${zeroSecCount}\n\n` +
+    (duplicateCount > 0
+      ? `To clean duplicates, click "BD Call Dashboard > Clean Duplicate Call Logs".`
+      : `✅ No duplicate calls detected.`);
+
+  SpreadsheetApp.getUi().alert(msg);
+}
+
+/**
+ * Removes duplicate records in Call Logs, keeping only the canonical first occurrence.
+ */
+function deduplicateCallLogs() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
+  if (!callLog || callLog.getLastRow() < 2) {
+    SpreadsheetApp.getUi().alert('Call Logs is empty.');
+    return;
+  }
+
+  const lastRow = callLog.getLastRow();
+  const numCols = callLog.getLastColumn();
+  const data = callLog.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+  const seenIds = new Set();
+  const seenCompound = new Set();
+  const cleanRows = [];
+  let duplicatesRemoved = 0;
+
+  data.forEach(r => {
+    const exactId = String(r[1] ?? '').trim().toLowerCase();
+    const normId = normalizeCallId_(r[1]);
+
+    const minKey = toMinuteKey_(r[0]);
+    const fromNum = cleanPhone_(r[2]);
+    const toNum = cleanPhone_(r[3]);
+    const durSec = durationToSeconds_(r[10]);
+    const agent = parseAgentName_(r[4]).toLowerCase();
+    const compoundKey = `${minKey}|${fromNum}|${toNum}|${durSec}|${agent}`;
+
+    const isDup = (exactId && seenIds.has(exactId)) ||
+                  (normId && seenIds.has(normId)) ||
+                  (!exactId && !normId && seenCompound.has(compoundKey));
+
+    if (isDup) {
+      duplicatesRemoved++;
+    } else {
+      if (exactId) seenIds.add(exactId);
+      if (normId) seenIds.add(normId);
+      seenCompound.add(compoundKey);
+      cleanRows.push(r);
+    }
+  });
+
+  if (duplicatesRemoved === 0) {
+    SpreadsheetApp.getUi().alert('No duplicate rows found. Call Logs is already clean.');
+    return;
+  }
+
+  const response = SpreadsheetApp.getUi().alert(
+    'Confirm Deduplication',
+    `Found ${duplicatesRemoved} duplicate row(s) out of ${data.length} total rows.\n\n` +
+    `Do you want to remove them and keep ${cleanRows.length} unique rows?`,
+    SpreadsheetApp.getUi().ButtonSet.YES_NO
+  );
+
+  if (response !== SpreadsheetApp.getUi().Button.YES) return;
+
+  // Clear existing content and rewrite unique rows
+  callLog.getRange(2, 1, lastRow - 1, numCols).clearContent();
+  if (cleanRows.length > 0) {
+    callLog.getRange(2, 1, cleanRows.length, numCols).setValues(cleanRows);
+  }
+
+  SpreadsheetApp.getUi().alert(`✅ Deduplication complete: Removed ${duplicatesRemoved} duplicate row(s).`);
+  refreshDashboard();
 }
 
 // ==========================================
