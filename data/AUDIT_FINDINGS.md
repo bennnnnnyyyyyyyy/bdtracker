@@ -30,7 +30,7 @@ Result of a full code review, with what was done about each item. The pure-logic
 - **Sheets call-log read** — now chunked (20 000 rows per request).
 
 ## C. Security and hygiene
-- **No auth on `/api/dashboard`** — done (shared password, fails closed in production). **Action:** set `DASHBOARD_PASSWORD` in Vercel.
+- **No auth on `/api/dashboard`** — a shared-password login was built and then removed at the owner's request, so the dashboard and its data (phone numbers, call notes) are reachable by anyone with the URL. Consider Vercel Deployment Protection instead.
 - **Open Supabase policies for anon** — fixed in `supabase_schema.sql` (service role only). **Action:** use `SUPABASE_SERVICE_ROLE_KEY`, not the anon key.
 - **Repository clutter** — removed: OpenSSL installer, duplicate `Untitled-1*.txt`, empty `x.txt`, `supabase/.temp/` (now git-ignored), stale `my-dashboard/`, a Windows key path in `.gitignore`. A history check found no service-account key or `.env` ever committed. The local `.xlsx` workbooks stay: the app uses them as fallbacks and `agents.md` asks that they be preserved.
 - **Hard-coded Supabase URL and sheet IDs** — left as defaults on purpose (identifiers, not secrets; removing them could break an existing deployment that relies on them). They can be overridden by environment variables.
@@ -45,4 +45,4 @@ Result of a full code review, with what was done about each item. The pure-logic
 ## Still open (deliberate or needs your decision)
 - Run `clasp push` yourself if you want the Apps Script exclusion change deployed (not done from here).
 - A holiday calendar for adherence (needs a list of holidays from you).
-- **Verify live:** login, caching behaviour with real Sheets credentials, and the Supabase sync after running the migration.
+- **Verify live:** caching behaviour with real Sheets credentials, and the Supabase sync after running the migration.

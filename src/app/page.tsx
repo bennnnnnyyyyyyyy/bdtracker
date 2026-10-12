@@ -148,12 +148,6 @@ export default function DashboardPage() {
       if (forceRefresh) params.set('refresh', 'true');
 
       const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
-      if (res.status === 401) {
-        // Full reload on purpose: drops all client state when the session has expired.
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        window.location.href = '/login';
-        return;
-      }
       if (!res.ok) {
         let errDetail = res.statusText;
         try {
@@ -200,12 +194,6 @@ export default function DashboardPage() {
         if (filters.endDate) params.set('endDate', filters.endDate);
         if (filters.selectedOpener && filters.selectedOpener !== 'ALL') params.set('opener', filters.selectedOpener);
         const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
-        if (res.status === 401) {
-          // Full reload on purpose: drops all client state when the session has expired.
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        window.location.href = '/login';
-          return;
-        }
         if (!res.ok) throw new Error('Failed to load call logs');
         const json: DashboardResponse = await res.json();
         if (!cancelled) {

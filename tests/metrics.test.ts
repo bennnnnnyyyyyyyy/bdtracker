@@ -71,6 +71,7 @@ describe('computeDashboardMetrics', () => {
     meeting('Onboarded', 'Ben', '2026-08-11', { ppo: true }),
     meeting('No-Show', 'Ben', '2026-08-11'),
     meeting('Dead Leads', 'Ben', '2026-08-11'),
+    meeting('Temporary Inactive', 'Ben', '2026-08-11'),                  // counted as a show
     meeting('Onboarded', 'Jane', '2026-08-12'),
     meeting('Onboarded', 'George', '2026-08-12'),                       // excluded
     meeting('Onboarded', 'Ben', '2026-07-02'),                           // outside the range
@@ -94,16 +95,16 @@ describe('computeDashboardMetrics', () => {
 
   it('computes meeting funnel metrics', () => {
     const ben = run().openers.find(o => o.opener === 'Ben')!;
-    expect(ben.booked).toBe(5);
-    expect(ben.attended).toBe(2);        // Follow Ups + Onboarded
+    expect(ben.booked).toBe(6);
+    expect(ben.attended).toBe(3);        // Follow Ups + Onboarded + Temporary Inactive
     expect(ben.noShow).toBe(1);
-    expect(ben.showRate).toBeCloseTo(2 / 3);   // attended / (attended + no-show)
+    expect(ben.showRate).toBeCloseTo(3 / 4);   // attended / (attended + no-show)
     expect(ben.onboarded).toBe(1);
-    expect(ben.closeRate).toBeCloseTo(1 / 5);
+    expect(ben.closeRate).toBeCloseTo(1 / 6);
     expect(ben.medBCount).toBe(1);
-    expect(ben.medBRate).toBe(20);
+    expect(ben.medBRate).toBe(16.7);
     expect(ben.ppoCount).toBe(1);
-    expect(ben.callsPerMeeting).toBe(1);
+    expect(ben.callsPerMeeting).toBe(0.8);
   });
 
   it('uses attendance for present days, adherence and calls per present day', () => {
@@ -116,9 +117,9 @@ describe('computeDashboardMetrics', () => {
   it('org totals match the sum of openers, and show rate is attended / booked', () => {
     const { openers, totals } = run();
     expect(totals.calls).toBe(openers.reduce((n, o) => n + o.calls, 0));
-    expect(totals.booked).toBe(6); // Ben 5 + Jane 1
-    expect(totals.attended).toBe(3);
-    expect(totals.showRate).toBeCloseTo(3 / 6);
+    expect(totals.booked).toBe(7); // Ben 6 + Jane 1
+    expect(totals.attended).toBe(4);
+    expect(totals.showRate).toBeCloseTo(4 / 7);
   });
 
   it('groups periods consistently', () => {

@@ -41,7 +41,7 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - **Quota handling**: `errors.ts` detects Google/Supabase rate-limit and quota errors; API routes return a friendly message.
 - **Attendance integration**: `attendance.ts` parses the `Attendance` tab (or local French Dashboard workbook), weights P/L1/L2/Q/H codes, and drives present days, adherence and calls-per-present-day.
 - **Med B / PPO**: `sheets.ts` detects the `MEDB`/`PPO` checkbox columns; `analytics.ts` computes counts and % of booked.
-- **Show-rate definition**: attended = Follow Ups + Contract Sent + Invoice Sent + Onboarded; rate = attended / (attended + No-Show). Pending and dead/inactive rows are excluded.
+- **Show-rate definition**: attended = Follow Ups + Contract Sent + Invoice Sent + Onboarded (Temporary Inactive added later, see #10); rate = attended / (attended + No-Show). Pending and dead/inactive rows are excluded.
 - **Ultatel department report**: `ultatel.ts` parses the per-agent summary export and synthesizes call records (used only when the Call Logs sheet is empty).
 - **Local import**: `/api/upload` + `FileImportModal` replace the local attendance / Ultatel workbooks (local only).
 - **Per-person XLSX export**: `exportXlsx.ts`.
@@ -53,7 +53,7 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ### 8. Caching, Auth, Date & Name Matching
 - In-memory dataset cache (60 s TTL, refresh throttle, stale-on-error, invalidated by uploads).
-- Shared-password auth via `src/proxy.ts`, `/login`, `/api/login`, `/api/logout` (`DASHBOARD_PASSWORD`); fails closed in production.
+- Shared-password auth was added here and later removed (see #10).
 - `parseDateToISO` validates ranges and no longer accepts arbitrary text as a date; tracker row-scan skips text columns; contact column no longer resolves to the company column.
 - Exclusions and first-name matching are whole-word (`Georgette` ≠ `George`, `Ben` ≠ `Benjamin`); Apps Script exclusion logic updated to match.
 - `supabase_schema.sql`: fixed invalid `CREATE POLICY IF NOT EXISTS`; policies now apply to `service_role` only.
@@ -64,6 +64,11 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Source warnings (fallback, partial load, missing attendance, undated department report) shown in a dashboard banner.
 - Vitest suite (29 tests) and GitHub Actions CI added. Removed Firestore/Firebase code, unused config keys, stray files (installer, scratch text files, `my-dashboard/`, Supabase CLI state).
 - New `data/HOW_NUMBERS_WORK.md`.
+
+### 10. Internal Calls, Temporary Inactive, Auth Removal
+- `INTERNAL` calls are excluded from every call figure.
+- `Temporary Inactive` now counts as a show (`ATTENDED_STAGES`, in the web app and Apps Script).
+- The shared-password login (proxy, `/login`, `/api/login`, `/api/logout`, `DASHBOARD_PASSWORD`) was removed at the owner's request; `/api/sync` is still protected by `CRON_SECRET`.
 
 ---
 

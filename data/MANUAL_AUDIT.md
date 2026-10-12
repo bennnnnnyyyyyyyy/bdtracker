@@ -32,7 +32,7 @@ All three granularities live in the **Trends** tab.
 | **Total Calls** | all non-internal call rows for the opener in range | Outbound + Inbound = Calls (`INTERNAL` calls are excluded before counting). |
 | **Connection Rate** | $\frac{\text{Answered Calls}}{\text{Total Calls}} \times 100\%$ | Divide Answered by Total Calls. |
 | **Meetings Booked** | $\sum \text{All 8 BD Stage Counts}$ | Sum `New Meetings` through `Temporary Inactive`. |
-| **Show Rate** (opener rows, Trends) | $\frac{\text{Attended}}{\text{Attended} + \text{No-Show}}$ | Attended = Follow Ups + Contract Sent + Invoice Sent + Onboarded. New Meetings / Dead Leads / Temporary Inactive are ignored. |
+| **Show Rate** (opener rows, Trends) | $\frac{\text{Attended}}{\text{Attended} + \text{No-Show}}$ | Attended = Follow Ups + Contract Sent + Invoice Sent + Onboarded + Temporary Inactive. New Meetings / Dead Leads / Temporary Inactive are ignored. |
 | **Show Rate** (org KPI card / totals row) | $\frac{\text{Attended}}{\text{Booked}}$ | Intentional: counts clients who showed against all meetings booked. |
 | **Med B / PPO rate** | $\frac{\text{ticked rows}}{\text{Booked}} \times 100\%$ | Count rows with the checkbox ticked in the tracker. |
 | **Present Days** | $\sum$ weights (P, L1, L2 = 1; Q = 0.75; H = 0.5) in range | Compare to the Attendance tab. |

@@ -17,7 +17,7 @@ For every active opener (BD agent), over a chosen date range, the dashboard repo
 | **Meetings booked** | Sum of rows across all 8 tracker stage tabs in the range. |
 | **Attended** | Rows currently in `ATTENDED_STAGES` = Follow Ups, Contract Sent, Invoice Sent, Onboarded. |
 | **No-show** | Rows in the `No-Show` tab. |
-| **Show rate (per opener, per period)** | `attended / (attended + noShow)`. Meetings still in *New Meetings*, *Dead Leads* or *Temporary Inactive* are **not** counted as attended. |
+| **Show rate (per opener, per period)** | `attended / (attended + noShow)`. Meetings still in *New Meetings*, or *Dead Leads* are **not** counted as attended. |
 | **Show rate (org total, KPI card)** | `attended / booked`. Intentional: show rate means clients who showed up to meetings. |
 | **Closing rate** | `onboarded / booked`. |
 | **Calls per meeting** | `calls / booked`. |
@@ -49,9 +49,6 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 - **Local Ultatel department report** `OutBound Calls Per Department ( BusinessDevelopmentTeam ).xlsx`: only used when the `Call Logs` sheet returns **zero** calls. It contains per-agent totals, not individual calls, so `ultatel.ts` synthesizes one `CallRecord` per call, **all dated today** (server date). Date filters are therefore not meaningful in this mode (the dashboard shows a warning banner).
 - **Supabase** (`agent_mappings`, `meetings`, `calls`, `metadata`; schema in `supabase_schema.sql`): a daily snapshot written by `/api/sync` and read only as a fallback (see above). `meetings` needs the `med_b` / `ppo` columns — run the migration in the schema file.
 
-### Access control
-Set `DASHBOARD_PASSWORD`. `src/proxy.ts` redirects unauthenticated page requests to `/login` and returns 401 for API calls; a successful login sets an httpOnly 30-day cookie (HMAC of the password, so changing the password signs everyone out) and failed logins are throttled per IP. `/api/sync` is exempt and uses `CRON_SECRET`. With no password set, auth is off in development and **fails closed (503) in production**. `GET /api/logout` clears the session.
-
 ### Caching
 `getDashboardRawData()` keeps the loaded dataset in memory per server instance for `DASHBOARD_CACHE_TTL_SECONDS` (default 60). Concurrent requests share one load; partial loads are never cached; if a reload fails, the last good copy is served with a note; `/api/sync` always loads fresh; `/api/upload` clears the cache.
 
@@ -69,7 +66,6 @@ Set `DASHBOARD_PASSWORD`. `src/proxy.ts` redirects unauthenticated page requests
 | :--- | :--- | :--- |
 | `/api/dashboard` | GET | Query params `startDate`, `endDate` (YYYY-MM-DD), `opener`, `refresh=true` (force reload, max every 10 s), `includeCalls=true` (adds the raw call rows; only the Call Logs tab asks for them). Pulls live data, computes metrics, returns `DashboardResponse` (`Cache-Control: no-store`). If the live pull throws, or the call logs / BD tracker failed to load, serves the Supabase snapshot instead (noted in `dataSourceInfo.notes`); with no snapshot it shows the partial live data plus a warning. |
 | `/api/sync` | GET, POST | Reads live data and writes it to Supabase. Requires `Authorization: Bearer $CRON_SECRET` in production. Returns 503 and leaves the snapshot untouched if any live source failed or calls/meetings are empty; Supabase writes are checked, and old rows are removed only after the new ones are saved. Scheduled daily at 05:00 UTC by `vercel.json`. |
-| `/api/login`, `/api/logout` | POST, GET | Sign in / out (see Access control). |
 | `/api/upload` | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
 
 ---
@@ -101,8 +97,7 @@ Four tabs, switched by CSS show/hide (no unmount):
 │   ├── AUDIT_FINDINGS.md        # Audit results and what was fixed
 │   └── WORKLOG.md               # Engineering changelog
 ├── src/
-│   ├── app/                     # page.tsx, login/page.tsx, layout.tsx, api/{dashboard,sync,upload,login,logout}/route.ts
-│   ├── proxy.ts                 # Password gate for pages and APIs
+│   ├── app/                     # page.tsx, layout.tsx, api/{dashboard,sync,upload}/route.ts
 │   ├── components/              # Header, KpiGrid, AgentDashboardView, OpenerTable, PeriodicBreakdownTable,
 │   │                            #   DashboardCharts, CallLogsView, FileImportModal
 │   ├── lib/
@@ -113,8 +108,7 @@ Four tabs, switched by CSS show/hide (no unmount):
 │   │   ├── ultatel.ts           # Department-report parser and call synthesis
 │   │   ├── supabase.ts          # Snapshot save/restore (emergency fallback)
 │   │   ├── exportXlsx.ts        # Per-person XLSX export
-│   │   ├── errors.ts            # Error message / quota detection helpers
-│   │   └── auth.ts              # Shared-password session helpers
+│   │   └── errors.ts            # Error message / quota detection helpers
 │   └── types/dashboard.ts       # Data contracts
 ├── tests/                       # Vitest unit tests (parsing, opener resolution, attendance, metrics)
 ├── .github/workflows/ci.yml     # typecheck, lint, test, build

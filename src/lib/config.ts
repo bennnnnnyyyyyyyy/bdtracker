@@ -24,10 +24,11 @@ export const CONFIG = {
     'Temporary Inactive'
   ],
 
-  // A record is treated as attended only after it has progressed beyond the
-  // initial meeting stage. Pending and indeterminate records are excluded from
-  // show-rate calculations instead of being counted as attended by default.
-  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded'],
+  // A record is treated as attended once it has progressed beyond the initial meeting
+  // stage (including clients that later went Temporary Inactive). Pending records (New
+  // Meetings) and Dead Leads are excluded from show-rate calculations instead of being
+  // counted as attended by default. Keep in sync with apps-script/Code.js.
+  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
 
   CALL_LOG_SHEET: 'Call Logs',
   MAPPING_SHEET: 'Agent Mapping',

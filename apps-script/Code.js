@@ -28,9 +28,9 @@ const CONFIG = {
     'Temporary Inactive'
   ],
 
-  // Show rate is based only on completed attendance outcomes. Pending and
-  // indeterminate pipeline stages are intentionally excluded.
-  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded'],
+  // Show rate is based only on completed attendance outcomes. Pending (New Meetings)
+  // and Dead Leads are intentionally excluded. Keep in sync with src/lib/config.ts.
+  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
 
   CALL_LOG_SHEET: 'Call Logs',
   STAGING_SHEET: 'Import Staging',
