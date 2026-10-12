@@ -18,8 +18,14 @@ CREATE TABLE IF NOT EXISTS public.meetings (
   date_added TEXT,
   company_name TEXT,
   authorized_person TEXT,
+  med_b BOOLEAN DEFAULT FALSE,
+  ppo BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration for databases created before Med B / PPO were tracked (safe to re-run):
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS med_b BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS ppo BOOLEAN DEFAULT FALSE;
 
 -- 3. Calls Table (Ultatel CDR logs)
 CREATE TABLE IF NOT EXISTS public.calls (

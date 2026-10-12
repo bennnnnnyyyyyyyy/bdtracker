@@ -2,13 +2,13 @@
 
 Static review of the repository. Nothing here was run: `node_modules` was not installed, so `tsc`, lint and the app were not executed. Items are ordered by impact.
 
-## A. Bugs / correctness
+## A. Bugs / correctness (items 1–5 resolved, see below)
 
-1. **Show rate is defined two ways.** Openers and periodic rows use `attended / (attended + noShow)` (`getAttendanceMetrics`, `buildPeriodicBreakdown`), but the org total uses `attended / booked` (`computeDashboardMetrics`, "totals.showRate"). The KPI card and the totals row therefore disagree with the rows above them. *Fix:* use the same completed-meetings denominator for totals.
-2. **Supabase sync can wipe the fallback.** `getDashboardRawData()` swallows Sheets errors and returns empty arrays, and `saveRawDataToSupabase()` deletes all `calls` unconditionally. A quota error during the 05:00 cron empties the snapshot and still reports `success: true`. *Fix:* abort the sync when calls/meetings are empty or a source failed.
-3. **The Supabase fallback is unreachable in the failure case that matters.** `/api/dashboard` falls back only if `getDashboardRawData()` *throws*, but it catches per-source errors itself (including quota errors) and returns empty data. Result: during an outage the page shows zeros instead of the snapshot. *Fix:* have the per-source fetches propagate (or return an error flag) and fall back on any failed source.
-4. **Supabase errors are never checked.** supabase-js returns `{ error }` rather than throwing, so every `insert`/`upsert`/`delete` failure in `saveRawDataToSupabase` is ignored. Delete-then-insert is also non-atomic.
-5. **Med B / PPO are lost on the fallback path.** `meetings` has no `med_b`/`ppo` columns and neither is saved or restored, so those figures read 0 from Supabase.
+1. ~~Show rate is defined two ways.~~ **Not a bug (confirmed by the owner):** show rate means *clients who showed up to meetings*. Per-opener/period rows use `attended / (attended + noShow)`, the org total uses `attended / booked`; this is intentional.
+2. ~~**Supabase sync can wipe the fallback.**~~ **Fixed.** `/api/sync` now skips (HTTP 503) if any live source failed, and `saveRawDataToSupabase` refuses empty calls/meetings.
+3. ~~**Fallback unreachable when it matters.**~~ **Fixed.** `getDashboardRawData` now returns `failedSources`; `/api/dashboard` uses the Supabase snapshot when any core source failed (and says so in `dataSourceInfo.notes`). If no snapshot exists it shows the partial live data with a warning note.
+4. ~~**Supabase errors never checked.**~~ **Fixed.** Every write is checked and throws; new meetings are inserted before the old ones are deleted (rolled back on failure); calls are upserted first and only stale rows are removed afterwards; `sync_status` is written last. Reads return `null` on any error instead of serving truncated data, and call paging is now ordered by `call_id`.
+5. ~~**Med B / PPO lost on the fallback path.**~~ **Fixed in code**; the database needs the migration at the top of `supabase_schema.sql` (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS med_b / ppo`). Until it is applied, sync keeps working without those columns and returns a warning.
 6. **Ultatel department fallback dates every call "today".** `deptSummariesToCallRecords` stamps all synthesized calls with the server's current UTC date and creates one object per call. Date filters, trends and per-day metrics are meaningless in this mode, and the header should say so.
 7. **Junk dates in the tracker.** If a meeting row has no parsable date in the detected date column, `fetchBDTrackerData` scans every other cell with `parseDateToISO`, whose last step is `new Date(s)`. V8 parses strings such as `"Suite 2"` or `"Plaza 5"` as valid dates, so a company name can become the meeting date.
 8. **`personIdx` can pick the company column.** The matcher includes `'name'`, so `Company Name` can match before `Authorized Person`.
@@ -46,7 +46,7 @@ Static review of the repository. Nothing here was run: `node_modules` was not in
 - Error-handling gaps: partial failures (e.g. tracker down, calls up) are logged but not surfaced in the UI; `dataSourceInfo.notes` is only set for local attendance.
 
 ## Suggested order of work
-1. Fix #1 (show-rate consistency), #2–#5 (sync/fallback safety).
+1. ~~Sync/fallback safety (#2–#5)~~ done; apply the Supabase migration.
 2. Add a short in-memory cache and drop the full call list from the default response.
 3. Add auth to `/api/dashboard` (or restrict via Vercel protection).
 4. Add unit tests for the pure functions, then clean up the dead code and repo clutter.

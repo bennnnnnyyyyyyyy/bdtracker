@@ -47,6 +47,10 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - **Per-person XLSX export**: `exportXlsx.ts`.
 - **UI restructure**: tabs are now Team / Trends / Details / Call Logs, with date presets and `localStorage` state caching.
 
+### 7. Sync & Fallback Safety
+- `getDashboardRawData()` reports `failedSources`; `/api/dashboard` falls back to the Supabase snapshot when a core source fails.
+- `/api/sync` refuses partial pulls (503) and unconfigured Supabase; `saveRawDataToSupabase` checks every response, never deletes before the new rows are in, and persists/restores `med_b` / `ppo` (migration in `supabase_schema.sql`).
+
 ---
 
 ## Documentation Manifest in `data/`

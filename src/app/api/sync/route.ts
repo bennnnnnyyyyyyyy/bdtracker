@@ -18,12 +18,23 @@ async function sync(request: NextRequest) {
 
   try {
     const rawData = await getDashboardRawData();
+
+    // Never replace a good snapshot with a partial pull.
+    if (rawData.failedSources.length > 0) {
+      return NextResponse.json(
+        { success: false, error: `Sync skipped; live load failed for: ${rawData.failedSources.join(', ')}. The existing Supabase snapshot was left untouched.` },
+        { status: 503 }
+      );
+    }
     const supabaseResult = await saveRawDataToSupabase({
       calls: rawData.calls,
       meetings: rawData.meetings,
       trackerCounts: rawData.trackerCounts,
       agentMappings: rawData.agentMappings,
     });
+    if (!supabaseResult) {
+      return NextResponse.json({ success: false, error: 'Supabase is not configured (missing key); nothing was synced.' }, { status: 500 });
+    }
     return NextResponse.json({ success: true, message: 'Successfully synced source data to Supabase', supabase: supabaseResult });
   } catch (error: unknown) {
     console.error('Error in /api/sync:', error);

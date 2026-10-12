@@ -16,6 +16,8 @@ export interface RawDashboardDataset {
   attendance: AttendanceDataset;
   dataSourceInfo: DataSourceInfo;
   isMockData: boolean;
+  /** Live sources that failed to load (e.g. 'call logs', 'BD tracker'). Empty when everything loaded. */
+  failedSources: string[];
 }
 
 function getSheetsClient() {
@@ -279,13 +281,16 @@ export function fetchLocalUltatelDeptData(): CallRecord[] | null {
 export async function getDashboardRawData(): Promise<RawDashboardDataset> {
   try {
     // 1. Fetch Call Logs and BD Tracker
+    const failedSources: string[] = [];
     const [callData, bdData, attendanceResult] = await Promise.all([
       fetchCallDashboardData().catch((err) => {
         console.warn('[Google Sheets] Call logs fetch failed:', err.message);
+        failedSources.push('call logs');
         return { calls: [], agentMappings: [] };
       }),
       fetchBDTrackerData().catch((err) => {
         console.warn('[Google Sheets] BD Tracker fetch failed:', err.message);
+        failedSources.push('BD tracker');
         return { meetings: [], trackerCounts: {} };
       }),
       fetchAttendanceData()
@@ -311,9 +316,14 @@ export async function getDashboardRawData(): Promise<RawDashboardDataset> {
         : 'local_excel',
       attendanceSource: attendanceResult.source,
       callsSource,
-      notes: attendanceResult.source === 'local_excel'
-        ? 'Attendance loaded from local Excel file (BD _ French Dashboard 2026)'
-        : undefined
+      notes: [
+        attendanceResult.source === 'local_excel'
+          ? 'Attendance loaded from local Excel file (BD _ French Dashboard 2026)'
+          : '',
+        failedSources.length > 0
+          ? `Live load failed for: ${failedSources.join(', ')}. Figures may be incomplete.`
+          : ''
+      ].filter(Boolean).join(' ') || undefined
     };
 
     const result: RawDashboardDataset = {
@@ -323,7 +333,8 @@ export async function getDashboardRawData(): Promise<RawDashboardDataset> {
       agentMappings: callData.agentMappings,
       attendance: attendanceResult.attendance,
       dataSourceInfo,
-      isMockData: false
+      isMockData: false,
+      failedSources
     };
 
     return result;

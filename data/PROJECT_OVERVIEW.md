@@ -16,7 +16,7 @@ For every active opener (BD agent), over a chosen date range, the dashboard repo
 | **Attended** | Rows currently in `ATTENDED_STAGES` = Follow Ups, Contract Sent, Invoice Sent, Onboarded. |
 | **No-show** | Rows in the `No-Show` tab. |
 | **Show rate (per opener, per period)** | `attended / (attended + noShow)`. Meetings still in *New Meetings*, *Dead Leads* or *Temporary Inactive* are **not** counted as attended. |
-| **Show rate (org total, KPI card)** | `attended / booked` — see "Known inconsistencies" in `data/AUDIT_FINDINGS.md`. |
+| **Show rate (org total, KPI card)** | `attended / booked`. Intentional: show rate means clients who showed up to meetings. |
 | **Closing rate** | `onboarded / booked`. |
 | **Calls per meeting** | `calls / booked`. |
 | **Med B / PPO** | Count and `% of booked` of tracker rows whose `MEDB` / `PPO` checkbox column is ticked. |
@@ -36,8 +36,8 @@ Attendance tab (or local French Dashboard    ─┤                     │
   workbook)                                  ─┤                     ▼
 Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDashboardMetrics()
                                                                     │
-            Supabase (emergency fallback, only if the              ▼
-            live pull THROWS) ◄───── /api/sync (daily cron)   GET /api/dashboard ─► page.tsx
+            Supabase (emergency fallback, used if the live           ▼
+            pull throws or a core source failed) ◄───── /api/sync (daily cron)   GET /api/dashboard ─► page.tsx
 ```
 
 ### Data sources (`src/lib/config.ts`)
@@ -45,7 +45,7 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 - **BD Tracker sheet** (`BD_TRACKER_SHEET_ID`): tabs `New Meetings`, `Follow Ups`, `Contract Sent`, `Invoice Sent`, `Onboarded`, `No-Show`, `Dead Leads`, `Temporary Inactive`, read as `A1:Z`. Header names are auto-detected (opener, date, company, contact, `MEDB`, `PPO`).
 - **Attendance** (`ATTENDANCE_SHEET_ID`, tab `Attendance`, `A1:AT`): copied into the tracker by the French Dashboard Apps Script bridge. Falls back to the local `BD _ French Dashboard 2026 (3).xlsx`.
 - **Local Ultatel department report** `OutBound Calls Per Department ( BusinessDevelopmentTeam ).xlsx`: only used when the `Call Logs` sheet returns **zero** calls. It contains per-agent totals, not individual calls, so `ultatel.ts` synthesizes one `CallRecord` per call, **all dated today** (server date). Date filters are therefore not meaningful in this mode.
-- **Supabase** (`agent_mappings`, `meetings`, `calls`, `metadata`; schema in `supabase_schema.sql`): a daily snapshot written by `/api/sync` and read only when `getDashboardRawData()` throws.
+- **Supabase** (`agent_mappings`, `meetings`, `calls`, `metadata`; schema in `supabase_schema.sql`): a daily snapshot written by `/api/sync` and read only as a fallback (see above). `meetings` needs the `med_b` / `ppo` columns — run the migration in the schema file.
 
 ### Credentials
 `getSheetsClient()` uses, in order: a `google2.json` service-account file in the project root (gitignored), then `GOOGLE_CLIENT_EMAIL` + `GOOGLE_PRIVATE_KEY`. Supabase uses `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or the anon key). `CRON_SECRET` protects `/api/sync` in production.
@@ -59,8 +59,8 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 
 | Route | Method | Purpose |
 | :--- | :--- | :--- |
-| `/api/dashboard` | GET | Query params `startDate`, `endDate` (YYYY-MM-DD), `opener`. Pulls live data, computes metrics, returns `DashboardResponse` (`Cache-Control: no-store`). On a thrown ingest error, falls back to Supabase. |
-| `/api/sync` | GET, POST | Reads live data and writes it to Supabase. Requires `Authorization: Bearer $CRON_SECRET` in production. Scheduled daily at 05:00 UTC by `vercel.json`. |
+| `/api/dashboard` | GET | Query params `startDate`, `endDate` (YYYY-MM-DD), `opener`. Pulls live data, computes metrics, returns `DashboardResponse` (`Cache-Control: no-store`). If the live pull throws, or the call logs / BD tracker failed to load, serves the Supabase snapshot instead (noted in `dataSourceInfo.notes`); with no snapshot it shows the partial live data plus a warning. |
+| `/api/sync` | GET, POST | Reads live data and writes it to Supabase. Requires `Authorization: Bearer $CRON_SECRET` in production. Returns 503 and leaves the snapshot untouched if any live source failed or calls/meetings are empty; Supabase writes are checked, and old rows are removed only after the new ones are saved. Scheduled daily at 05:00 UTC by `vercel.json`. |
 | `/api/upload` | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
 
 ---

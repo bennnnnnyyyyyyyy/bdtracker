@@ -21,33 +21,52 @@ export async function GET(request: NextRequest) {
       callsSource: 'call_logs',
     };
 
-    // Always pull the live Sheets/local sources first. Supabase is emergency fallback only.
+    // Pull the live Sheets/local sources first. Supabase is the emergency fallback, used when
+    // the live pull throws or when a core source (call logs / BD tracker) failed to load.
+    let liveData: RawDashboardDataset | null = null;
+    let liveError: unknown = null;
     try {
-      const liveData = await getDashboardRawData();
+      liveData = await getDashboardRawData();
+    } catch (ingestErr) {
+      liveError = ingestErr;
+      console.warn('[Data Ingest] Live pull failed:', ingestErr);
+    }
+
+    if (liveData && liveData.failedSources.length === 0) {
       rawData = liveData;
       attendanceData = liveData.attendance;
       currentDataSourceInfo = liveData.dataSourceInfo;
-    } catch (ingestErr) {
-      console.warn('[Data Ingest] Live pull failed, attempting Supabase fallback:', ingestErr);
-      const fallbackSupa = await getRawDataFromSupabase();
-      if (!fallbackSupa) throw ingestErr;
-
-      const attRes = await fetchAttendanceData();
-      rawData = {
-        calls: fallbackSupa.calls,
-        meetings: fallbackSupa.meetings,
-        trackerCounts: fallbackSupa.trackerCounts,
-        agentMappings: fallbackSupa.agentMappings,
-        attendance: attRes.attendance,
-        dataSourceInfo: {
-          source: 'supabase',
-          attendanceSource: attRes.source,
-          callsSource: 'supabase',
-          notes: 'Live source failed; showing emergency database fallback.',
-        },
-        isMockData: false,
-      };
-      attendanceData = attRes.attendance;
+    } else {
+      const snapshot = await getRawDataFromSupabase();
+      if (snapshot) {
+        const attRes = liveData
+          ? { attendance: liveData.attendance, source: liveData.dataSourceInfo.attendanceSource }
+          : await fetchAttendanceData();
+        rawData = {
+          calls: snapshot.calls,
+          meetings: snapshot.meetings,
+          trackerCounts: snapshot.trackerCounts,
+          agentMappings: snapshot.agentMappings,
+          attendance: attRes.attendance,
+          dataSourceInfo: {
+            source: 'supabase',
+            attendanceSource: attRes.source,
+            callsSource: 'supabase',
+            notes: `Live source failed${liveData ? ` (${liveData.failedSources.join(', ')})` : ''}; showing database snapshot from ${snapshot.lastUpdated}.`,
+          },
+          failedSources: liveData?.failedSources ?? [],
+          isMockData: false,
+        };
+        attendanceData = attRes.attendance;
+        currentDataSourceInfo = rawData.dataSourceInfo;
+      } else if (liveData) {
+        // No snapshot available: show the partial live data, flagged in dataSourceInfo.notes.
+        rawData = liveData;
+        attendanceData = liveData.attendance;
+        currentDataSourceInfo = liveData.dataSourceInfo;
+      } else {
+        throw liveError;
+      }
     }
 
     if (!rawData) {
