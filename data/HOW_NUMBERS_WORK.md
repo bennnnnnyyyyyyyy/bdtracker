@@ -75,7 +75,7 @@ The French Dashboard workbook is copied into the tracker's `Attendance` tab by a
 | **Which date filters what** | Calls use *Call Date*. Meetings use *Date Added*. A meeting with no valid date is **dropped whenever a date range is set** (the page always sends one). If a row's date column is empty the loader scans the other cells (never the opener, company or contact columns) for a date. |
 | **Who is an opener** | Each call agent / tracker opener / attendance name goes through `resolveOpener`: excluded names → dropped; numeric extensions and `front desk, conference, support, ivr, unmapped, main line, fax, unknown` → dropped; exact match in `Agent Mapping` (agent or opener column, case-insensitive) → that opener; whole-first-name match that points to exactly one opener → that opener; any other plain name → kept as its own opener. |
 | **Excluded people** | `russ, george, caroline, caroline richards`, matched as whole words. |
-| **Call direction** | `Type` starting with OUT → outbound; IN (not INTERNAL) → inbound. Anything else, such as `INTERNAL`, is kept but counts as neither. |
+| **Call direction** | `Type` starting with OUT → outbound; IN → inbound. **`INTERNAL` calls are dropped completely** (not in Calls, Call Logs, talk time or any rate). Any other unknown type is kept in Calls but is neither outbound nor inbound. |
 | **Call result** | `ANSWERED` → answered; `NO ANSWER`/unanswered/missed → no answer; other values (e.g. `BUSY`) count as neither. |
 | **Duration** | `mm:ss`, `hh:mm:ss`, Excel time fractions, or Ultatel `1 H , 2.53 M`. Talk time = sum of *Duration (sec)*, which includes only what is recorded per call. |
 | **Weeks / months** | Weeks are ISO-8601, Monday–Sunday, keyed `YYYY-Www` (week belongs to the year containing its Thursday). Months are calendar months. |
@@ -90,8 +90,8 @@ Opener = one person. Org = the "Team" figures in the top cards and totals rows.
 ### Calls
 | Metric | Formula |
 | :--- | :--- |
-| **Calls** | Count of that opener's call rows in the date range. Includes internal/other types. |
-| **Outbound / Inbound** | Count with direction OUT / IN. (Calls can exceed Outbound + Inbound by the number of internal/other rows.) |
+| **Calls** | Count of that opener's call rows in the date range, excluding `INTERNAL` calls. |
+| **Outbound / Inbound** | Count with direction OUT / IN. (Outbound + Inbound = Calls unless the export contains some other, unknown type.) |
 | **Answered / No answer** | Count with result ANSWERED / NO ANSWER. |
 | **Connection rate** (= answer rate) | `answered ÷ calls`. |
 | **Total talk time** | Sum of `Duration (sec)`. |
@@ -145,20 +145,19 @@ Each row groups calls by *Call Date* and meetings by *Date Added* into the day/I
 | Selene Myles | 2 706 (2 159) | 2 706, 79.8% |
 | Nora Atkins | 2 170 (1 765) | 2 170, 81.3% |
 | Kaity James → *Jane* | 1 036 (911) | 1 036, 87.9% |
-| Ben Arthur → *Ben* | 503 (406) | 503 calls (486 out / 15 in / 2 other), 80.7% |
+| Ben Arthur → *Ben* | 503 (406) | 501 calls (486 out / 15 in), 81.0% — his 2 internal calls are excluded |
 | Jasmine Green | 307 (268) | 307, 87.3% |
 | Jimmy Pearson | 177 (140) | 177, 79.1% |
 | Caroline Richards | 2 (2) | **excluded** |
-| Total | 8 366 | **8 364** (= 8 366 − 2 excluded); 6 827 answered; 8 150 out + 212 in + 2 internal |
+| Total | 8 366 | **8 362** (= 8 366 − 2 Caroline − 2 internal); 6 827 answered; 8 150 out + 212 in |
 
-Ben's 503 calls: 503 − 97 unanswered = 406 answered → 406 ÷ 503 = 80.7% connection rate. If the attendance sheet gives Ben 16 present days in that range, calls per present day = 503 ÷ 16 = 31.4 and adherence = 16 ÷ the number of Mon–Fri days in the range.
+Ben's calls: 486 outbound + 15 inbound = 501; the 2 internal calls are dropped. 406 answered ÷ 501 = 81.0% connection rate. If the attendance sheet gives Ben 16 present days in that range, calls per present day = 501 ÷ 16 = 31.3 and adherence = 16 ÷ the number of Mon–Fri days in the range.
 
 ---
 
 ## 7. Known limits (be aware when reading the numbers)
 - Stage counts are a snapshot of where each meeting is *now*, grouped by the date it was added.
 - Meetings without a valid Date Added disappear as soon as a date range is applied.
-- Internal/other call types add to *Calls* but not to Outbound or Inbound.
 - With only the department summary report, calls have no real dates (shown with a warning).
 - No holiday calendar: adherence uses plain Mon–Fri days.
 - Per-day figures fall back to calendar/active days when attendance is missing (shown with a warning when no attendance data is found at all).

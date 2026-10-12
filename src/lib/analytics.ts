@@ -140,6 +140,11 @@ export function normalizeCallType(type: unknown): string {
   return t;
 }
 
+/** True for internal (extension-to-extension) calls, which are excluded from the dashboard. */
+export function isInternalCall(type: unknown): boolean {
+  return /^internal/i.test(String(type ?? '').trim());
+}
+
 /** Normalizes the call outcome. Unknown values are preserved (and counted as neither answered nor unanswered). */
 export function normalizeCallOutcome(outcome: unknown): string {
   const o = String(outcome ?? '').trim();
@@ -350,6 +355,8 @@ export function computeDashboardMetrics(
     const rawAgent = c.agent || parseAgentName(c.extension);
     const opener = resolve(rawAgent);
     if (!opener || isExcludedAgent(opener)) return;
+    // Internal (extension-to-extension) calls are not prospecting activity: leave them out of every figure.
+    if (isInternalCall(c.type)) return;
     filteredCalls.push({ ...c, agent: rawAgent, opener, type: normalizeCallType(c.type), outcome: normalizeCallOutcome(c.outcome) });
   });
 

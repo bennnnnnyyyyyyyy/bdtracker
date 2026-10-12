@@ -29,7 +29,7 @@ All three granularities live in the **Trends** tab.
 
 | Metric | Formula | Verification |
 | :--- | :--- | :--- |
-| **Total Calls** | all call rows for the opener in range | Outbound + Inbound = Calls, except rows of another type (e.g. `INTERNAL`) which count in Calls only. |
+| **Total Calls** | all non-internal call rows for the opener in range | Outbound + Inbound = Calls (`INTERNAL` calls are excluded before counting). |
 | **Connection Rate** | $\frac{\text{Answered Calls}}{\text{Total Calls}} \times 100\%$ | Divide Answered by Total Calls. |
 | **Meetings Booked** | $\sum \text{All 8 BD Stage Counts}$ | Sum `New Meetings` through `Temporary Inactive`. |
 | **Show Rate** (opener rows, Trends) | $\frac{\text{Attended}}{\text{Attended} + \text{No-Show}}$ | Attended = Follow Ups + Contract Sent + Invoice Sent + Onboarded. New Meetings / Dead Leads / Temporary Inactive are ignored. |

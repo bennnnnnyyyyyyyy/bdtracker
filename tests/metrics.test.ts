@@ -63,6 +63,7 @@ describe('computeDashboardMetrics', () => {
     call({ extension: '103 (MMS-George)', agent: 'George' }),          // excluded
     call({ callDate: '2026-07-01 09:00:00' }),                          // outside the range
     call({ type: 'out-bound', outcome: 'answered' }),                    // casing differences still count
+    call({ type: 'INTERNAL', outcome: 'NO ANSWER' }),                    // internal calls are left out entirely
   ];
   const meetings = [
     meeting('New Meetings', 'Ben', '2026-08-10'),
@@ -80,9 +81,10 @@ describe('computeDashboardMetrics', () => {
 
   it('counts calls per opener', () => {
     const ben = run().openers.find(o => o.opener === 'Ben')!;
-    expect(ben.calls).toBe(5);       // 2 answered + 1 no answer + 1 inbound + 1 casing variant
+    expect(ben.calls).toBe(5);       // 2 answered + 1 no answer + 1 inbound + 1 casing variant (INTERNAL excluded)
     expect(ben.outbound).toBe(4);
     expect(ben.inbound).toBe(1);
+    expect(ben.outbound + ben.inbound).toBe(ben.calls);
     expect(ben.answered).toBe(4);
     expect(ben.noAnswer).toBe(1);
     expect(ben.connectionRate).toBeCloseTo(4 / 5);

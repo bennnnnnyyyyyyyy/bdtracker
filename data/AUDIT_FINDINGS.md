@@ -16,7 +16,7 @@ Result of a full code review, with what was done about each item. The pure-logic
 | 8 | Contact column resolving to Company Name | **Fixed.** |
 | 9 | Attendance blocks overwriting an earlier mark with a blank | **Fixed** (a later blank no longer erases an earlier mark). Column AH totals are still parsed but unused by design — the dashboard re-sums the daily codes so any date range works. |
 | 10 | Loose name matching (`Ben`↔`Benjamin`, `Georgette`↔`George`) | **Fixed** — whole-word, unique matching in the web app and the Apps Script. Unmapped plain names still appear as their own opener on purpose so data is never silently dropped. |
-| 11 | Exact-case call type / outcome | **Fixed** — normalized to OUT-Bound / IN-Bound / ANSWERED / NO ANSWER; unknown values (e.g. `INTERNAL`, `BUSY`) are kept and count only toward total calls. |
+| 11 | Exact-case call type / outcome | **Fixed** — normalized to OUT-Bound / IN-Bound / ANSWERED / NO ANSWER; `INTERNAL` calls are excluded entirely; other unknown values (e.g. `BUSY` outcome) are kept and count only toward total calls. |
 | 12 | Week keys not ISO-8601 | **Fixed** — true ISO weeks (`2026-W53` handling around New Year is tested). |
 | 13 | Timezone drift in the working-day count | **Fixed** — UTC calendar arithmetic. Call dates are Cairo time written by the Apps Script and are used as written, which is consistent. |
 | 14 | Silent fallbacks when attendance is missing | **Mitigated** — a banner appears when no attendance data is found; the fallback is documented. |
@@ -45,5 +45,4 @@ Result of a full code review, with what was done about each item. The pure-logic
 ## Still open (deliberate or needs your decision)
 - Run `clasp push` yourself if you want the Apps Script exclusion change deployed (not done from here).
 - A holiday calendar for adherence (needs a list of holidays from you).
-- Internal/other call types count toward *Calls* but not Outbound/Inbound; tell me if you would rather exclude them from Calls.
 - **Verify live:** login, caching behaviour with real Sheets credentials, and the Supabase sync after running the migration.
