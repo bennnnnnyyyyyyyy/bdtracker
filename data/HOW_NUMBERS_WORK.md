@@ -103,8 +103,7 @@ Opener = one person. Org = the "Team" figures in the top cards and totals rows.
 | **Booked** | Sum of all 8 stage counts. |
 | **Attended (a "show")** | Rows now in Follow Ups + Contract Sent + Invoice Sent + Onboarded + Temporary Inactive (a client who showed and later went inactive is still a show). |
 | **No-show** | Rows in the No-Show tab. |
-| **Show rate — opener rows and period rows** | `attended ÷ (attended + no-show)`. Meetings still in New Meetings, or in Dead Leads, are not counted either way. |
-| **Show rate — Team card and totals row** | `attended ÷ booked` (clients who showed, out of everything booked). Intentionally different from the opener figure. |
+| **Show rate (every card, row and total)** | `attended ÷ (attended + no-show)`. Meetings still in New Meetings, or in Dead Leads, are not counted either way. The same formula is used for each person, each period, the Team card and the totals row. |
 | **Onboarded / Close rate** | `Onboarded ÷ booked`. |
 | **Calls per meeting** | `calls ÷ booked` (1 decimal). |
 | **Med B / PPO** | Count of ticked rows; rate = `count ÷ booked × 100` (1 decimal). |
@@ -122,7 +121,7 @@ A meeting is counted in the **tab it sits in today but in the period of its Date
 | **Daily / weekly / monthly averages** | Daily calls = calls per present day; daily meetings = `booked ÷ present days` (or ÷ active days). Weekly = `÷ max(1, ceil(distinct team days ÷ 7))`; monthly = `÷ max(1, ceil(distinct team days ÷ 30))`. |
 
 ### Team (org) totals
-Counts (calls, outbound, inbound, answered, no answer, talk time, booked, stage counts, attended, no-show, onboarded, Med B, PPO, present days) are **sums over the openers listed**. Rates are recomputed from those sums: connection `answered ÷ calls`; show `attended ÷ booked`; close `onboarded ÷ booked`; adherence `present days ÷ (working days × number of openers)`; calls per present day `calls ÷ total present days`. The Team card therefore equals the sum of the rows shown beneath it.
+Counts (calls, outbound, inbound, answered, no answer, talk time, booked, stage counts, attended, no-show, onboarded, Med B, PPO, present days) are **sums over the openers listed**. Rates are recomputed from those sums: connection `answered ÷ calls`; show `attended ÷ (attended + no-show)`; close `onboarded ÷ booked`; adherence `present days ÷ (working days × number of openers)`; calls per present day `calls ÷ total present days`. The Team card therefore equals the sum of the rows shown beneath it.
 
 ### Trends tab (daily / weekly / monthly)
 Each row groups calls by *Call Date* and meetings by *Date Added* into the day/ISO-week/month. Per opener and period: calls, answered, connection rate, meetings, no-show, attended, onboarded, show rate `attended ÷ (attended + no-show)`, close rate `onboarded ÷ meetings`, calls per meeting, present days for that period's dates, calls per present day. Openers with no calls and no meetings in a period are omitted. Period totals add the openers; the total show rate uses the same completed-meetings denominator. Rows are newest first.

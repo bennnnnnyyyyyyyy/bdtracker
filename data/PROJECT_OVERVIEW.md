@@ -17,8 +17,7 @@ For every active opener (BD agent), over a chosen date range, the dashboard repo
 | **Meetings booked** | Sum of rows across all 8 tracker stage tabs in the range. |
 | **Attended** | Rows currently in `ATTENDED_STAGES` = Follow Ups, Contract Sent, Invoice Sent, Onboarded, Temporary Inactive. |
 | **No-show** | Rows in the `No-Show` tab. |
-| **Show rate (per opener, per period)** | `attended / (attended + noShow)`. Meetings still in *New Meetings* or *Dead Leads* are **not** counted as attended. |
-| **Show rate (org total, KPI card)** | `attended / booked`. Intentional: show rate means clients who showed up to meetings. |
+| **Show rate (everywhere: openers, periods, Team card, totals)** | `attended / (attended + noShow)`. Meetings still in *New Meetings* or *Dead Leads* are **not** counted as attended. |
 | **Closing rate** | `onboarded / booked`. |
 | **Calls per meeting** | `calls / booked`. |
 | **Med B / PPO** | Count and `% of booked` of tracker rows whose `MEDB` / `PPO` checkbox column is ticked. |

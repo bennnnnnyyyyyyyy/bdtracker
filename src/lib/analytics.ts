@@ -667,7 +667,8 @@ export function computeDashboardMetrics(
   totals.answerRate = totals.calls > 0 ? totals.answered / totals.calls : 0;
   totals.connectionRate = totals.answerRate;
   totals.avgCallSec = totals.calls > 0 ? Math.round(totals.totalTalkSec / totals.calls) : 0;
-  totals.showRate = totals.booked > 0 ? totals.attended / totals.booked : 0;
+  // Same definition everywhere: attended ÷ (attended + no-show).
+  totals.showRate = totals.attended + totals.noShow > 0 ? totals.attended / (totals.attended + totals.noShow) : 0;
   totals.closeRate = totals.booked > 0 ? totals.onboarded / totals.booked : 0;
   totals.callsPerMeeting = totals.booked > 0 ? Number((totals.calls / totals.booked).toFixed(1)) : 0;
   totals.medBRate = totals.booked > 0 ? Number(((totals.medBCount / totals.booked) * 100).toFixed(1)) : 0;

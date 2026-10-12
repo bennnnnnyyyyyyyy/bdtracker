@@ -6,7 +6,7 @@ Result of a full code review, with what was done about each item. The pure-logic
 
 | # | Finding | Status |
 | :--- | :--- | :--- |
-| 1 | Show rate differs between opener rows (`attended ÷ (attended + no-show)`) and the org total (`attended ÷ booked`) | **Not a bug** — confirmed by the owner: show rate is about clients who showed up. Documented in `HOW_NUMBERS_WORK.md`. Related fix: the Team tab no longer flags "Show rate needs attention" for someone whose meetings are all still pending. |
+| 1 | Show rate defined two ways | **Fixed** — the owner confirmed show rate is `attended ÷ (attended + no-show)` everywhere, so the org total (previously `attended ÷ booked`) now uses the same formula. A pending-only person is no longer flagged "needs attention". |
 | 2 | Supabase sync could wipe the fallback after a failed Sheets read | **Fixed** — sync returns 503 when any source failed and the save refuses empty calls/meetings. |
 | 3 | Fallback unreachable when a source failed | **Fixed** — `failedSources` is tracked; the dashboard falls back to the snapshot and says so in a banner. |
 | 4 | Supabase errors never checked; delete-then-insert not safe | **Fixed** — all responses checked, new rows written before old ones removed (with rollback), stale rows removed last, reads return `null` on error, stable paging, timed-out queries are aborted. |

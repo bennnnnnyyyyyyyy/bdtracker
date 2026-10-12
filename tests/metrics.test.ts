@@ -114,12 +114,13 @@ describe('computeDashboardMetrics', () => {
     expect(ben.callsPerPresentDay).toBe(2.5);  // 5 calls / 2 days
   });
 
-  it('org totals match the sum of openers, and show rate is attended / booked', () => {
+  it('org totals match the sum of openers, and show rate is attended / (attended + no-show)', () => {
     const { openers, totals } = run();
     expect(totals.calls).toBe(openers.reduce((n, o) => n + o.calls, 0));
     expect(totals.booked).toBe(7); // Ben 6 + Jane 1
     expect(totals.attended).toBe(4);
-    expect(totals.showRate).toBeCloseTo(4 / 7);
+    expect(totals.noShow).toBe(1);
+    expect(totals.showRate).toBeCloseTo(4 / 5);
   });
 
   it('groups periods consistently', () => {
