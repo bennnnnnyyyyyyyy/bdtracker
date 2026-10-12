@@ -28,9 +28,9 @@ const CONFIG = {
     'Temporary Inactive'
   ],
 
-  // Show rate is based only on completed attendance outcomes. Pending and
-  // indeterminate pipeline stages are intentionally excluded.
-  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded'],
+  // Show rate is based only on completed attendance outcomes. Pending (New Meetings)
+  // and Dead Leads are intentionally excluded. Keep in sync with src/lib/config.ts.
+  ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
 
   CALL_LOG_SHEET: 'Call Logs',
   STAGING_SHEET: 'Import Staging',
@@ -69,11 +69,11 @@ const CONFIG = {
  */
 function isExcludedAgent_(name) {
   if (!name) return false;
-  const clean = String(name).trim().toLowerCase();
-  if (!clean) return false;
-  return CONFIG.EXCLUDED_AGENTS.some(
-    excluded => clean === excluded || clean.startsWith(excluded) || clean.endsWith(excluded)
-  );
+  const normalize = value => ` ${String(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+  const normalized = normalize(name);
+  if (normalized.trim() === '') return false;
+  // Whole-word match (keep in sync with isExcludedAgent in src/lib/config.ts).
+  return CONFIG.EXCLUDED_AGENTS.some(excluded => normalized.includes(normalize(excluded)));
 }
 
 // ==========================================
