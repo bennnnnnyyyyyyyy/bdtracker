@@ -1,52 +1,49 @@
-# Audit Findings (code review, no code changed)
+# Audit Findings and Resolution Status
 
-Static review of the repository. Nothing here was run: `node_modules` was not installed, so `tsc`, lint and the app were not executed. Items are ordered by impact.
+Result of a full code review, with what was done about each item. The pure-logic fixes are covered by `npm test` (`tests/`). Items that depend on your live Google Sheets, Supabase project or Vercel environment could not be exercised from the development sandbox and are marked **verify live**.
 
-## A. Bugs / correctness (items 1–5 resolved, see below)
+## A. Correctness
 
-1. ~~Show rate is defined two ways.~~ **Not a bug (confirmed by the owner):** show rate means *clients who showed up to meetings*. Per-opener/period rows use `attended / (attended + noShow)`, the org total uses `attended / booked`; this is intentional.
-2. ~~**Supabase sync can wipe the fallback.**~~ **Fixed.** `/api/sync` now skips (HTTP 503) if any live source failed, and `saveRawDataToSupabase` refuses empty calls/meetings.
-3. ~~**Fallback unreachable when it matters.**~~ **Fixed.** `getDashboardRawData` now returns `failedSources`; `/api/dashboard` uses the Supabase snapshot when any core source failed (and says so in `dataSourceInfo.notes`). If no snapshot exists it shows the partial live data with a warning note.
-4. ~~**Supabase errors never checked.**~~ **Fixed.** Every write is checked and throws; new meetings are inserted before the old ones are deleted (rolled back on failure); calls are upserted first and only stale rows are removed afterwards; `sync_status` is written last. Reads return `null` on any error instead of serving truncated data, and call paging is now ordered by `call_id`.
-5. ~~**Med B / PPO lost on the fallback path.**~~ **Fixed in code**; the database needs the migration at the top of `supabase_schema.sql` (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS med_b / ppo`). Until it is applied, sync keeps working without those columns and returns a warning.
-6. **Ultatel department fallback dates every call "today".** `deptSummariesToCallRecords` stamps all synthesized calls with the server's current UTC date and creates one object per call. Date filters, trends and per-day metrics are meaningless in this mode, and the header should say so.
-7. ~~**Junk dates in the tracker.**~~ **Fixed:** `parseDateToISO` now validates ranges and only accepts textual dates that contain a month name and a 4-digit year; the row-scan fallback skips the company, contact and opener columns. Original finding: If a meeting row has no parsable date in the detected date column, `fetchBDTrackerData` scans every other cell with `parseDateToISO`, whose last step is `new Date(s)`. V8 parses strings such as `"Suite 2"` or `"Plaza 5"` as valid dates, so a company name can become the meeting date.
-8. ~~**`personIdx` can pick the company column.**~~ **Fixed:** explicit contact headers win; a generic "name" column is used only if it is not the company column. Original finding: The matcher includes `'name'`, so `Company Name` can match before `Authorized Person`.
-9. **Attendance parsing overwrites.** The comment says repeated dates keep the non-zero weight, but `agentDaily[agent][date] = weight` simply overwrites. Duplicate blocks for the same date can zero out a valid day. `agentMonthly` (column AH) is parsed but never used.
-10. ~~**Loose name matching.**~~ **Fixed** (except the last sentence): exclusions are whole-word, first-name matches in `resolveOpener` and attendance must be whole-word and unique. Unmapped letter-only names are still accepted as new openers on purpose, so no data is dropped. Original finding: `resolveOpener` and `calculateAgentPresentDays` use `startsWith(firstName)`, so `Ben` can match `Benjamin`; `isExcludedAgent` uses `startsWith`/`endsWith`, so `Georgette` is excluded with `George`. Any unmapped alphabetic name is accepted as a new opener.
-11. **Exact-case enums.** Call `type` and `outcome` are compared to `'OUT-Bound'`, `'IN-Bound'`, `'ANSWERED'`, `'NO ANSWER'`. Any other casing or wording in the sheet silently counts as neither answered nor unanswered.
-12. **Week keys are not ISO weeks.** `getIsoWeekKey` computes a US-style week number from the Monday's year; labels like `2026-W33` may not match ISO-8601 and can misgroup around New Year. Grouping itself (Mon–Sun) is correct.
-13. **Timezone drift.** `expectedWorkingDays` builds dates with `new Date('YYYY-MM-DD')` (UTC) but reads `getDay()` (local), which shifts weekdays on a server or browser west of UTC. The Apps Script converts call dates to Cairo time while the Next.js side parses date strings as written.
-14. **Misleading fallback values.** `callsPerPresentDay` falls back to raw call count (periodic rows) or calls-per-calendar-day when there is no attendance match, with no indication in the UI.
-15. **Rolling-stage counts are a snapshot.** Meetings are counted in the tab they currently sit in, using the original *Date Added*. A lead that moves to Onboarded later still counts in its original period; this is by design but should be understood when reading period close rates.
+| # | Finding | Status |
+| :--- | :--- | :--- |
+| 1 | Show rate differs between opener rows (`attended ÷ (attended + no-show)`) and the org total (`attended ÷ booked`) | **Not a bug** — confirmed by the owner: show rate is about clients who showed up. Documented in `HOW_NUMBERS_WORK.md`. Related fix: the Team tab no longer flags "Show rate needs attention" for someone whose meetings are all still pending. |
+| 2 | Supabase sync could wipe the fallback after a failed Sheets read | **Fixed** — sync returns 503 when any source failed and the save refuses empty calls/meetings. |
+| 3 | Fallback unreachable when a source failed | **Fixed** — `failedSources` is tracked; the dashboard falls back to the snapshot and says so in a banner. |
+| 4 | Supabase errors never checked; delete-then-insert not safe | **Fixed** — all responses checked, new rows written before old ones removed (with rollback), stale rows removed last, reads return `null` on error, stable paging, timed-out queries are aborted. |
+| 5 | Med B / PPO lost on the fallback path | **Fixed** in code. **Action:** run `supabase_schema.sql` in the Supabase SQL editor (adds `med_b`, `ppo`; also fixes the policy syntax and restricts policies to `service_role`). |
+| 6 | Ultatel department report dates every call "today" | **Mitigated** — the report has no dates at all, so it cannot be fixed; the dashboard now shows a warning banner whenever it is the call source. |
+| 7 | Junk dates (`"Suite 2"` parsed as a date) | **Fixed** — strict date validation; the row-scan skips text columns. |
+| 8 | Contact column resolving to Company Name | **Fixed.** |
+| 9 | Attendance blocks overwriting an earlier mark with a blank | **Fixed** (a later blank no longer erases an earlier mark). Column AH totals are still parsed but unused by design — the dashboard re-sums the daily codes so any date range works. |
+| 10 | Loose name matching (`Ben`↔`Benjamin`, `Georgette`↔`George`) | **Fixed** — whole-word, unique matching in the web app and the Apps Script. Unmapped plain names still appear as their own opener on purpose so data is never silently dropped. |
+| 11 | Exact-case call type / outcome | **Fixed** — normalized to OUT-Bound / IN-Bound / ANSWERED / NO ANSWER; unknown values (e.g. `INTERNAL`, `BUSY`) are kept and count only toward total calls. |
+| 12 | Week keys not ISO-8601 | **Fixed** — true ISO weeks (`2026-W53` handling around New Year is tested). |
+| 13 | Timezone drift in the working-day count | **Fixed** — UTC calendar arithmetic. Call dates are Cairo time written by the Apps Script and are used as written, which is consistent. |
+| 14 | Silent fallbacks when attendance is missing | **Mitigated** — a banner appears when no attendance data is found; the fallback is documented. |
+| 15 | Stage counts are a snapshot by Date Added | **By design** — documented. |
 
-## B. Performance / scalability
+## B. Performance
+- **Caching** — done (60 s, configurable, with stale-on-error).
+- **Full call list in every response** — done: calls are only requested when the Call Logs tab is opened.
+- **Repeated name resolution / date parsing / attendance lookups** — done: per-run memoization, a bounded date-parse cache, and a cached attendance-key lookup.
+- **Supabase 15 s timeout did not cancel queries** — done (AbortController).
+- **Sheets call-log read** — now chunked (20 000 rows per request).
 
-- ~~**No caching.**~~ **Fixed:** raw data is cached per server instance for 60 s (`DASHBOARD_CACHE_TTL_SECONDS`), concurrent requests share one load, the Refresh button reloads (at most every 10 s), an older good copy is served if a reload fails, and uploads invalidate the cache. Original finding: Every dashboard request (including each filter change and refresh) re-reads three to five Sheets ranges plus local Excel files. This is the likeliest cause of quota errors. *Fix:* cache raw data in memory for 1–5 minutes (or read from Supabase by default and refresh via cron), and compute metrics from the cache.
-- **Whole call log in the response.** `/api/dashboard` returns every filtered call record; for a month that can be tens of thousands of rows of JSON. Paginate or only send calls for the Call Logs tab on demand.
-- `computeDashboardMetrics` calls `resolveOpener` (linear scan of mappings) for every call and meeting and `parseDateToISO` repeatedly; a `Map` lookup and a single parse per record would help.
-- `buildPeriodicBreakdown` runs three times and `calculateAgentPresentDays` re-resolves names per agent per period; precompute an agent→attendance-key map once.
-- The Supabase read loop runs sequential pages of 1,000 with a 15 s timeout that does not cancel the underlying queries.
-
-## C. Security / hygiene
-
-- ~~**`/api/dashboard` has no authentication**~~ **Fixed:** shared-password login (`DASHBOARD_PASSWORD`), enforced in `src/proxy.ts` for the page and all API routes except `/api/sync` (which keeps `CRON_SECRET`). Original finding: `/api/dashboard` had no authentication and returns phone numbers, notes and call paths. Anyone with the URL can read it.
-- Hard-coded defaults in source: Supabase project URL, both sheet IDs, and the service-account email in an error message.
-- Repository clutter: `Win64OpenSSL_Light-4_0_2.exe` (5.7 MB installer), `Untitled-1.txt` / `Untitled-1 copy.txt` (identical, 20 KB), empty `x.txt`, `supabase/.temp/*` (CLI state), two real data workbooks at the root, and a stale `my-dashboard/` folder. `.gitignore` contains a Windows path to a service-account key; make sure that key was never committed (`git log --all -- '*.json'`).
-- `agents.md` forbids committing/pushing unless asked and assumes Windows/PowerShell; keep that in mind for automation.
+## C. Security and hygiene
+- **No auth on `/api/dashboard`** — done (shared password, fails closed in production). **Action:** set `DASHBOARD_PASSWORD` in Vercel.
+- **Open Supabase policies for anon** — fixed in `supabase_schema.sql` (service role only). **Action:** use `SUPABASE_SERVICE_ROLE_KEY`, not the anon key.
+- **Repository clutter** — removed: OpenSSL installer, duplicate `Untitled-1*.txt`, empty `x.txt`, `supabase/.temp/` (now git-ignored), stale `my-dashboard/`, a Windows key path in `.gitignore`. A history check found no service-account key or `.env` ever committed. The local `.xlsx` workbooks stay: the app uses them as fallbacks and `agents.md` asks that they be preserved.
+- **Hard-coded Supabase URL and sheet IDs** — left as defaults on purpose (identifiers, not secrets; removing them could break an existing deployment that relies on them). They can be overridden by environment variables.
 
 ## D. Gaps
+- **Tests** — added (Vitest, 29 tests): date/duration parsing, ISO weeks, normalization, exclusions, opener resolution, attendance, and end-to-end metric formulas.
+- **CI** — added (`.github/workflows/ci.yml`: typecheck, lint, tests, build).
+- **Dead code** — removed Firestore/Firebase modules and the `@google-cloud/firestore` dependency; removed unused config keys.
+- **Duplicated config** — cross-referenced in comments (`config.ts` ↔ `apps-script/Code.js`); still maintained in both places by hand because Apps Script cannot import from the app.
+- **Error visibility** — the dashboard now shows a banner for any source warning (fallback in use, partial load, missing attendance, department-report dates).
 
-- **No tests.** The date parsers, `resolveOpener`, attendance weighting and the metric formulas are pure functions and are the best place to start (Vitest/Jest, using small fixtures).
-- **No CI** (type-check, lint, build).
-- **Dead code**: `src/lib/firestore.ts` and its `@google-cloud/firestore` dependency, `firebase.ts` stub, `Untitled-1*.txt`, `my-dashboard/`.
-- Unused/duplicate config: `OPENER_COL`, `RAW_HEADERS`, `CALL_LOG_EXTRA` in `config.ts` are not referenced by the Next.js code (they mirror the Apps Script).
-- Excluded agents and the sheet structure are duplicated in `config.ts` and `apps-script/Code.js`; they must be kept in sync by hand.
-- The `Call Logs` range `A2:O` is read in a single call with no paging; very large sheets will approach Sheets API response limits.
-- Error-handling gaps: partial failures (e.g. tracker down, calls up) are logged but not surfaced in the UI; `dataSourceInfo.notes` is only set for local attendance.
-
-## Suggested order of work
-1. ~~Sync/fallback safety (#2–#5)~~ done; apply the Supabase migration.
-2. Add a short in-memory cache and drop the full call list from the default response.
-3. Add auth to `/api/dashboard` (or restrict via Vercel protection).
-4. Add unit tests for the pure functions, then clean up the dead code and repo clutter.
+## Still open (deliberate or needs your decision)
+- Run `clasp push` yourself if you want the Apps Script exclusion change deployed (not done from here).
+- A holiday calendar for adherence (needs a list of holidays from you).
+- Internal/other call types count toward *Calls* but not Outbound/Inbound; tell me if you would rather exclude them from Calls.
+- **Verify live:** login, caching behaviour with real Sheets credentials, and the Supabase sync after running the migration.

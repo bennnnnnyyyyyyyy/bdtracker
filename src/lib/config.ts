@@ -29,31 +29,11 @@ export const CONFIG = {
   // show-rate calculations instead of being counted as attended by default.
   ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded'],
 
-  OPENER_COL: 2, // Column B in each BD_TABS sheet (1-indexed for sheets, 0-indexed column 1)
-
   CALL_LOG_SHEET: 'Call Logs',
-  STAGING_SHEET: 'Import Staging',
   MAPPING_SHEET: 'Agent Mapping',
-  DASHBOARD_SHEET: 'BD Dashboard',
 
-  RAW_HEADERS: [
-    'Call Date',
-    'Call ID',
-    'From',
-    'To',
-    'Extension',
-    'Department',
-    'DID',
-    'Description',
-    'Type',
-    'Outcome',
-    'Duration',
-    'Notes',
-    'Call Path'
-  ],
-  CALL_LOG_EXTRA: ['Agent', 'Duration (sec)'],
-
-  // Agents/Openers to completely exclude from dashboard
+  // Agents/Openers to completely exclude from dashboard.
+  // Keep in sync with CONFIG.EXCLUDED_AGENTS in apps-script/Code.js (which also owns the staging/dashboard tab names).
   EXCLUDED_AGENTS: ['russ', 'george', 'caroline', 'caroline richards']
 };
 

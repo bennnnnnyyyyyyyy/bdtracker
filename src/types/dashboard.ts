@@ -154,7 +154,10 @@ export interface DataSourceInfo {
 export interface DashboardResponse {
   openers: OpenerStats[];
   totals: OrgTotals;
+  /** Empty unless the request asked for `includeCalls=true` (the Call Logs tab loads them on demand). */
   calls: CallRecord[];
+  callsIncluded?: boolean;
+  callsTotal?: number;
   meetings?: MeetingRecord[];
   agentMappings: AgentMapping[];
   stages: string[];

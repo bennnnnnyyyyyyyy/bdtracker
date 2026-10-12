@@ -73,12 +73,20 @@ export async function fetchCallDashboardData(): Promise<{
       opener: String(row[1] || '').trim()
     }));
 
-  const callLogRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
-    range: `${CONFIG.CALL_LOG_SHEET}!A2:O`
-  });
+  // Read the log in row chunks so a very large sheet never hits a single-response size limit.
+  const CALL_LOG_CHUNK_ROWS = 20000;
+  const callLogRows: unknown[][] = [];
+  for (let start = 2; ; start += CALL_LOG_CHUNK_ROWS) {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
+      range: `${CONFIG.CALL_LOG_SHEET}!A${start}:O${start + CALL_LOG_CHUNK_ROWS - 1}`
+    });
+    const values = (res.data.values || []) as unknown[][];
+    callLogRows.push(...values);
+    if (values.length < CALL_LOG_CHUNK_ROWS) break;
+  }
 
-  const calls: CallRecord[] = (callLogRes.data.values || [])
+  const calls: CallRecord[] = callLogRows
     .filter(row => row && (row[1] || row[0]))
     .map(r => {
       const ext = String(r[4] || '');
@@ -322,6 +330,12 @@ async function loadDashboardRawData(): Promise<RawDashboardDataset> {
       attendanceSource: attendanceResult.source,
       callsSource,
       notes: [
+        callsSource === 'ultatel_dept_report'
+          ? 'Calls come from the Ultatel department summary report, which has no per-call dates: every call is dated today and date filters do not apply.'
+          : '',
+        attendanceResult.source === 'none'
+          ? 'No attendance data found: per-day figures fall back to active calendar days.'
+          : '',
         attendanceResult.source === 'local_excel'
           ? 'Attendance loaded from local Excel file (BD _ French Dashboard 2026)'
           : '',

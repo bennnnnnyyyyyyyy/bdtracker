@@ -87,8 +87,10 @@ export function parseAttendanceRows(rows: unknown[][]): AttendanceDataset {
       currentDates.forEach(({ colIndex, date }) => {
         const cellCode = row[colIndex];
         const weight = getAttendanceWeight(cellCode);
-        // If multiple entries occur for the same date across blocks, take the non-zero or latest weight
-        agentDaily[agentClean][date] = weight;
+        // If a date appears in several blocks, a later empty cell must not erase an earlier attendance mark.
+        if (weight > 0 || agentDaily[agentClean][date] === undefined) {
+          agentDaily[agentClean][date] = weight;
+        }
       });
 
       // Column AH (index 33) is the precomputed "Present" total for this block
@@ -106,6 +108,50 @@ export function parseAttendanceRows(rows: unknown[][]): AttendanceDataset {
   return { agentDaily, agentMonthly };
 }
 
+const attendanceKeyCache = new WeakMap<AttendanceDataset, WeakMap<AgentMapping[], Map<string, string | null>>>();
+
+/** Finds the attendance row for an opener (exact canonical match, else a unique whole-first-name match). Cached per dataset. */
+function findAttendanceKey(
+  agentName: string,
+  attendance: AttendanceDataset,
+  agentMappings: AgentMapping[]
+): string | null {
+  let byMappings = attendanceKeyCache.get(attendance);
+  if (!byMappings) {
+    byMappings = new WeakMap();
+    attendanceKeyCache.set(attendance, byMappings);
+  }
+  let byName = byMappings.get(agentMappings);
+  if (!byName) {
+    byName = new Map();
+    byMappings.set(agentMappings, byName);
+  }
+  if (byName.has(agentName)) return byName.get(agentName) ?? null;
+
+  const keys = Object.keys(attendance.agentDaily);
+  const targetLower = (resolveOpener(agentName, agentMappings) || agentName).toLowerCase().trim();
+
+  let matched: string | null = null;
+  for (const key of keys) {
+    const canonicalKey = resolveOpener(key, agentMappings) || key;
+    if (canonicalKey.toLowerCase().trim() === targetLower) {
+      matched = key;
+      break;
+    }
+  }
+
+  // Fallback: match by whole first name, only when exactly one attendance row has it
+  // (a prefix match would let "Ben" pick up "Benjamin").
+  if (!matched) {
+    const firstName = targetLower.split(/\s+/)[0];
+    const candidates = keys.filter(key => key.toLowerCase().trim().split(/\s+/)[0] === firstName);
+    if (candidates.length === 1) matched = candidates[0];
+  }
+
+  byName.set(agentName, matched);
+  return matched;
+}
+
 /**
  * Calculates present days for an agent over a specified date range.
  * Uses day-by-day cell codes (P, L1, L2, Q, H) to calculate the exact weighted days.
@@ -119,32 +165,8 @@ export function calculateAgentPresentDays(
 ): number {
   if (!agentName || !attendance.agentDaily) return 0;
 
-  const targetOpener = resolveOpener(agentName, agentMappings) || agentName;
-  const targetLower = targetOpener.toLowerCase().trim();
-
-  // Find matching agent record in attendance data
-  let matchedAgentKey: string | null = null;
-  for (const key of Object.keys(attendance.agentDaily)) {
-    const canonicalKey = resolveOpener(key, agentMappings) || key;
-    if (canonicalKey.toLowerCase().trim() === targetLower) {
-      matchedAgentKey = key;
-      break;
-    }
-  }
-
-  // Fallback: match by whole first name, only when exactly one attendance row has it
-  // (a prefix match would let "Ben" pick up "Benjamin").
-  if (!matchedAgentKey) {
-    const firstName = targetLower.split(/\s+/)[0];
-    const candidates = Object.keys(attendance.agentDaily).filter(
-      key => key.toLowerCase().trim().split(/\s+/)[0] === firstName
-    );
-    if (candidates.length === 1) matchedAgentKey = candidates[0];
-  }
-
-  if (!matchedAgentKey) {
-    return 0;
-  }
+  const matchedAgentKey = findAttendanceKey(agentName, attendance, agentMappings);
+  if (!matchedAgentKey) return 0;
 
   const dailyRecords = attendance.agentDaily[matchedAgentKey] || {};
   const dates = Object.keys(dailyRecords);

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate') || undefined;
     const endDate = searchParams.get('endDate') || undefined;
     const selectedOpener = searchParams.get('opener') || undefined;
+    const includeCalls = searchParams.get('includeCalls') === 'true';
     let rawData: RawDashboardDataset | null = null;
     let attendanceData: AttendanceDataset | undefined;
     let currentDataSourceInfo: DataSourceInfo = {
@@ -91,7 +92,9 @@ export async function GET(request: NextRequest) {
     const response: DashboardResponse = {
       openers: responseOpeners,
       totals,
-      calls: filteredCalls,
+      calls: includeCalls ? filteredCalls : [],
+      callsIncluded: includeCalls,
+      callsTotal: filteredCalls.length,
       meetings: filteredMeetings,
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,

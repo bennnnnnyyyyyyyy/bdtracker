@@ -55,7 +55,19 @@ export function durationToSeconds(val: unknown): number {
 /**
  * Parses date from Excel serial number, Date object, or date string into YYYY-MM-DD format.
  */
+const isoDateCache = new Map<string, string | null>();
+
 export function parseDateToISO(val: unknown): string | null {
+  if (typeof val !== 'string') return parseDateToISOUncached(val);
+  // Strings repeat across the filter and the three period breakdown passes; cache them.
+  if (isoDateCache.has(val)) return isoDateCache.get(val) ?? null;
+  const parsed = parseDateToISOUncached(val);
+  if (isoDateCache.size > 50_000) isoDateCache.clear();
+  isoDateCache.set(val, parsed);
+  return parsed;
+}
+
+function parseDateToISOUncached(val: unknown): string | null {
   if (val === null || val === undefined || val === '') return null;
 
   if (typeof val === 'number') {
@@ -120,6 +132,22 @@ export function parseDateToISO(val: unknown): string | null {
   return null;
 }
 
+/** Normalizes the PBX/Sheet call direction. Unknown values (e.g. "INTERNAL") are preserved. */
+export function normalizeCallType(type: unknown): string {
+  const t = String(type ?? '').trim();
+  if (/^out/i.test(t)) return 'OUT-Bound';
+  if (/^in(?!ternal)/i.test(t)) return 'IN-Bound';
+  return t;
+}
+
+/** Normalizes the call outcome. Unknown values are preserved (and counted as neither answered nor unanswered). */
+export function normalizeCallOutcome(outcome: unknown): string {
+  const o = String(outcome ?? '').trim();
+  if (/^(no[\s_-]*answer|unanswered|missed)/i.test(o)) return 'NO ANSWER';
+  if (/^answered/i.test(o)) return 'ANSWERED';
+  return o;
+}
+
 export function formatSeconds(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
@@ -179,10 +207,14 @@ export function getIsoWeekKey(dateStr: string): { key: string; label: string; st
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
 
-  const year = monday.getFullYear();
-  const oneJan = new Date(year, 0, 1);
-  const numberOfDays = Math.floor((monday.getTime() - oneJan.getTime()) / (24 * 60 * 60 * 1000));
-  const weekNum = Math.ceil((numberOfDays + oneJan.getDay() + 1) / 7);
+  // ISO-8601: the week belongs to the year that contains its Thursday.
+  const thursday = new Date(monday);
+  thursday.setDate(monday.getDate() + 3);
+  const year = thursday.getFullYear();
+  const jan4 = new Date(year, 0, 4);
+  const week1Monday = new Date(jan4);
+  week1Monday.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const weekNum = Math.round((monday.getTime() - week1Monday.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
 
   const formatYMD = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
   const startISO = formatYMD(monday);
@@ -302,13 +334,23 @@ export function computeDashboardMetrics(
   weeklyBreakdown: PeriodicGroupSummary[];
   monthlyBreakdown: PeriodicGroupSummary[];
 } {
+  // resolveOpener scans every mapping; names repeat thousands of times, so memoize per run.
+  const resolveCache = new Map<string, string | null>();
+  const resolve = (name: string | undefined | null): string | null => {
+    const key = name ?? '';
+    if (resolveCache.has(key)) return resolveCache.get(key) ?? null;
+    const resolved = resolveOpener(name, agentMappings);
+    resolveCache.set(key, resolved);
+    return resolved;
+  };
+
   // Normalize and map calls to canonical openers
   let filteredCalls: CallRecord[] = [];
   rawCalls.forEach(c => {
     const rawAgent = c.agent || parseAgentName(c.extension);
-    const opener = resolveOpener(rawAgent, agentMappings);
+    const opener = resolve(rawAgent);
     if (!opener || isExcludedAgent(opener)) return;
-    filteredCalls.push({ ...c, agent: rawAgent, opener });
+    filteredCalls.push({ ...c, agent: rawAgent, opener, type: normalizeCallType(c.type), outcome: normalizeCallOutcome(c.outcome) });
   });
 
   const startISO = filter?.startDate ? parseDateToISO(filter.startDate) : null;
@@ -326,7 +368,7 @@ export function computeDashboardMetrics(
   }
 
   const selectedCanonicalOpener = filter?.selectedOpener && filter.selectedOpener !== 'ALL'
-    ? (resolveOpener(filter.selectedOpener, agentMappings) || filter.selectedOpener.trim())
+    ? (resolve(filter.selectedOpener) || filter.selectedOpener.trim())
     : null;
 
   if (selectedCanonicalOpener) {
@@ -336,7 +378,7 @@ export function computeDashboardMetrics(
   // Normalize and filter meetings
   let filteredMeetings: MeetingRecord[] = [];
   rawMeetings.forEach(m => {
-    const opener = resolveOpener(m.opener, agentMappings);
+    const opener = resolve(m.opener);
     if (!opener || isExcludedAgent(opener)) return;
     filteredMeetings.push({ ...m, opener });
   });
@@ -365,7 +407,7 @@ export function computeDashboardMetrics(
     });
   } else {
     Object.keys(trackerCounts).forEach(rawOpener => {
-      const canonical = resolveOpener(rawOpener, agentMappings);
+      const canonical = resolve(rawOpener);
       if (!canonical || isExcludedAgent(canonical)) return;
       if (selectedCanonicalOpener && canonical !== selectedCanonicalOpener) return;
       if (!dynamicTrackerCounts[canonical]) dynamicTrackerCounts[canonical] = {};
@@ -402,7 +444,7 @@ export function computeDashboardMetrics(
   Object.keys(stats).forEach(op => { if (!isExcludedAgent(op)) allOpeners.add(op); });
   Object.keys(dynamicTrackerCounts).forEach(op => { if (!isExcludedAgent(op)) allOpeners.add(op); });
   agentMappings.forEach(m => {
-    const canonical = resolveOpener(m.opener || m.agent, agentMappings);
+    const canonical = resolve(m.opener || m.agent);
     if (canonical && !isExcludedAgent(canonical) && (!selectedCanonicalOpener || canonical === selectedCanonicalOpener)) allOpeners.add(canonical);
   });
 
@@ -438,15 +480,18 @@ export function computeDashboardMetrics(
 
   // Calculate business days in range (Mon-Fri) for attendance adherence calculation
   let expectedWorkingDays = 0;
-  if (filter?.startDate && filter?.endDate) {
-    const cur = new Date(filter.startDate);
-    const end = new Date(filter.endDate);
+  if (startISO && endISO) {
+    // Pure calendar arithmetic in UTC so the result does not depend on the server/browser timezone.
+    const [sy, sm, sd] = startISO.split('-').map(Number);
+    const [ey, em, ed] = endISO.split('-').map(Number);
+    const cur = new Date(Date.UTC(sy, sm - 1, sd));
+    const end = new Date(Date.UTC(ey, em - 1, ed));
     while (cur <= end) {
-      const day = cur.getDay();
+      const day = cur.getUTCDay();
       if (day !== 0 && day !== 6) {
         expectedWorkingDays++;
       }
-      cur.setDate(cur.getDate() + 1);
+      cur.setUTCDate(cur.getUTCDate() + 1);
     }
   }
   if (expectedWorkingDays === 0) {

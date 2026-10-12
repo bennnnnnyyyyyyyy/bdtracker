@@ -171,13 +171,23 @@ export async function getRawDataFromSupabase(): Promise<{
     if (!supabase) return null;
 
     // Allow the paginated raw-data read to complete without masking it as a timeout
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000));
+    // On timeout, abort the in-flight queries as well so they do not keep running.
+    const controller = new AbortController();
+    const signal = controller.signal;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        resolve(null);
+      }, 15000);
+    });
 
     const fetchPromise = (async () => {
       // 1. Fetch metadata
       const { data: metaData, error: metaErr } = await supabase
         .from('metadata')
-        .select('key, value, updated_at');
+        .select('key, value, updated_at')
+        .abortSignal(signal);
 
       if (metaErr || !metaData) return null;
 
@@ -194,12 +204,12 @@ export async function getRawDataFromSupabase(): Promise<{
       // Date filtering happens consistently in computeDashboardMetrics().
       const MEETING_COLUMNS = 'stage, opener, date_added, company_name, authorized_person';
       const [mappingsRes, meetingsWithFlags] = await Promise.all([
-        supabase.from('agent_mappings').select('agent, opener'),
-        supabase.from('meetings').select(`${MEETING_COLUMNS}, med_b, ppo`),
+        supabase.from('agent_mappings').select('agent, opener').abortSignal(signal),
+        supabase.from('meetings').select(`${MEETING_COLUMNS}, med_b, ppo`).abortSignal(signal),
       ]);
       // Older schemas have no med_b / ppo columns.
       const meetingsRes = meetingsWithFlags.error && isMissingColumnError(meetingsWithFlags.error)
-        ? await supabase.from('meetings').select(MEETING_COLUMNS)
+        ? await supabase.from('meetings').select(MEETING_COLUMNS).abortSignal(signal)
         : meetingsWithFlags;
       // A failed read must not be mistaken for an empty snapshot.
       if (mappingsRes.error || meetingsRes.error) return null;
@@ -233,6 +243,7 @@ export async function getRawDataFromSupabase(): Promise<{
         );
         const { data: callsPage, error } = await callsQuery
           .order('call_id')
+          .abortSignal(signal)
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
         if (error) return null; // never serve a silently truncated call history
@@ -277,7 +288,11 @@ export async function getRawDataFromSupabase(): Promise<{
       };
     })();
 
-    return await Promise.race([fetchPromise, timeoutPromise]);
+    try {
+      return await Promise.race([fetchPromise, timeoutPromise]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   } catch (error) {
     console.warn('Error fetching data from Supabase:', error);
     return null;

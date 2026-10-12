@@ -27,7 +27,8 @@ function getPeriodTitle(filters: FilterState): string {
 }
 
 function coachingStatus(agent: OpenerStats): { label: string; className: string } {
-  if (agent.booked > 0 && agent.showRate < 0.4) return { label: 'Show rate needs attention', className: 'pill-danger' };
+  // Only judge show rate once at least one meeting has a result (attended or no-show).
+  if (agent.attended + agent.noShow > 0 && agent.showRate < 0.4) return { label: 'Show rate needs attention', className: 'pill-danger' };
   if (agent.presentDays > 0 && agent.callsPerPresentDay < 10) return { label: 'Activity needs attention', className: 'pill-warn' };
   return { label: 'On track', className: 'pill-success' };
 }

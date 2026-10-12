@@ -1,5 +1,7 @@
 # BD Call & Pipeline Performance Dashboard — Technical Overview
 
+> For the full trace of how each number is recorded, read and calculated, see [`HOW_NUMBERS_WORK.md`](HOW_NUMBERS_WORK.md).
+
 A business development analytics dashboard (Next.js 16 / React 19 / Tailwind 4 / Recharts) that joins **Ultatel PBX call data**, the **Google Sheets BD Meetings Tracker**, and the **BD French attendance workbook** into per-opener performance metrics.
 
 ---
@@ -44,7 +46,7 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 - **Call Logs sheet** (`CALL_DASHBOARD_SHEET_ID`): `Call Logs` (A:O) and `Agent Mapping` (A:B).
 - **BD Tracker sheet** (`BD_TRACKER_SHEET_ID`): tabs `New Meetings`, `Follow Ups`, `Contract Sent`, `Invoice Sent`, `Onboarded`, `No-Show`, `Dead Leads`, `Temporary Inactive`, read as `A1:Z`. Header names are auto-detected (opener, date, company, contact, `MEDB`, `PPO`).
 - **Attendance** (`ATTENDANCE_SHEET_ID`, tab `Attendance`, `A1:AT`): copied into the tracker by the French Dashboard Apps Script bridge. Falls back to the local `BD _ French Dashboard 2026 (3).xlsx`.
-- **Local Ultatel department report** `OutBound Calls Per Department ( BusinessDevelopmentTeam ).xlsx`: only used when the `Call Logs` sheet returns **zero** calls. It contains per-agent totals, not individual calls, so `ultatel.ts` synthesizes one `CallRecord` per call, **all dated today** (server date). Date filters are therefore not meaningful in this mode.
+- **Local Ultatel department report** `OutBound Calls Per Department ( BusinessDevelopmentTeam ).xlsx`: only used when the `Call Logs` sheet returns **zero** calls. It contains per-agent totals, not individual calls, so `ultatel.ts` synthesizes one `CallRecord` per call, **all dated today** (server date). Date filters are therefore not meaningful in this mode (the dashboard shows a warning banner).
 - **Supabase** (`agent_mappings`, `meetings`, `calls`, `metadata`; schema in `supabase_schema.sql`): a daily snapshot written by `/api/sync` and read only as a fallback (see above). `meetings` needs the `med_b` / `ppo` columns — run the migration in the schema file.
 
 ### Access control
@@ -65,7 +67,7 @@ Set `DASHBOARD_PASSWORD`. `src/proxy.ts` redirects unauthenticated page requests
 
 | Route | Method | Purpose |
 | :--- | :--- | :--- |
-| `/api/dashboard` | GET | Query params `startDate`, `endDate` (YYYY-MM-DD), `opener`. Pulls live data, computes metrics, returns `DashboardResponse` (`Cache-Control: no-store`). If the live pull throws, or the call logs / BD tracker failed to load, serves the Supabase snapshot instead (noted in `dataSourceInfo.notes`); with no snapshot it shows the partial live data plus a warning. |
+| `/api/dashboard` | GET | Query params `startDate`, `endDate` (YYYY-MM-DD), `opener`, `refresh=true` (force reload, max every 10 s), `includeCalls=true` (adds the raw call rows; only the Call Logs tab asks for them). Pulls live data, computes metrics, returns `DashboardResponse` (`Cache-Control: no-store`). If the live pull throws, or the call logs / BD tracker failed to load, serves the Supabase snapshot instead (noted in `dataSourceInfo.notes`); with no snapshot it shows the partial live data plus a warning. |
 | `/api/sync` | GET, POST | Reads live data and writes it to Supabase. Requires `Authorization: Bearer $CRON_SECRET` in production. Returns 503 and leaves the snapshot untouched if any live source failed or calls/meetings are empty; Supabase writes are checked, and old rows are removed only after the new ones are saved. Scheduled daily at 05:00 UTC by `vercel.json`. |
 | `/api/login`, `/api/logout` | POST, GET | Sign in / out (see Access control). |
 | `/api/upload` | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
@@ -95,10 +97,12 @@ Four tabs, switched by CSS show/hide (no unmount):
 │   ├── PROJECT_OVERVIEW.md      # This file
 │   ├── AGENT_METHODOLOGY.md     # Opener resolution rules
 │   ├── MANUAL_AUDIT.md          # Verification checklist
-│   ├── AUDIT_FINDINGS.md        # Known issues and recommended fixes
+│   ├── HOW_NUMBERS_WORK.md      # How every number is recorded, read and calculated
+│   ├── AUDIT_FINDINGS.md        # Audit results and what was fixed
 │   └── WORKLOG.md               # Engineering changelog
 ├── src/
-│   ├── app/                     # page.tsx, layout.tsx, api/{dashboard,sync,upload}/route.ts
+│   ├── app/                     # page.tsx, login/page.tsx, layout.tsx, api/{dashboard,sync,upload,login,logout}/route.ts
+│   ├── proxy.ts                 # Password gate for pages and APIs
 │   ├── components/              # Header, KpiGrid, AgentDashboardView, OpenerTable, PeriodicBreakdownTable,
 │   │                            #   DashboardCharts, CallLogsView, FileImportModal
 │   ├── lib/
@@ -110,17 +114,16 @@ Four tabs, switched by CSS show/hide (no unmount):
 │   │   ├── supabase.ts          # Snapshot save/restore (emergency fallback)
 │   │   ├── exportXlsx.ts        # Per-person XLSX export
 │   │   ├── errors.ts            # Error message / quota detection helpers
-│   │   ├── firestore.ts         # Legacy, unused by the routes
-│   │   └── firebase.ts          # Deprecated stub
+│   │   └── auth.ts              # Shared-password session helpers
 │   └── types/dashboard.ts       # Data contracts
+├── tests/                       # Vitest unit tests (parsing, opener resolution, attendance, metrics)
+├── .github/workflows/ci.yml     # typecheck, lint, test, build
 ├── supabase_schema.sql          # Fallback database schema
 └── vercel.json                  # Daily /api/sync cron
 ```
-
-`my-dashboard/src/types/dashboard.ts` is a stale partial copy of the types and is not used.
 
 ---
 
 ## 6. Running
 
-`npm run dev` / `npm run build` / `npm run lint`. There is no test suite. On the project PC use the pinned Node install described in `agents.md`.
+`npm run dev` / `npm run build` / `npm run lint` / `npm run typecheck` / `npm test` (Vitest). CI runs all of them on every push. On the project PC use the pinned Node install described in `agents.md`.

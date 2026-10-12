@@ -58,6 +58,13 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Exclusions and first-name matching are whole-word (`Georgette` ≠ `George`, `Ben` ≠ `Benjamin`); Apps Script exclusion logic updated to match.
 - `supabase_schema.sql`: fixed invalid `CREATE POLICY IF NOT EXISTS`; policies now apply to `service_role` only.
 
+### 9. Audit Clean-up
+- Call type/outcome normalization, ISO-8601 weeks, timezone-safe working-day count, attendance duplicate handling, memoized name/date/attendance lookups.
+- Call Logs rows are loaded on demand (`includeCalls=true`); call log read in 20 000-row chunks; Supabase queries abort on timeout.
+- Source warnings (fallback, partial load, missing attendance, undated department report) shown in a dashboard banner.
+- Vitest suite (29 tests) and GitHub Actions CI added. Removed Firestore/Firebase code, unused config keys, stray files (installer, scratch text files, `my-dashboard/`, Supabase CLI state).
+- New `data/HOW_NUMBERS_WORK.md`.
+
 ---
 
 ## Documentation Manifest in `data/`
@@ -65,5 +72,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - [`data/AGENT_METHODOLOGY.md`](AGENT_METHODOLOGY.md) — Comprehensive guide on agent mapping, normalization rules, and exclusion logic.
 - [`data/PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) — System architecture, data flow diagram, formulas, and directory structure.
 - [`data/MANUAL_AUDIT.md`](MANUAL_AUDIT.md) — Step-by-step verification checklist.
-- [`data/AUDIT_FINDINGS.md`](AUDIT_FINDINGS.md) — Known issues, gaps and recommended fixes.
+- [`data/HOW_NUMBERS_WORK.md`](HOW_NUMBERS_WORK.md) — How every number is recorded, read and calculated.
+- [`data/AUDIT_FINDINGS.md`](AUDIT_FINDINGS.md) — Audit results and resolution status.
 - [`data/WORKLOG.md`](WORKLOG.md) — Full engineering changelog and decision log.

@@ -9,7 +9,7 @@ import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
 import { exportDashboardAnalyticsXlsx } from '@/lib/exportXlsx';
-import { FilterState, DashboardResponse } from '@/types/dashboard';
+import { FilterState, DashboardResponse, CallRecord } from '@/types/dashboard';
 import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3 } from 'lucide-react';
 
 type ActiveTab = 'agents' | 'periods' | 'table' | 'calls';
@@ -112,6 +112,8 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('agents');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [callLogs, setCallLogs] = useState<{ key: string; calls: CallRecord[] } | null>(null);
+  const [callLogsError, setCallLogsError] = useState<string | null>(null);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -147,6 +149,8 @@ export default function DashboardPage() {
 
       const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
       if (res.status === 401) {
+        // Full reload on purpose: drops all client state when the session has expired.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = '/login';
         return;
       }
@@ -180,6 +184,42 @@ export default function DashboardPage() {
 
     return () => window.cancelAnimationFrame(frame);
   }, [fetchData, hasHydrated]);
+
+  // The Call Logs tab needs every call record, which is large; load it only when that tab is opened.
+  const hasData = Boolean(data);
+  const lastUpdated = data?.lastUpdated;
+  const callsKey = `${filters.startDate}|${filters.endDate}|${filters.selectedOpener}|${lastUpdated}`;
+  const callsLoaded = callLogs?.key === callsKey;
+  useEffect(() => {
+    if (activeTab !== 'calls' || !hasData || callsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams({ includeCalls: 'true' });
+        if (filters.startDate) params.set('startDate', filters.startDate);
+        if (filters.endDate) params.set('endDate', filters.endDate);
+        if (filters.selectedOpener && filters.selectedOpener !== 'ALL') params.set('opener', filters.selectedOpener);
+        const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
+        if (res.status === 401) {
+          // Full reload on purpose: drops all client state when the session has expired.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+        window.location.href = '/login';
+          return;
+        }
+        if (!res.ok) throw new Error('Failed to load call logs');
+        const json: DashboardResponse = await res.json();
+        if (!cancelled) {
+          setCallLogs({ key: callsKey, calls: json.calls });
+          setCallLogsError(null);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) setCallLogsError(err instanceof Error ? err.message : 'Failed to load call logs');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, hasData, callsLoaded, callsKey, filters.startDate, filters.endDate, filters.selectedOpener]);
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
     setFilters(prev => ({ ...prev, ...newFilters }));
@@ -231,6 +271,17 @@ export default function DashboardPage() {
             >
               Retry
             </button>
+          </div>
+        )}
+
+        {data?.dataSourceInfo?.notes && (
+          <div
+            role="status"
+            className="rounded-xl p-3 flex items-start gap-2 text-xs"
+            style={{ background: 'rgba(232,197,106,0.08)', border: '1px solid rgba(232,197,106,0.25)', color: '#e8c56a' }}
+          >
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{data.dataSourceInfo.notes}</span>
           </div>
         )}
 
@@ -289,7 +340,13 @@ export default function DashboardPage() {
               <OpenerTable openers={data.openers} totals={data.totals} />
             )}
             {activeTab === 'calls' && (
-              <CallLogsView calls={data.calls} />
+              callsLoaded ? (
+                <CallLogsView calls={callLogs.calls} />
+              ) : (
+                <div className="card p-6 text-sm text-[#a1a1aa]" role="status">
+                  {callLogsError ?? 'Loading call logs…'}
+                </div>
+              )
             )}
           </>
         )}
