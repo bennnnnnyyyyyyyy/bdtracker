@@ -172,6 +172,47 @@ function createStagingTab() {
 }
 
 /**
+ * After an import: compares, per agent, how many rows the export had with how many rows Call Logs now holds
+ * for the same period (by Call ID timestamp), so any mismatch is visible straight away.
+ * @param {unknown[][]} stagedRows the export rows that were in Import Staging
+ * @returns {string} lines for the completion message
+ */
+function reconcileImport_(stagedRows) {
+  const callLog = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.CALL_LOG_SHEET);
+  const expected = new Map();
+  let minEpoch = Infinity;
+  let maxEpoch = -Infinity;
+  stagedRows.forEach(r => {
+    const epoch = callEpoch_(r[1]);
+    if (epoch === null) return;
+    minEpoch = Math.min(minEpoch, epoch);
+    maxEpoch = Math.max(maxEpoch, epoch);
+    const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
+    expected.set(agent, (expected.get(agent) ?? 0) + 1);
+  });
+  if (expected.size === 0 || !callLog || callLog.getLastRow() < 2) return '';
+
+  SpreadsheetApp.flush();
+  const actual = new Map();
+  callLog.getRange(2, 1, callLog.getLastRow() - 1, CONFIG.RAW_HEADERS.length).getValues().forEach(r => {
+    const epoch = callEpoch_(r[1]);
+    if (epoch === null || epoch < minEpoch || epoch > maxEpoch) return;
+    const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
+    actual.set(agent, (actual.get(agent) ?? 0) + 1);
+  });
+
+  const problems = [];
+  expected.forEach((n, agent) => {
+    const got = actual.get(agent) ?? 0;
+    if (got !== n) problems.push(`${agent}: export ${n}, Call Logs ${got} (${got - n > 0 ? '+' : ''}${got - n})`);
+  });
+  return problems.length === 0
+    ? '\n• Check: every agent matches the export exactly.'
+    : '\n• CHECK FAILED - Call Logs differs from the export for this period:\n   ' + problems.join('\n   ') +
+      '\n   (extra rows usually mean old duplicates: run "Repair duplicate calls")';
+}
+
+/**
  * Processes rows from Import Staging into Call Logs:
  * 1. Checks for duplicates by Call ID (and compound key fallback) against existing logs.
  * 2. Deduplicates intra-batch rows.
@@ -292,6 +333,7 @@ function processStagingImport() {
     message += `\n• ${newAgents.size} new agent(s) added to Agent Mapping. Please assign their Opener names.`;
   }
   message += `\n• Staging tab removed.`;
+  message += reconcileImport_(rawRows);
 
   SpreadsheetApp.getUi().alert(message);
 
