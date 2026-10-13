@@ -401,33 +401,47 @@ function autoArchiveStatus() {
  * @param {unknown[][]} stagedRows the export rows that were imported
  * @returns {{ok: boolean, problems: string[]}}
  */
-function reconcileImportData_(stagedRows) {
+function reconcileImportData_(stagedRows, stagedDisp) {
   const expected = new Map();
+  const exportKeyCount = new Map();
   let minEpoch = Infinity;
   let maxEpoch = -Infinity;
-  stagedRows.forEach(r => {
+  stagedRows.forEach((r, i) => {
     const epoch = callEpoch_(r[1]);
     if (epoch === null) return;
     minEpoch = Math.min(minEpoch, epoch);
     maxEpoch = Math.max(maxEpoch, epoch);
     const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
     expected.set(agent, (expected.get(agent) ?? 0) + 1);
+    const key = callRowKey_(stagedDisp[i], stagedDisp[i][0]);
+    exportKeyCount.set(key, (exportKeyCount.get(key) ?? 0) + 1);
   });
   if (expected.size === 0) return { ok: true, problems: [] };
 
   SpreadsheetApp.flush();
   const actual = new Map();
+  const sheetKeyCount = new Map();
+  const extras = new Map(); // agent -> sheet rows beyond what the export holds
   collectLogRowsDisplay_(minEpoch, maxEpoch).forEach(r => {
     const epoch = callEpoch_(r[1]);
     if (epoch === null || epoch < minEpoch || epoch > maxEpoch) return;
     const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
     actual.set(agent, (actual.get(agent) ?? 0) + 1);
+    const key = callRowKey_(r, r[0]);
+    const n = (sheetKeyCount.get(key) ?? 0) + 1;
+    sheetKeyCount.set(key, n);
+    if (n > (exportKeyCount.get(key) ?? 0)) {
+      if (!extras.has(agent)) extras.set(agent, []);
+      extras.get(agent).push(`${exportKeyCount.has(key) ? 'extra copy' : 'not in the export'}: ${r[0]} id ${r[1]} to ${r[3]} ${r[8]} ${r[9]} ${r[10]}`);
+    }
   });
 
   const problems = [];
   expected.forEach((n, agent) => {
     const got = actual.get(agent) ?? 0;
-    if (got !== n) problems.push(`${agent}: export ${n}, Call Logs ${got} (${got - n > 0 ? '+' : ''}${got - n})`);
+    if (got === n) return;
+    const examples = (extras.get(agent) ?? []).slice(0, 4).join(' | ');
+    problems.push(`${agent}: export ${n}, Call Logs ${got} (${got - n > 0 ? '+' : ''}${got - n})${examples ? ' - ' + examples : ''}`);
   });
   return { ok: problems.length === 0, problems };
 }
@@ -657,7 +671,7 @@ function importCallRows_(rawRows, dispRows) {
     imported: toAppend.length,
     duplicates: duplicateCount,
     newAgents: Array.from(newAgents),
-    check: reconcileImportData_(rawRows)
+    check: reconcileImportData_(rawRows, dispRows)
   };
 }
 

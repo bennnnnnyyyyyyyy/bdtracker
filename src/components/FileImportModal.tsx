@@ -78,9 +78,13 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
       // Extra lines for a call export: the sheet's per-agent check and agents that still need an Opener name.
       const lines: string[] = [];
       if (json.fileType === 'ultatel_calls') {
-        lines.push(json.checkOk === false
-          ? `Check failed: the sheet differs from the file for ${(json.checkProblems as string[]).join('; ')}. Run "Repair duplicate calls" in the sheet, then upload again.`
-          : 'Check passed: every agent in the file matches the sheet.');
+        if (json.checkOk === false) {
+          lines.push('Check failed: the sheet differs from the file for:');
+          (json.checkProblems as string[]).forEach((problem) => lines.push(problem));
+          lines.push('Extra rows are usually duplicates: run "Repair duplicate calls" in the sheet, then upload the file again. If the same rows are still listed, they are not in this file.');
+        } else {
+          lines.push('Check passed: every agent in the file matches the sheet.');
+        }
         if ((json.newAgents as string[] | undefined)?.length) {
           lines.push(`New agent(s) added to Agent Mapping: ${(json.newAgents as string[]).join(', ')}. Fill in their Opener name in the sheet.`);
         }
