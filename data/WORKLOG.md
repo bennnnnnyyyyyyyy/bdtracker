@@ -148,3 +148,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 29. Daily upload reminder
 - `/api/dashboard` returns `latestCallDate` and `missingUploadDay`. When the newest call in the sheet is older than the last working day (Mon-Fri; Friday's file is due on Monday, in the call-day time zone), admins and managers see a banner with an "Upload now" button. Logic in `src/lib/uploadReminder.ts` (tested). Holidays are not known, so a weekday holiday still shows the reminder.
+
+## 30. Replace counts across tabs
+- A call can sit both in `Call Logs` and in a month archive tab (an import adds to the active log while the original was already archived). The clean-up now shares its per-call counts across the tabs it processes, so only as many rows as the file holds are kept in total.

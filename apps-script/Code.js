@@ -507,7 +507,7 @@ function backupTab_(ss, sheet, backupName, numCols) {
   try { backup.hideSheet(); } catch (err) { /* a visible backup is still a backup */ }
 }
 
-function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId) {
+function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId, seenAcrossTabs) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const known = [CONFIG.CALL_LOG_SHEET].concat(monthKeysForEpochRange_(minEpoch, maxEpoch).map(archiveTabName_));
   if (known.indexOf(tabName) < 0) throw new Error('Unexpected tab "' + tabName + '".');
@@ -526,7 +526,8 @@ function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId) {
   const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols);
   const vals = range.getValues();
   const disp = getDisplayExact_(range);
-  const seen = new Map();
+  // Counts are shared with the tabs cleaned before this one: the same call can sit in Call Logs and in an archive tab.
+  const seen = seenAcrossTabs || new Map();
   const kept = [];
   vals.forEach((v, i) => {
     const epoch = callEpoch_(disp[i][1]);
@@ -636,11 +637,12 @@ function replaceJobRun_() {
     if (!jobSheet || jobSheet.getLastRow() < 1) throw new Error('The stored export is missing.');
     const rows = jobSheet.getRange(1, 1, jobSheet.getLastRow(), CONFIG.RAW_HEADERS.length).getDisplayValues();
     const tabs = replacePlan_(job.minEpoch, job.maxEpoch);
+    const seenAcrossTabs = new Map();
     job.total = tabs.length;
     tabs.forEach((t, i) => {
       job.current = t.name;
       saveReplaceJob_(job);
-      job.removed += replaceTab_(t.name, rows, t.minEpoch, t.maxEpoch, job.backupId);
+      job.removed += replaceTab_(t.name, rows, t.minEpoch, t.maxEpoch, job.backupId, seenAcrossTabs);
       job.done = i + 1;
       saveReplaceJob_(job);
     });
