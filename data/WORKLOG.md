@@ -127,3 +127,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 22. Big call exports upload in parts
 - A large export hit Vercel's 60 s limit and the browser showed "Unexpected token 'A'… is not valid JSON" (Vercel's plain-text timeout page). `/api/upload` now stops after about 35 s and returns `nextChunk`; the dashboard sends the file again from that part and adds the totals up. Safe to repeat: rows already in the sheet are skipped. Non-JSON replies now show a readable message.
+
+## 23. Replace mode for re-uploaded history
+- Upload window option "Replace what the sheet has for the dates in this file". For the file's period, rows in `Call Logs` and the month archive tabs that the file does not hold (per call-row key, rows beyond the file's count) are removed. Needs a confirmation click. Each affected tab is first copied to a hidden tab `Backup <MMDDHHMM> <tab>`; if the copy fails nothing is removed. Delete backups manually once satisfied. Rows outside the file's first and last call time are never touched. Import window also scrolls inside the screen and shortens long check results.

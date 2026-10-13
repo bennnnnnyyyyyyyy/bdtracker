@@ -4,6 +4,7 @@ export interface SheetImportResult {
   parsedRows: number;
   imported: number;
   duplicates: number;
+  removed: number;
   newAgents: string[];
   checkOk: boolean;
   checkProblems: string[];
@@ -88,23 +89,23 @@ export async function runSheetAction(action: SheetAction, extra: Record<string, 
  * Hands the export rows to the sheet's Apps Script web app, which adds them to Call Logs under the sheet's lock
  * with the same rules as the Import Staging menu. Safe to repeat: rows already in the sheet are skipped.
  */
-export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch, options: { clock?: 'local' | 'ultatel'; startChunk?: number; budgetMs?: number } = {}): Promise<SheetImportResult> {
+export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch, options: { clock?: 'local' | 'ultatel'; replace?: boolean; backupId?: string; startChunk?: number; budgetMs?: number } = {}): Promise<SheetImportResult> {
   const url = (process.env.IMPORT_WEBHOOK_URL ?? '').trim();
   const secret = (process.env.IMPORT_WEBHOOK_SECRET ?? '').trim();
   if (!url || !secret) throw new Error('Uploading call exports is not set up yet (IMPORT_WEBHOOK_URL / IMPORT_WEBHOOK_SECRET).');
 
   const chunks = chunkRowsByCall(rows);
-  const total: SheetImportResult = { parsedRows: rows.length, imported: 0, duplicates: 0, newAgents: [], checkOk: true, checkProblems: [], chunks: chunks.length, nextChunk: null };
+  const total: SheetImportResult = { parsedRows: rows.length, imported: 0, duplicates: 0, removed: 0, newAgents: [], checkOk: true, checkProblems: [], chunks: chunks.length, nextChunk: null };
 
   const startedAt = Date.now();
   for (let i = Math.max(0, options.startChunk ?? 0); i < chunks.length; i++) {
     if (options.budgetMs && i > (options.startChunk ?? 0) && Date.now() - startedAt > options.budgetMs) { total.nextChunk = i; break; }
-    let body: { ok?: boolean; error?: string; imported?: number; duplicates?: number; newAgents?: string[]; check?: { ok: boolean; problems: string[] } };
+    let body: { ok?: boolean; error?: string; imported?: number; duplicates?: number; removed?: number; newAgents?: string[]; check?: { ok: boolean; problems: string[] } };
     try {
       const res = await fetchFn(url, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Apps Script web apps accept a JSON body sent as text
-        body: JSON.stringify({ secret, action: 'import', clock: options.clock === 'ultatel' ? 'ultatel' : 'local', rows: chunks[i] }),
+        body: JSON.stringify({ secret, action: 'import', clock: options.clock === 'ultatel' ? 'ultatel' : 'local', replace: options.replace === true, backupId: options.backupId, rows: chunks[i] }),
         redirect: 'follow',
         signal: AbortSignal.timeout(55_000),
       });
@@ -122,6 +123,7 @@ export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch, 
 
     total.imported += body.imported ?? 0;
     total.duplicates += body.duplicates ?? 0;
+    total.removed += body.removed ?? 0;
     (body.newAgents ?? []).forEach((a) => { if (!total.newAgents.includes(a)) total.newAgents.push(a); });
     if (body.check && !body.check.ok) {
       total.checkOk = false;

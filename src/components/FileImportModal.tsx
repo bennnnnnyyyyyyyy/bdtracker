@@ -29,6 +29,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   const [newAgents, setNewAgents] = useState<string[]>([]);
   const [openers, setOpeners] = useState<Record<string, string>>({});
   const [fixing, setFixing] = useState(false);
+  const [replace, setReplace] = useState(false);
   const [clock, setClock] = useState<'local' | 'ultatel'>('local');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -78,12 +79,14 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
       // A big call export is imported in several requests (each stays under the server's time limit); the
       // server says where to continue, and the totals are added up here.
       let startChunk = 0;
+      const backupId = new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '');
       let json: Record<string, unknown> = {};
-      const sum = { imported: 0, duplicates: 0, newAgents: [] as string[], checkOk: true, checkProblems: [] as string[] };
+      const sum = { imported: 0, duplicates: 0, removed: 0, newAgents: [] as string[], checkOk: true, checkProblems: [] as string[] };
       for (let guard = 0; guard < 100; guard++) {
         const formData = new FormData();
         formData.append('file', target);
         formData.append('clock', clock);
+        if (replace) { formData.append('replace', '1'); formData.append('backupId', backupId); }
         formData.append('startChunk', String(startChunk));
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const text = await res.text();
@@ -96,6 +99,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
         if (json.fileType !== 'ultatel_calls') break;
         sum.imported += (json.imported as number) ?? 0;
         sum.duplicates += (json.duplicates as number) ?? 0;
+        sum.removed += (json.removed as number) ?? 0;
         ((json.newAgents as string[]) ?? []).forEach((a) => { if (!sum.newAgents.includes(a)) sum.newAgents.push(a); });
         if (json.checkOk === false) sum.checkOk = false;
         sum.checkProblems.push(...((json.checkProblems as string[]) ?? []));
@@ -106,6 +110,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
       if (json.fileType === 'ultatel_calls') {
         const parts = [`${sum.imported} new call(s) added`];
         if (sum.duplicates > 0) parts.push(`${sum.duplicates} already in the sheet`);
+        if (sum.removed > 0) parts.push(`${sum.removed} old row(s) not in the file removed (backup tab "Backup ${backupId} …" kept, hidden)`);
         json = { ...json, ...sum, message: `Call export imported: ${parts.join(', ')}.` };
       }
 
@@ -245,6 +250,18 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
               <option value="local" className="text-black">our local time (new Ultatel setting)</option>
               <option value="ultatel" className="text-black">Ultatel&apos;s old UTC-6 clock</option>
             </select>
+          </label>
+          <label className="flex items-start gap-2 text-xs text-slate-300 mb-2">
+            <input
+              type="checkbox"
+              checked={replace}
+              onChange={(e) => {
+                if (e.target.checked && !window.confirm('Replace mode: for the dates in the file, calls the sheet holds that are NOT in the file will be deleted. A hidden backup copy of each affected tab is made first. Continue?')) return;
+                setReplace(e.target.checked);
+              }}
+              className="mt-0.5"
+            />
+            <span>Replace what the sheet has for the dates in this file (removes calls that are not in the file; backed up first)</span>
           </label>
           <div
             onDragOver={handleDragOver}

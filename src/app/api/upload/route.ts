@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
         const parsed = parseCallExportFile(buf, upload.name);
         const result = await sendRowsToSheet(parsed.rows, fetch, {
           clock: peek.get('clock') === 'ultatel' ? 'ultatel' : 'local',
+          replace: peek.get('replace') === '1',
+          backupId: String(peek.get('backupId') ?? '').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20),
           startChunk: Math.max(0, Number(peek.get('startChunk')) || 0),
           budgetMs: 35_000, // a big file is imported in several requests (each under the 60 s limit)
         });
@@ -41,6 +43,7 @@ export async function POST(request: NextRequest) {
         }
         const parts = [`${result.imported} new call(s) added`];
         if (result.duplicates > 0) parts.push(`${result.duplicates} already in the sheet`);
+        if (result.removed > 0) parts.push(`${result.removed} old row(s) not in the file removed`);
         return NextResponse.json({
           success: true,
           fileType: 'ultatel_calls',

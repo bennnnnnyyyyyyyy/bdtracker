@@ -446,6 +446,69 @@ function reconcileImportData_(stagedRows, stagedDisp) {
   return { ok: problems.length === 0, problems };
 }
 
+/**
+ * Deletes the rows of Call Logs (and its archive tabs) inside the export's period that the export does not
+ * contain: for every call-row key, rows beyond the number the export holds are removed. Each tab is backed up
+ * (hidden copy "Backup <id> <tab>") before it is rewritten, once, and only when it has rows to remove. If a
+ * backup cannot be made, nothing is removed from that tab and the error is raised.
+ * @param {string[][]} stagedDisp the export rows as text
+ * @param {number} minEpoch
+ * @param {number} maxEpoch
+ * @param {string} backupId same for every request of one upload, so a tab is backed up only once
+ * @returns {number} rows removed
+ */
+function removeRowsNotInExport_(stagedDisp, minEpoch, maxEpoch, backupId) {
+  const exportKeyCount = new Map();
+  stagedDisp.forEach(d => {
+    if (callEpoch_(d[1]) === null) return;
+    const key = callRowKey_(d, d[0]);
+    exportKeyCount.set(key, (exportKeyCount.get(key) ?? 0) + 1);
+  });
+  SpreadsheetApp.flush();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
+  const tabs = [CONFIG.CALL_LOG_SHEET];
+  monthKeysForEpochRange_(minEpoch, maxEpoch).forEach(k => {
+    if (ss.getSheetByName(archiveTabName_(k))) tabs.push(archiveTabName_(k));
+  });
+
+  const seen = new Map();
+  let removed = 0;
+  tabs.forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols);
+    const vals = range.getValues();
+    const disp = range.getDisplayValues();
+    const kept = [];
+    vals.forEach((v, i) => {
+      const epoch = callEpoch_(disp[i][1]);
+      if (epoch !== null && epoch >= minEpoch && epoch <= maxEpoch) {
+        const key = callRowKey_(disp[i], disp[i][0]);
+        const n = (seen.get(key) ?? 0) + 1;
+        seen.set(key, n);
+        if (n > (exportKeyCount.get(key) ?? 0)) return; // not in the export: drop
+      }
+      kept.push(v);
+    });
+    const dropped = vals.length - kept.length;
+    if (dropped === 0) return;
+
+    const backupName = ('Backup ' + backupId + ' ' + name).slice(0, 99);
+    if (!ss.getSheetByName(backupName)) {
+      sheet.copyTo(ss).setName(backupName).hideSheet();
+      SpreadsheetApp.flush();
+    }
+    if (!ss.getSheetByName(backupName)) throw new Error('Could not back up "' + name + '"; nothing was removed from it.');
+
+    range.clearContent();
+    if (kept.length > 0) sheet.getRange(2, 1, kept.length, numCols).setValues(kept);
+    removed += dropped;
+  });
+  SpreadsheetApp.flush();
+  return removed;
+}
+
 /** Message lines for the result of reconcileImportData_. */
 function formatReconcile_(check) {
   return check.ok
@@ -667,7 +730,7 @@ function doPost(e) {
     });
     const display = rows.map(r => r.slice());
     const clock = body.clock === 'ultatel' ? 'ultatel' : 'local';
-    const result = withLock_(() => importCallRows_(rows, display, { clock }), 50000);
+    const result = withLock_(() => importCallRows_(rows, display, { clock, replace: body.replace === true, backupId: String(body.backupId || '').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20) }), 50000);
     return jsonOut_({ ok: true, ...result });
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err && err.message ? err.message : err) });
@@ -786,9 +849,18 @@ function importCallRows_(rawRows, dispRows, opts) {
     mapping.getRange(mapping.getLastRow() + 1, 1, newMappingRows.length, 2).setValues(newMappingRows);
   }
 
+  // Replace mode (re-uploading history): the file is the truth for its period, so rows the sheet holds for the
+  // same period that the file does not have (old wrong-clock / broken-format copies) are removed. Every tab that
+  // loses rows is first copied to a hidden "Backup ..." tab.
+  let removed = 0;
+  if (opts && opts.replace && isFinite(stagedMin)) {
+    removed = removeRowsNotInExport_(dispRows, stagedMin, stagedMax, (opts.backupId || 'manual'));
+  }
+
   return {
     imported: toAppend.length,
     duplicates: duplicateCount,
+    removed,
     newAgents: Array.from(newAgents),
     check: reconcileImportData_(rawRows, dispRows)
   };
