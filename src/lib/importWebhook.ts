@@ -8,6 +8,8 @@ export interface SheetImportResult {
   checkOk: boolean;
   checkProblems: string[];
   chunks: number;
+  /** Set when a time budget stopped the run early: send the file again with startChunk = this to continue. */
+  nextChunk: number | null;
 }
 
 /** Names of the settings that are missing or empty (the server only sees them after a redeploy / restart). */
@@ -80,15 +82,17 @@ export async function runSheetAction(action: SheetAction, extra: Record<string, 
  * Hands the export rows to the sheet's Apps Script web app, which adds them to Call Logs under the sheet's lock
  * with the same rules as the Import Staging menu. Safe to repeat: rows already in the sheet are skipped.
  */
-export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch, options: { clock?: 'local' | 'ultatel' } = {}): Promise<SheetImportResult> {
+export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch, options: { clock?: 'local' | 'ultatel'; startChunk?: number; budgetMs?: number } = {}): Promise<SheetImportResult> {
   const url = (process.env.IMPORT_WEBHOOK_URL ?? '').trim();
   const secret = (process.env.IMPORT_WEBHOOK_SECRET ?? '').trim();
   if (!url || !secret) throw new Error('Uploading call exports is not set up yet (IMPORT_WEBHOOK_URL / IMPORT_WEBHOOK_SECRET).');
 
   const chunks = chunkRowsByCall(rows);
-  const total: SheetImportResult = { parsedRows: rows.length, imported: 0, duplicates: 0, newAgents: [], checkOk: true, checkProblems: [], chunks: chunks.length };
+  const total: SheetImportResult = { parsedRows: rows.length, imported: 0, duplicates: 0, newAgents: [], checkOk: true, checkProblems: [], chunks: chunks.length, nextChunk: null };
 
-  for (let i = 0; i < chunks.length; i++) {
+  const startedAt = Date.now();
+  for (let i = Math.max(0, options.startChunk ?? 0); i < chunks.length; i++) {
+    if (options.budgetMs && i > (options.startChunk ?? 0) && Date.now() - startedAt > options.budgetMs) { total.nextChunk = i; break; }
     let body: { ok?: boolean; error?: string; imported?: number; duplicates?: number; newAgents?: string[]; check?: { ok: boolean; problems: string[] } };
     try {
       const res = await fetchFn(url, {

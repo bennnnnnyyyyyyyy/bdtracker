@@ -124,3 +124,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Call exports have a "Times in the file are in" choice (local time / old UTC-6 clock) that the web app sends to the Apps Script (`clock`). Rows whose Call ID holds a real timestamp are recognised on either clock automatically; the choice only decides rows without one.
 - Pre-July history cannot be re-exported. It is already stored in Cairo time; **Call log maintenance > Repair duplicates / fix times** corrects any straggler still on the old clock.
 - Re-uploading July to today is safe: rows already in the sheet are skipped (identity ignores the clock), missing ones are added with their local time.
+
+## 22. Big call exports upload in parts
+- A large export hit Vercel's 60 s limit and the browser showed "Unexpected token 'A'… is not valid JSON" (Vercel's plain-text timeout page). `/api/upload` now stops after about 35 s and returns `nextChunk`; the dashboard sends the file again from that part and adds the totals up. Safe to repeat: rows already in the sheet are skipped. Non-JSON replies now show a readable message.

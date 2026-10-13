@@ -75,23 +75,43 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
     setLastFile(target);
 
     try {
-      const formData = new FormData();
-      formData.append('file', target);
-      formData.append('clock', clock);
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error || 'Upload failed');
+      // A big call export is imported in several requests (each stays under the server's time limit); the
+      // server says where to continue, and the totals are added up here.
+      let startChunk = 0;
+      let json: Record<string, unknown> = {};
+      const sum = { imported: 0, duplicates: 0, newAgents: [] as string[], checkOk: true, checkProblems: [] as string[] };
+      for (let guard = 0; guard < 100; guard++) {
+        const formData = new FormData();
+        formData.append('file', target);
+        formData.append('clock', clock);
+        formData.append('startChunk', String(startChunk));
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const text = await res.text();
+        try {
+          json = JSON.parse(text);
+        } catch {
+          throw new Error(`The server stopped answering (${res.status}${text ? `: ${text.slice(0, 80)}` : ''}). Uploading the file again only adds what is missing.`);
+        }
+        if (!res.ok) throw new Error((json.error as string) || 'Upload failed');
+        if (json.fileType !== 'ultatel_calls') break;
+        sum.imported += (json.imported as number) ?? 0;
+        sum.duplicates += (json.duplicates as number) ?? 0;
+        ((json.newAgents as string[]) ?? []).forEach((a) => { if (!sum.newAgents.includes(a)) sum.newAgents.push(a); });
+        if (json.checkOk === false) sum.checkOk = false;
+        sum.checkProblems.push(...((json.checkProblems as string[]) ?? []));
+        if (json.nextChunk === null || json.nextChunk === undefined) break;
+        startChunk = json.nextChunk as number;
+        setStatusMessage({ type: 'success', text: `Importing… ${startChunk} of ${json.chunks} parts done (${sum.imported} added so far).` });
+      }
+      if (json.fileType === 'ultatel_calls') {
+        const parts = [`${sum.imported} new call(s) added`];
+        if (sum.duplicates > 0) parts.push(`${sum.duplicates} already in the sheet`);
+        json = { ...json, ...sum, message: `Call export imported: ${parts.join(', ')}.` };
       }
 
       setStatusMessage({
         type: json.checkOk === false ? 'error' : 'success',
-        text: json.message || 'File uploaded successfully! Refreshing dashboard metrics...',
+        text: (json.message as string | undefined) || 'File uploaded successfully! Refreshing dashboard metrics...',
       });
       // Extra lines for a call export: the sheet's per-agent check and agents that still need an Opener name.
       const lines: string[] = [];
