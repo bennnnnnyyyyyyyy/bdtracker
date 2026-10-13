@@ -317,6 +317,26 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {data?.missingUploadDay && (data.viewer?.role === 'admin' || data.viewer?.role === 'manager') && (
+          <div
+            role="status"
+            className="rounded-xl p-3 flex flex-wrap items-center gap-2 text-xs"
+            style={{ background: 'rgba(232,197,106,0.08)', border: '1px solid rgba(232,197,106,0.25)', color: '#e8c56a' }}
+          >
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>
+              Calls are loaded up to {data.latestCallDate}. Upload the Ultatel export for {data.missingUploadDay} so today&apos;s numbers include it.
+            </span>
+            <button
+              onClick={() => setImportModalOpen(true)}
+              className="font-num px-3 py-1 rounded-lg cursor-pointer"
+              style={{ background: 'rgba(232,197,106,0.15)', color: '#e8c56a' }}
+            >
+              Upload now
+            </button>
+          </div>
+        )}
+
         {data?.dataSourceInfo?.notes && (
           <div
             role="status"

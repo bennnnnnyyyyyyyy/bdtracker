@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { computeDashboardMetrics } from '@/lib/analytics';
+import { computeDashboardMetrics, parseDateToISO } from '@/lib/analytics';
+import { callDayZone } from '@/lib/callKeys';
+import { missingUploadDay } from '@/lib/uploadReminder';
 import { CONFIG } from '@/lib/config';
 import { DashboardResponse } from '@/types/dashboard';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
 import { loadDashboardInputs } from '@/lib/dashboard-data';
 import { getRequestUser } from '@/lib/api-auth';
+
+function latestCallDate(calls: { callDate?: unknown }[]): string | undefined {
+  let latest = '';
+  for (const c of calls) {
+    const iso = parseDateToISO(c.callDate);
+    if (iso && iso > latest) latest = iso;
+  }
+  return latest || undefined;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,6 +38,7 @@ export async function GET(request: NextRequest) {
         inputs.attendance
       );
 
+    const latest = latestCallDate(rawData.calls);
     const responseOpeners = selectedOpener && selectedOpener !== 'ALL'
       ? openers.filter((o) => o.opener.toLowerCase() === selectedOpener.toLowerCase())
       : openers;
@@ -42,6 +54,8 @@ export async function GET(request: NextRequest) {
       stages: CONFIG.BD_TABS,
       lastUpdated: new Date().toISOString(),
       dataAsOf: inputs.dataAsOf,
+      latestCallDate: latest,
+      missingUploadDay: rawData.isMockData ? undefined : missingUploadDay(latest, new Date(), callDayZone()) ?? undefined,
       confirmationsAvailable: inputs.confirmationsAvailable,
       viewer: (await getRequestUser(request)) ?? undefined,
       dailyBreakdown,

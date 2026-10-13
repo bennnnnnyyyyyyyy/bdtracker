@@ -189,6 +189,10 @@ export interface DashboardResponse {
   dataSourceInfo?: DataSourceInfo;
   /** When the underlying sheets were actually read (not when this response was built). */
   dataAsOf?: string;
+  /** Newest call day (YYYY-MM-DD) in the loaded call logs; drives the upload reminder. */
+  latestCallDate?: string;
+  /** Set when the export of this working day has not been uploaded yet (managers see a reminder). */
+  missingUploadDay?: string;
   /** False when the confirmation store could not be read; no meeting is counted as a show then. */
   confirmationsAvailable?: boolean;
   viewer?: ViewerInfo;
