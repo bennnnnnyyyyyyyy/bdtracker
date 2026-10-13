@@ -68,6 +68,30 @@ describe('duplicates versus legitimate repeated Call IDs', () => {
   });
 });
 
+describe('copies that differ by a "+" in the phone number', () => {
+  beforeEach(() => { process.env.CALL_DAY_TIMEZONE = 'Africa/Cairo'; });
+  afterEach(() => { delete process.env.CALL_DAY_TIMEZONE; });
+
+  it('treats +16156173189 and 16156173189 as the same number', () => {
+    const rows = [
+      call('10-12-2026 16:02:17', '1791810137', '16156173189', '1:22'),
+      call('10-12-2026 16:02:17', '1791810137', '+16156173189', '1:22'),
+      call('10-12-2026 16:03:49', '1791810229', '13997265119', '0:00', 'NO ANSWER'),
+    ];
+    expect(dedupeAndRedateCalls(rows).calls).toHaveLength(2);
+  });
+
+  it('still keeps genuinely repeated, identically written rows', () => {
+    const same = () => call('10-12-2026 10:34:25', '1791822865.22502', '+15109644107', '0:30', 'NO ANSWER');
+    expect(dedupeAndRedateCalls([same(), same(), same(), same()]).calls).toHaveLength(4);
+  });
+
+  it('does not merge different numbers', () => {
+    const rows = [call('10-12-2026 16:02:17', '1791810137', '16156173189', '1:22'), call('10-12-2026 16:02:17', '1791810137', '16156173180', '1:22')];
+    expect(dedupeAndRedateCalls(rows).calls).toHaveLength(2);
+  });
+});
+
 describe('which day a call belongs to', () => {
   afterEach(() => { delete process.env.CALL_DAY_TIMEZONE; });
   // 1791840000 = 2026-10-12 21:20:00 UTC: Cairo 2026-10-13 00:20, Ultatel clock (UTC-6) 2026-10-12 15:20

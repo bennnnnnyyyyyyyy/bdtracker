@@ -95,9 +95,12 @@ export async function fetchCallDashboardData(): Promise<{
     .map(r => {
       const ext = String(r[4] || '');
       const parsedAgent = r[13] ? String(r[13]).trim() : parseAgentName(ext);
-      const parsedDurationSec = r[14] !== undefined && r[14] !== '' 
-        ? Number(r[14]) 
-        : durationToSeconds(r[10]);
+      // The Duration text (e.g. "0:37" = 37 s) is the reliable source. The "Duration (sec)" column can be wrong
+      // when Sheets read "0:37" as 37 minutes, so it is only a fallback.
+      const durationText = r[10] !== undefined && String(r[10]).trim() !== '' ? String(r[10]).trim() : '';
+      const parsedDurationSec = durationText
+        ? durationToSeconds(durationText)
+        : (r[14] !== undefined && r[14] !== '' ? Number(r[14]) : 0);
 
       return {
         callDate: String(r[0] || ''),
@@ -115,7 +118,8 @@ export async function fetchCallDashboardData(): Promise<{
         notes: String(r[11] || ''),
         callPath: String(r[12] || ''),
         agent: parsedAgent,
-        opener: ''
+        opener: '',
+        rowSignature: JSON.stringify([0, 1, 2, 3, 4, 8, 9, 10, 11, 12, 14].map((i) => String(r[i] ?? '').trim()))
       };
     })
     .filter(c => !isExcludedAgent(c.agent));

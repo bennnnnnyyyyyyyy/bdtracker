@@ -15,6 +15,8 @@ export interface CallRecord {
   callPath: string;
   agent: string;
   opener: string;
+  /** Text of the sheet row as read (internal, used to tell copies of a row from repeated rows). */
+  rowSignature?: string;
 }
 
 export interface MeetingRecord {

@@ -123,6 +123,15 @@ function norm(v: unknown): string {
 }
 
 /**
+ * Phone numbers are compared by their last 10 digits, so "+16156173189", "16156173189" and "6156173189"
+ * (and lists such as "6155227411, 6155227411") are the same number whichever way the sheet shows them.
+ */
+function normPhone(v: unknown): string {
+  const digits = String(v ?? '').replace(/\D/g, '');
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+/**
  * ID part of the row identity. For Ultatel IDs this is the timestamp only: the sequence after the dot is
  * sometimes lost or reformatted when the sheet stores it as a number ("…14500" becomes "…145"), and two
  * different calls from the same extension to the same number in the same second do not occur.
@@ -135,15 +144,22 @@ function normId(callId: unknown): string {
 /** Everything except the clock: two copies of the same export row share this. */
 export function callRowKey(c: Pick<CallRecord, 'callId' | 'from' | 'to' | 'extension' | 'type' | 'outcome' | 'duration' | 'callDate'>): string {
   const id = normId(c.callId);
-  const base = [norm(c.from), norm(c.to), norm(c.extension), norm(c.type), norm(c.outcome), durationToSeconds(c.duration)].join('|');
+  const base = [normPhone(c.from), normPhone(c.to), norm(c.extension), norm(c.type), norm(c.outcome), durationToSeconds(c.duration)].join('|');
   // Without an ID there is nothing to match copies on, so the written time is part of the identity.
   return id ? `${id}|${base}` : `nid|${norm(c.callDate)}|${base}`;
 }
 
+/** Everything written in the sheet row. Copies of a row differ somewhere in it (a "+", a clock, a seconds column). */
+function signature(c: CallRecord): string {
+  if (c.rowSignature) return c.rowSignature;
+  return JSON.stringify([c.callDate, c.callId, c.from, c.to, c.extension, c.type, c.outcome, c.duration, c.notes, c.callPath].map((v) => String(v ?? '').trim()));
+}
+
 /**
  * Counts each call row once and puts every call on exact Cairo time.
- * Rows sharing everything but the clock are copies of the same row only when their clock text differs
- * (a raw copy and a converted copy); identical-looking rows with the SAME text are separate legs and all stay.
+ * Rows describing the same call are copies of each other only when what is written in the sheet differs
+ * (a raw clock vs a Cairo clock, "+1555..." vs "1555...", a different seconds column). Rows that are written
+ * identically are separate legs of the call and all stay.
  */
 export function dedupeAndRedateCalls(calls: CallRecord[]): { calls: CallRecord[]; duplicatesRemoved: number; redated: number } {
   const groups = new Map<string, Map<string, number[]>>();
@@ -151,7 +167,7 @@ export function dedupeAndRedateCalls(calls: CallRecord[]): { calls: CallRecord[]
     const key = callRowKey(c);
     let byText = groups.get(key);
     if (!byText) groups.set(key, (byText = new Map()));
-    const text = String(c.callDate ?? '').trim();
+    const text = signature(c);
     const list = byText.get(text);
     if (list) list.push(i); else byText.set(text, [i]);
   });
@@ -160,13 +176,13 @@ export function dedupeAndRedateCalls(calls: CallRecord[]): { calls: CallRecord[]
   groups.forEach((byText, key) => {
     let best: number[] | null = null;
     let bestText = '';
+    const isCairoRow = (i: number) => {
+      const e = callEpoch(calls[i].callId);
+      return e !== null && classifyClock(String(calls[i].callDate ?? ''), e) === 'cairo';
+    };
     byText.forEach((idxs, text) => {
-      const epoch = callEpoch(calls[idxs[0]].callId);
-      const isCairo = epoch !== null && classifyClock(text, epoch) === 'cairo';
-      const bestIsCairo = best !== null && (() => {
-        const e = callEpoch(calls[best![0]].callId);
-        return e !== null && classifyClock(bestText, e) === 'cairo';
-      })();
+      const isCairo = isCairoRow(idxs[0]);
+      const bestIsCairo = best !== null && isCairoRow(best[0]);
       if (!best || idxs.length > best.length || (idxs.length === best.length && isCairo && !bestIsCairo)) {
         best = idxs;
         bestText = text;

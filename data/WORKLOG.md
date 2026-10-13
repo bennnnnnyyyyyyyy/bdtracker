@@ -85,6 +85,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 ### 13. Day boundary
 - Five agents matched the export exactly while two (Norman, Rick) were higher. Likely cause: the sheet stores Cairo time, so evening-before calls after 3:00 pm Ultatel time count as the next Cairo day. The web app now assigns days on Ultatel's clock by default (`CALL_DAY_TIMEZONE`, default `Etc/GMT+6`; set `Africa/Cairo` to restore the previous behaviour).
 
+### 14. "+" copies and Duration (sec)
+- A Call Logs dump showed copies of the same calls with To written `+16156173189` vs `16156173189` (and a Duration (sec) column that read `0:37` as 37 minutes). That inflated Norman (130 vs 78) and Rick (128 vs 125). Phone numbers are now compared by last 10 digits, copies are recognised by any difference in how the row is written, durations come from the Duration text, and the repair recomputes Duration (sec).
+
 ---
 
 ## Documentation Manifest in `data/`
