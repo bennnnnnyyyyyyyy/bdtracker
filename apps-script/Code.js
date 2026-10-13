@@ -587,6 +587,12 @@ function classifyClock_(text, epoch) {
   return 'unknown';
 }
 
+/** True when a written time already says exactly what exactCairoTime_ would write (only the format may differ). */
+function sameCairoTime_(text, exact) {
+  const naive = naiveMs_(text);
+  return naive !== null ? formatNaive_(naive) === exact : text === exact;
+}
+
 /** Cairo time of a call: kept if already Cairo, converted if on the export clock, otherwise taken from the Call ID. */
 function exactCairoTime_(text, callId) {
   const epoch = callEpoch_(callId);
@@ -733,7 +739,8 @@ function convertAllCallLogDatesToCairo() {
     if (callEpoch_(shown[i][1]) === null) return [row[0]];
     const text = shown[i][0];
     const exact = exactCairoTime_(text, shown[i][1]);
-    if (exact !== text) changed++;
+    if (sameCairoTime_(text, exact)) return [row[0]];
+    changed++;
     return [exact];
   });
   callLog.getRange(2, 1, out.length, 1).setValues(out);
@@ -814,8 +821,11 @@ function buildRepairedCallLog_() {
     if (callEpoch_(disp[i][1]) !== null) {
       const text = disp[i][0];
       const exact = exactCairoTime_(text, disp[i][1]);
-      if (exact !== text) redated++;
-      out[0] = exact;
+      // Rewrite only times that are really wrong; a time that is already right keeps its cell as it is.
+      if (!sameCairoTime_(text, exact)) {
+        redated++;
+        out[0] = exact;
+      }
     }
     if (out[13] === '' || out[13] === null) out[13] = parseAgentName_(String(disp[i][4] ?? ''));
     out[14] = durationToSeconds_(disp[i][10]); // always recomputed from the shown "0:37" text
