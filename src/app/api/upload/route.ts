@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: `Uploading call exports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}. Settings only take effect after a redeploy (Vercel) or a restart (local), and must be added to the Production environment.` }, { status: 501 });
         }
         const parsed = parseCallExportFile(buf, upload.name);
-        const result = await sendRowsToSheet(parsed.rows);
+        const result = await sendRowsToSheet(parsed.rows, fetch, { clock: peek.get('clock') === 'ultatel' ? 'ultatel' : 'local' });
         invalidateDashboardCache();
         const parts = [`${result.imported} new call(s) added`];
         if (result.duplicates > 0) parts.push(`${result.duplicates} already in the sheet`);

@@ -87,11 +87,11 @@ export function exactCairoTime(callDate: string, callId: unknown): string {
 
 /**
  * Time zone that decides which DAY a call belongs to (and the time shown for it in the app).
- * Default "Etc/GMT+6" is Ultatel's own clock (UTC-6), so daily, weekly and monthly numbers equal Ultatel's
- * reports. Set CALL_DAY_TIMEZONE=Africa/Cairo to count days from Cairo midnight instead.
+ * Default "Africa/Cairo" is the clock the sheet stores (our local time, which Ultatel exports now use too),
+ * so the written time is used as is. Set CALL_DAY_TIMEZONE=Etc/GMT+6 to count days on Ultatel's old UTC-6 clock.
  */
 export function callDayZone(): string {
-  return process.env.CALL_DAY_TIMEZONE || 'Etc/GMT+6';
+  return process.env.CALL_DAY_TIMEZONE || 'Africa/Cairo';
 }
 
 const zoneFormats = new Map<string, Intl.DateTimeFormat>();

@@ -97,16 +97,17 @@ describe('which day a call belongs to', () => {
   // 1791840000 = 2026-10-12 21:20:00 UTC: Cairo 2026-10-13 00:20, Ultatel clock (UTC-6) 2026-10-12 15:20
   const late = () => call('10-13-2026 00:20:00', '1791840000.1', '555', '0:10');
 
-  it('defaults to Ultatel\'s own clock so days match Ultatel reports', () => {
-    expect(dedupeAndRedateCalls([late()]).calls[0].callDate).toBe('2026-10-12 15:20:00');
-  });
-
-  it('can count days on Cairo midnight instead', () => {
-    process.env.CALL_DAY_TIMEZONE = 'Africa/Cairo';
+  it('defaults to local (Cairo) time, as written in the sheet', () => {
     expect(dedupeAndRedateCalls([late()]).calls[0].callDate).toBe('2026-10-13 00:20:00');
   });
 
-  it('puts a row from the 10-12 export on its own export day', () => {
+  it('can count days on Ultatel\'s old UTC-6 clock instead', () => {
+    process.env.CALL_DAY_TIMEZONE = 'Etc/GMT+6';
+    expect(dedupeAndRedateCalls([late()]).calls[0].callDate).toBe('2026-10-12 15:20:00');
+  });
+
+  it('puts a row from the 10-12 export on its own export day (old UTC-6 clock)', () => {
+    process.env.CALL_DAY_TIMEZONE = 'Etc/GMT+6';
     const row = call('10-12-2026 06:33:12', '1791808392.14495', '4154400444');
     expect(dedupeAndRedateCalls([row]).calls[0].callDate).toBe('2026-10-12 06:33:12');
   });

@@ -118,3 +118,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - [`data/HOW_NUMBERS_WORK.md`](HOW_NUMBERS_WORK.md) — How every number is recorded, read and calculated.
 - [`data/AUDIT_FINDINGS.md`](AUDIT_FINDINGS.md) — Audit results and resolution status.
 - [`data/WORKLOG.md`](WORKLOG.md) — Full engineering changelog and decision log.
+
+## 21. Local-time exports
+- Ultatel exports now come in local time. `CALL_DAY_TIMEZONE` defaults to `Africa/Cairo` (the sheet's own clock), so the app reads written call times as they are.
+- Call exports have a "Times in the file are in" choice (local time / old UTC-6 clock) that the web app sends to the Apps Script (`clock`). Rows whose Call ID holds a real timestamp are recognised on either clock automatically; the choice only decides rows without one.
+- Pre-July history cannot be re-exported. It is already stored in Cairo time; **Call log maintenance > Repair duplicates / fix times** corrects any straggler still on the old clock.
+- Re-uploading July to today is safe: rows already in the sheet are skipped (identity ignores the clock), missing ones are added with their local time.

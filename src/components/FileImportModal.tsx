@@ -29,6 +29,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   const [newAgents, setNewAgents] = useState<string[]>([]);
   const [openers, setOpeners] = useState<Record<string, string>>({});
   const [fixing, setFixing] = useState(false);
+  const [clock, setClock] = useState<'local' | 'ultatel'>('local');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -76,6 +77,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
     try {
       const formData = new FormData();
       formData.append('file', target);
+      formData.append('clock', clock);
 
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -213,6 +215,17 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
           </div>
 
           {/* Drag & Drop Box */}
+          <label className="flex items-center gap-2 text-xs text-slate-300 mb-2">
+            Times in a call export are in
+            <select
+              value={clock}
+              onChange={(e) => setClock(e.target.value === 'ultatel' ? 'ultatel' : 'local')}
+              className="bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white"
+            >
+              <option value="local" className="text-black">our local time (new Ultatel setting)</option>
+              <option value="ultatel" className="text-black">Ultatel&apos;s old UTC-6 clock</option>
+            </select>
+          </label>
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}

@@ -80,7 +80,7 @@ export async function runSheetAction(action: SheetAction, extra: Record<string, 
  * Hands the export rows to the sheet's Apps Script web app, which adds them to Call Logs under the sheet's lock
  * with the same rules as the Import Staging menu. Safe to repeat: rows already in the sheet are skipped.
  */
-export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch): Promise<SheetImportResult> {
+export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch, options: { clock?: 'local' | 'ultatel' } = {}): Promise<SheetImportResult> {
   const url = (process.env.IMPORT_WEBHOOK_URL ?? '').trim();
   const secret = (process.env.IMPORT_WEBHOOK_SECRET ?? '').trim();
   if (!url || !secret) throw new Error('Uploading call exports is not set up yet (IMPORT_WEBHOOK_URL / IMPORT_WEBHOOK_SECRET).');
@@ -94,7 +94,7 @@ export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch):
       const res = await fetchFn(url, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Apps Script web apps accept a JSON body sent as text
-        body: JSON.stringify({ secret, action: 'import', rows: chunks[i] }),
+        body: JSON.stringify({ secret, action: 'import', clock: options.clock === 'ultatel' ? 'ultatel' : 'local', rows: chunks[i] }),
         redirect: 'follow',
         signal: AbortSignal.timeout(55_000),
       });

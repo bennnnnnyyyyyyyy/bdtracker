@@ -666,7 +666,8 @@ function doPost(e) {
       return row;
     });
     const display = rows.map(r => r.slice());
-    const result = withLock_(() => importCallRows_(rows, display), 50000);
+    const clock = body.clock === 'ultatel' ? 'ultatel' : 'local';
+    const result = withLock_(() => importCallRows_(rows, display, { clock }), 50000);
     return jsonOut_({ ok: true, ...result });
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err && err.message ? err.message : err) });
@@ -696,9 +697,13 @@ function withLock_(fn, waitMs) {
  * Import Staging menu and the web dashboard upload (doPost). Does no UI work.
  * @param {unknown[][]} rawRows rows as values (mutated: the Call Date becomes Cairo time)
  * @param {string[][]} dispRows the same rows as text, used for comparing (e.g. "0:37")
+ * @param {{clock?: 'local'|'ultatel'}} [opts] clock the export's Call Date is written on. 'local' (default, the
+ *   export is already in our local/Cairo time) keeps the time as written; 'ultatel' is the old fixed UTC-6 clock
+ *   and is converted. Rows whose Call ID holds a real timestamp are recognised on either clock automatically.
  * @returns {{imported: number, duplicates: number, newAgents: string[], check: {ok: boolean, problems: string[]}}}
  */
-function importCallRows_(rawRows, dispRows) {
+function importCallRows_(rawRows, dispRows, opts) {
+  const exportClock = opts && opts.clock === 'ultatel' ? 'ultatel' : 'local';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
   const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
@@ -742,9 +747,12 @@ function importCallRows_(rawRows, dispRows) {
     // Skip empty rows
     if (!rawText && !callId && !fromNum && !toNum) return;
 
-    // Cairo time: the Call ID's timestamp is exact; otherwise convert the export's UTC-6 clock.
+    // Local (Cairo) time: the Call ID's timestamp is exact; without one, keep the written time (local export)
+    // or convert the old UTC-6 export clock.
     const epoch = callEpoch_(callId);
-    r[0] = epoch !== null ? exactCairoTime_(rawText, callId) : toCairoDate_(r[0]);
+    if (epoch !== null) r[0] = exactCairoTime_(rawText, callId);
+    else if (exportClock === 'ultatel') r[0] = toCairoDate_(r[0]);
+    else { const nv = naiveMs_(rawText); r[0] = nv !== null ? formatNaive_(nv) : rawText; }
 
     // A call may legitimately have several rows. Add rows only beyond the number already stored,
     // so re-importing an overlapping export adds nothing, while repeated legs in one export all stay.
