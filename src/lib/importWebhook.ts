@@ -10,8 +10,13 @@ export interface SheetImportResult {
   chunks: number;
 }
 
+/** Names of the settings that are missing or empty (the server only sees them after a redeploy / restart). */
+export function missingImportSettings(): string[] {
+  return ['IMPORT_WEBHOOK_URL', 'IMPORT_WEBHOOK_SECRET'].filter((name) => !(process.env[name] ?? '').trim());
+}
+
 export function isImportConfigured(): boolean {
-  return Boolean(process.env.IMPORT_WEBHOOK_URL && process.env.IMPORT_WEBHOOK_SECRET);
+  return missingImportSettings().length === 0;
 }
 
 /**
@@ -46,8 +51,8 @@ type Fetch = typeof fetch;
  * with the same rules as the Import Staging menu. Safe to repeat: rows already in the sheet are skipped.
  */
 export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch): Promise<SheetImportResult> {
-  const url = process.env.IMPORT_WEBHOOK_URL;
-  const secret = process.env.IMPORT_WEBHOOK_SECRET;
+  const url = (process.env.IMPORT_WEBHOOK_URL ?? '').trim();
+  const secret = (process.env.IMPORT_WEBHOOK_SECRET ?? '').trim();
   if (!url || !secret) throw new Error('Uploading call exports is not set up yet (IMPORT_WEBHOOK_URL / IMPORT_WEBHOOK_SECRET).');
 
   const chunks = chunkRowsByCall(rows);

@@ -6,7 +6,7 @@ import { CONFIG } from '@/lib/config';
 import { invalidateDashboardCache } from '@/lib/sheets';
 import { requireUser } from '@/lib/api-auth';
 import { looksLikeCallExport, parseCallExportFile, parseCsv } from '@/lib/ultatelFile';
-import { isImportConfigured, sendRowsToSheet } from '@/lib/importWebhook';
+import { isImportConfigured, missingImportSettings, sendRowsToSheet } from '@/lib/importWebhook';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       const buf = Buffer.from(await upload.arrayBuffer());
       if (looksLikeCallExport(buf, upload.name)) {
         if (!isImportConfigured()) {
-          return NextResponse.json({ error: 'Uploading call exports is not set up yet. Add IMPORT_WEBHOOK_URL and IMPORT_WEBHOOK_SECRET (see data/SETUP_USERS_AND_CONFIRMATIONS.md).' }, { status: 501 });
+          return NextResponse.json({ error: `Uploading call exports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}. Settings only take effect after a redeploy (Vercel) or a restart (local), and must be added to the Production environment.` }, { status: 501 });
         }
         const parsed = parseCallExportFile(buf, upload.name);
         const result = await sendRowsToSheet(parsed.rows);
