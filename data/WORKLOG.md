@@ -88,6 +88,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 ### 14. "+" copies and Duration (sec)
 - A Call Logs dump showed copies of the same calls with To written `+16156173189` vs `16156173189` (and a Duration (sec) column that read `0:37` as 37 minutes). That inflated Norman (130 vs 78) and Rick (128 vs 125). Phone numbers are now compared by last 10 digits, copies are recognised by any difference in how the row is written, durations come from the Duration text, and the repair recomputes Duration (sec).
 
+### 15. Apps Script speed
+- `Preview duplicate-call repair` timed out on the full Call Logs: the code asked Apps Script for a time-zone conversion several times per row (tens of thousands of slow service calls). Time zone and Cairo offset are now looked up once per run / once per hour of data, and rows are compared using the text shown in the cells (two bulk reads). A 50,000-row simulation makes about 210 conversion calls and computes in about 2 s locally.
+
 ---
 
 ## Documentation Manifest in `data/`

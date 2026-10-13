@@ -243,14 +243,17 @@ function processStagingImport() {
     return;
   }
 
-  const rawRows = staging.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length).getValues();
+  const stagingRange = staging.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length);
+  const rawRows = stagingRange.getValues();
+  const stagingDisp = stagingRange.getDisplayValues(); // text as shown (e.g. "0:37"), used for comparing
 
   // How many rows of each call (see callRowKey_) are already in Call Logs.
   const existingLastRow = callLog.getLastRow();
   const existingCount = new Map();
   if (existingLastRow > 1) {
-    const existingItems = callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length).getValues()
-      .map(r => ({ key: callRowKey_(r, dateText_(r[0])), text: rowSignature_(r) }));
+    const existingRange = callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length);
+    const existingItems = existingRange.getDisplayValues()
+      .map(d => ({ key: callRowKey_(d, d[0]), text: rowSignature_(d) }));
     effectiveCounts_(existingItems).forEach((n, key) => existingCount.set(key, n));
   }
   const seenInBatch = new Map();
@@ -269,8 +272,9 @@ function processStagingImport() {
   const newAgents = new Set();
   let duplicateCount = 0;
 
-  rawRows.forEach(r => {
-    const rawText = dateText_(r[0]);
+  rawRows.forEach((r, rowIdx) => {
+    const disp = stagingDisp[rowIdx];
+    const rawText = disp[0] || dateText_(r[0]);
     const callId = String(r[1] ?? '').trim();
     const fromNum = String(r[2] ?? '').trim();
     const toNum = String(r[3] ?? '').trim();
@@ -285,7 +289,7 @@ function processStagingImport() {
 
     // A call may legitimately have several rows. Add rows only beyond the number already stored,
     // so re-importing an overlapping export adds nothing, while repeated legs in one export all stay.
-    const key = callRowKey_(r, String(r[0]));
+    const key = callRowKey_(disp, String(r[0]));
     const seen = (seenInBatch.get(key) ?? 0) + 1;
     seenInBatch.set(key, seen);
     if (seen <= (existingCount.get(key) ?? 0)) {
@@ -294,7 +298,7 @@ function processStagingImport() {
     }
 
     const agent = parseAgentName_(extension);
-    const durationSec = durationToSeconds_(r[10]);
+    const durationSec = durationToSeconds_(disp[10]);
 
     if (agent && !isExcludedAgent_(agent) && !knownAgents.has(agent)) {
       newAgents.add(agent);
@@ -357,15 +361,40 @@ function callEpoch_(callId) {
   return epoch >= 1400000000 && epoch <= 4100000000 ? epoch : null;
 }
 
+let SS_TZ_ = null;
+/** Spreadsheet time zone, fetched once (asking the spreadsheet for it on every row is very slow). */
+function ssTz_() {
+  if (SS_TZ_ === null) SS_TZ_ = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  return SS_TZ_;
+}
+
+const CAIRO_OFFSET_CACHE_ = new Map();
+/**
+ * Cairo's offset from UTC in ms at a Unix time. Asked from Apps Script once per hour of data (it only changes
+ * at DST switches, which fall on hour boundaries) instead of once per row.
+ */
+function cairoOffsetMs_(epochSeconds) {
+  const bucket = Math.floor(epochSeconds / 3600);
+  let off = CAIRO_OFFSET_CACHE_.get(bucket);
+  if (off === undefined) {
+    const ms = bucket * 3600 * 1000;
+    const text = Utilities.formatDate(new Date(ms), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+    const m = text.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+    off = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) - ms;
+    CAIRO_OFFSET_CACHE_.set(bucket, off);
+  }
+  return off;
+}
+
 /** Exact Cairo time (DST aware) of a Unix timestamp, in the same text format the Call Logs use. */
 function cairoFromEpoch_(epochSeconds) {
-  return Utilities.formatDate(new Date(epochSeconds * 1000), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
+  return formatNaive_(epochSeconds * 1000 + cairoOffsetMs_(epochSeconds));
 }
 
 /** Text of a Call Date cell, whether it holds a Date or text. */
 function dateText_(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
-    return Utilities.formatDate(value, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    return Utilities.formatDate(value, ssTz_(), 'yyyy-MM-dd HH:mm:ss');
   }
   return String(value ?? '').trim();
 }
@@ -401,7 +430,7 @@ function classifyClock_(text, epoch) {
   const AFTER = 6 * 3600 * 1000;
   const naive = naiveMs_(text);
   if (naive === null) return 'unknown';
-  const cairoOffset = naiveMs_(cairoFromEpoch_(epoch)) - epoch * 1000;
+  const cairoOffset = cairoOffsetMs_(epoch);
   const asCairo = naive - cairoOffset - epoch * 1000;
   if (asCairo >= -BEFORE && asCairo <= AFTER) return 'cairo';
   const asSource = naive + 6 * 3600 * 1000 - epoch * 1000; // export clock is fixed UTC-6
@@ -502,7 +531,7 @@ function durationToSeconds_(val) {
   if (val instanceof Date) {
     // Sheets reads a typed "0:37" (37 seconds) as the time 0:37:00. A time with 0 seconds is therefore
     // minutes:seconds; only a time with non-zero seconds is a genuine hh:mm:ss.
-    const text = Utilities.formatDate(val, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'HH:mm:ss');
+    const text = Utilities.formatDate(val, ssTz_(), 'HH:mm:ss');
     const [h, m, sec] = text.split(':').map(Number);
     return sec === 0 ? h * 60 + m : h * 3600 + m * 60 + sec;
   }
@@ -547,12 +576,14 @@ function convertAllCallLogDatesToCairo() {
   const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
   if (!callLog || callLog.getLastRow() < 2) return;
 
-  const values = callLog.getRange(2, 1, callLog.getLastRow() - 1, 2).getValues();
+  const range = callLog.getRange(2, 1, callLog.getLastRow() - 1, 2);
+  const values = range.getValues();
+  const shown = range.getDisplayValues();
   let changed = 0;
-  const out = values.map(row => {
-    if (callEpoch_(row[1]) === null) return [row[0]];
-    const text = dateText_(row[0]);
-    const exact = exactCairoTime_(text, row[1]);
+  const out = values.map((row, i) => {
+    if (callEpoch_(shown[i][1]) === null) return [row[0]];
+    const text = shown[i][0];
+    const exact = exactCairoTime_(text, shown[i][1]);
     if (exact !== text) changed++;
     return [exact];
   });
@@ -577,40 +608,48 @@ function buildRepairedCallLog_() {
   if (!callLog || callLog.getLastRow() < 2) return null;
 
   const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
-  const data = callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols).getValues()
-    .filter(row => !row.every(c => c === '' || c === null));
+  const range = callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols);
+  // Two bulk reads: the real values (written back) and the text shown in each cell (used for comparing, which
+  // avoids slow per-cell calls and sidesteps Sheets turning "0:37" into a time).
+  const allVals = range.getValues();
+  const allDisp = range.getDisplayValues();
+  const data = [];
+  const disp = [];
+  allVals.forEach((row, i) => {
+    if (row.every(c => c === '' || c === null)) return;
+    data.push(row);
+    disp.push(allDisp[i]);
+  });
 
   // Group rows by call identity, then by what is written in the row.
   const groups = new Map();
   data.forEach((row, i) => {
-    const key = callRowKey_(row, dateText_(row[0]));
+    const key = callRowKey_(disp[i], disp[i][0]);
     if (!groups.has(key)) groups.set(key, new Map());
     const byText = groups.get(key);
-    const sig = rowSignature_(row);
+    const sig = rowSignature_(disp[i]);
     if (!byText.has(sig)) byText.set(sig, []);
     byText.get(sig).push(i);
   });
 
-  // Keep the clock text with the most rows (a Cairo-clock copy wins ties) and fill gaps from the other copies.
+  // Keep the written form with the most rows (a Cairo-clock copy wins ties) and fill gaps from the other copies.
   const keep = new Set();
   groups.forEach(byText => {
     let best = null;
-    let bestText = '';
     let bestIsCairo = false;
-    byText.forEach((idxs, text) => {
-      const epoch = callEpoch_(data[idxs[0]][1]);
-      const isCairo = epoch !== null && classifyClock_(dateText_(data[idxs[0]][0]), epoch) === 'cairo';
+    byText.forEach(idxs => {
+      const epoch = callEpoch_(disp[idxs[0]][1]);
+      const isCairo = epoch !== null && classifyClock_(disp[idxs[0]][0], epoch) === 'cairo';
       if (!best || idxs.length > best.length || (idxs.length === best.length && isCairo && !bestIsCairo)) {
         best = idxs;
-        bestText = text;
         bestIsCairo = isCairo;
       }
     });
     best.forEach(i => keep.add(i));
-    byText.forEach((idxs, text) => {
-      if (text === bestText) return;
+    const target = data[best[0]];
+    byText.forEach(idxs => {
+      if (idxs === best) return;
       idxs.forEach(j => {
-        const target = data[best[0]];
         data[j].forEach((cell, c) => {
           if ((target[c] === '' || target[c] === null) && cell !== '' && cell !== null) target[c] = cell;
         });
@@ -623,14 +662,14 @@ function buildRepairedCallLog_() {
   data.forEach((row, i) => {
     if (!keep.has(i)) return;
     const out = row.slice();
-    if (callEpoch_(out[1]) !== null) {
-      const text = dateText_(out[0]);
-      const exact = exactCairoTime_(text, out[1]);
+    if (callEpoch_(disp[i][1]) !== null) {
+      const text = disp[i][0];
+      const exact = exactCairoTime_(text, disp[i][1]);
       if (exact !== text) redated++;
       out[0] = exact;
     }
-    if (out[13] === '' || out[13] === null) out[13] = parseAgentName_(String(out[4] ?? ''));
-    out[14] = durationToSeconds_(out[10]); // always recomputed: the stored value can be wrong (0:37 read as 37 minutes)
+    if (out[13] === '' || out[13] === null) out[13] = parseAgentName_(String(disp[i][4] ?? ''));
+    out[14] = durationToSeconds_(disp[i][10]); // always recomputed from the shown "0:37" text
     rows.push(out);
   });
 
