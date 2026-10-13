@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const selectedOpener = searchParams.get('opener') || undefined;
     const includeCalls = searchParams.get('includeCalls') === 'true';
 
-    const inputs = await loadDashboardInputs({ forceRefresh: searchParams.get('refresh') === 'true' });
+    const inputs = await loadDashboardInputs({ forceRefresh: searchParams.get('refresh') === 'true', startDate, endDate });
     const { rawData } = inputs;
 
     const { openers, totals, filteredCalls, filteredMeetings, dailyBreakdown, weeklyBreakdown, monthlyBreakdown } =

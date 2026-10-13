@@ -33,6 +33,11 @@ const CONFIG = {
   ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
 
   CALL_LOG_SHEET: 'Call Logs',
+
+  // Closed months move out of 'Call Logs' into tabs named 'Call Logs YYYY-MM' to keep the active log small and fast.
+  // The newest ARCHIVE_KEEP_DAYS stay in the active tab so an export that overlaps the boundary can never re-add old calls.
+  ARCHIVE_PREFIX: 'Call Logs ',
+  ARCHIVE_KEEP_DAYS: 45,
   STAGING_SHEET: 'Import Staging',
   MAPPING_SHEET: 'Agent Mapping',
   DASHBOARD_SHEET: 'BD Dashboard',
@@ -92,6 +97,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
+    .addItem('Archive closed months', 'archiveClosedMonths')
     .addItem('Preview duplicate-call repair', 'previewCallLogRepair')
     .addItem('Repair duplicate calls', 'repairCallLogs')
     .addItem('Fix call times (from Call ID)', 'convertAllCallLogDatesToCairo')
@@ -171,6 +177,147 @@ function createStagingTab() {
   );
 }
 
+// ==========================================
+// MONTHLY ARCHIVE
+// ==========================================
+
+/** Name of the archive tab for a month key like "2026-09". */
+function archiveTabName_(monthKey) {
+  return CONFIG.ARCHIVE_PREFIX + monthKey;
+}
+
+/** Month keys (YYYY-MM) touched by [minEpoch, maxEpoch] widened by 2 days, so month-edge time zones are covered. */
+function monthKeysForEpochRange_(minEpoch, maxEpoch) {
+  const keys = [];
+  const start = new Date((minEpoch - 2 * 86400) * 1000);
+  const end = new Date((maxEpoch + 2 * 86400) * 1000);
+  let y = start.getUTCFullYear();
+  let m = start.getUTCMonth();
+  while (y < end.getUTCFullYear() || (y === end.getUTCFullYear() && m <= end.getUTCMonth())) {
+    keys.push(`${y}-${String(m + 1).padStart(2, '0')}`);
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+  return keys;
+}
+
+/**
+ * Rows (as shown in the cells, 15 columns) of the active Call Logs plus the archive tabs for the months an
+ * epoch range touches. Used so imports compare against archived calls too.
+ */
+function collectLogRowsDisplay_(minEpoch, maxEpoch) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
+  const tabs = [CONFIG.CALL_LOG_SHEET];
+  if (isFinite(minEpoch) && isFinite(maxEpoch)) {
+    monthKeysForEpochRange_(minEpoch, maxEpoch).forEach(k => {
+      if (ss.getSheetByName(archiveTabName_(k))) tabs.push(archiveTabName_(k));
+    });
+  }
+  const rows = [];
+  tabs.forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getDisplayValues().forEach(r => rows.push(r));
+  });
+  return rows;
+}
+
+/**
+ * Moves calls older than ARCHIVE_KEEP_DAYS out of 'Call Logs' into one tab per month ('Call Logs 2026-09').
+ * The active tab stays small, so imports, repairs and the dashboard stay fast. A hidden backup is saved first.
+ */
+function archiveClosedMonths() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
+  if (!callLog || callLog.getLastRow() < 2) {
+    ui.alert('Call Logs is empty.');
+    return;
+  }
+
+  const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
+  const range = callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols);
+  const vals = range.getValues();
+  const disp = range.getDisplayValues();
+  const cutoff = Math.floor(Date.now() / 1000) - CONFIG.ARCHIVE_KEEP_DAYS * 86400;
+
+  const keep = [];
+  const byMonth = new Map();
+  vals.forEach((row, i) => {
+    if (row.every(c => c === '' || c === null)) return;
+    let epoch = callEpoch_(disp[i][1]);
+    let monthKey = null;
+    if (epoch !== null) {
+      monthKey = cairoFromEpoch_(epoch).slice(0, 7);
+    } else {
+      const naive = naiveMs_(disp[i][0]);
+      if (naive !== null) {
+        epoch = naive / 1000;
+        monthKey = formatNaive_(naive).slice(0, 7);
+      }
+    }
+    if (monthKey !== null && epoch < cutoff) {
+      if (!byMonth.has(monthKey)) byMonth.set(monthKey, []);
+      byMonth.get(monthKey).push(row);
+    } else {
+      keep.push(row);
+    }
+  });
+
+  let moving = 0;
+  byMonth.forEach(rows => { moving += rows.length; });
+  if (moving === 0) {
+    ui.alert(`Nothing to archive: every call is newer than ${CONFIG.ARCHIVE_KEEP_DAYS} days.`);
+    return;
+  }
+
+  const months = Array.from(byMonth.keys()).sort();
+  const summary = months.map(k => `  ${archiveTabName_(k)}: ${byMonth.get(k).length} rows`).join('\n');
+  const answer = ui.alert(
+    'Archive closed months?',
+    `${moving} call rows older than ${CONFIG.ARCHIVE_KEEP_DAYS} days will move out of "${CONFIG.CALL_LOG_SHEET}":\n${summary}\n\n${keep.length} rows stay in the active tab. A hidden backup is saved first.`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (answer !== ui.Button.OK) return;
+
+  const stamp = Utilities.formatDate(new Date(), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HHmm');
+  callLog.copyTo(ss).setName(`Call Logs backup ${stamp}`).hideSheet();
+
+  const header = callLog.getRange(1, 1, 1, numCols).getValues();
+  const written = new Map();
+  months.forEach(k => {
+    const name = archiveTabName_(k);
+    let tab = ss.getSheetByName(name);
+    if (!tab) {
+      tab = ss.insertSheet(name);
+      tab.getRange(1, 1, 1, numCols).setValues(header).setFontWeight('bold');
+      tab.setFrozenRows(1);
+    }
+    const rows = byMonth.get(k);
+    const startRow = Math.max(tab.getLastRow(), 1) + 1;
+    tab.getRange(startRow, 1, rows.length, numCols).setValues(rows);
+    written.set(k, { name, startRow, count: rows.length });
+  });
+  SpreadsheetApp.flush();
+
+  // Only clear the active tab once every archived row is confirmed to be in its archive tab.
+  const problems = [];
+  written.forEach((w, k) => {
+    const tab = ss.getSheetByName(w.name);
+    if (!tab || tab.getLastRow() < w.startRow + w.count - 1) problems.push(k);
+  });
+  if (problems.length > 0) {
+    ui.alert(`Archive stopped before changing "${CONFIG.CALL_LOG_SHEET}": could not confirm rows in ${problems.join(', ')}. Nothing was removed. Check the archive tabs and try again.`);
+    return;
+  }
+
+  callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols).clearContent();
+  if (keep.length > 0) callLog.getRange(2, 1, keep.length, numCols).setValues(keep);
+
+  ui.alert(`Archived ${moving} rows into ${months.length} monthly tab(s). "${CONFIG.CALL_LOG_SHEET}" now has ${keep.length} rows.\n\nThe dashboard reads archive tabs automatically when you choose a date range that reaches back to those months.`);
+}
+
 /**
  * After an import: compares, per agent, how many rows the export had with how many rows Call Logs now holds
  * for the same period (by Call ID timestamp), so any mismatch is visible straight away.
@@ -190,11 +337,11 @@ function reconcileImport_(stagedRows) {
     const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
     expected.set(agent, (expected.get(agent) ?? 0) + 1);
   });
-  if (expected.size === 0 || !callLog || callLog.getLastRow() < 2) return '';
+  if (expected.size === 0 || !callLog) return '';
 
   SpreadsheetApp.flush();
   const actual = new Map();
-  callLog.getRange(2, 1, callLog.getLastRow() - 1, CONFIG.RAW_HEADERS.length).getValues().forEach(r => {
+  collectLogRowsDisplay_(minEpoch, maxEpoch).forEach(r => {
     const epoch = callEpoch_(r[1]);
     if (epoch === null || epoch < minEpoch || epoch > maxEpoch) return;
     const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
@@ -247,15 +394,17 @@ function processStagingImport() {
   const rawRows = stagingRange.getValues();
   const stagingDisp = stagingRange.getDisplayValues(); // text as shown (e.g. "0:37"), used for comparing
 
-  // How many rows of each call (see callRowKey_) are already in Call Logs.
-  const existingLastRow = callLog.getLastRow();
+  // How many rows of each call (see callRowKey_) are already stored: the active Call Logs plus the archive tabs of
+  // the months this export touches (so re-importing old data never duplicates archived calls).
   const existingCount = new Map();
-  if (existingLastRow > 1) {
-    const existingRange = callLog.getRange(2, 1, existingLastRow - 1, CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length);
-    const existingItems = existingRange.getDisplayValues()
-      .map(d => ({ key: callRowKey_(d, d[0]), text: rowSignature_(d) }));
-    effectiveCounts_(existingItems).forEach((n, key) => existingCount.set(key, n));
-  }
+  let stagedMin = Infinity;
+  let stagedMax = -Infinity;
+  stagingDisp.forEach(d => {
+    const e = callEpoch_(d[1]);
+    if (e !== null) { stagedMin = Math.min(stagedMin, e); stagedMax = Math.max(stagedMax, e); }
+  });
+  const existingItems = collectLogRowsDisplay_(stagedMin, stagedMax).map(d => ({ key: callRowKey_(d, d[0]), text: rowSignature_(d) }));
+  effectiveCounts_(existingItems).forEach((n, key) => existingCount.set(key, n));
   const seenInBatch = new Map();
 
   // Cache known mapped agents

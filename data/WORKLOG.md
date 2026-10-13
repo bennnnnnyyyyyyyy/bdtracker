@@ -91,6 +91,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 ### 15. Apps Script speed
 - `Preview duplicate-call repair` timed out on the full Call Logs: the code asked Apps Script for a time-zone conversion several times per row (tens of thousands of slow service calls). Time zone and Cairo offset are now looked up once per run / once per hour of data, and rows are compared using the text shown in the cells (two bulk reads). A 50,000-row simulation makes about 210 conversion calls and computes in about 2 s locally.
 
+### 16. Monthly archive
+- `Call Logs` had ~49,500 rows and kept growing. New menu item **Archive closed months** moves calls older than 45 days into `Call Logs YYYY-MM` tabs (backup first, rows removed only after the archive tabs are confirmed). Imports and reconciliation also look at the archive tabs of the months an export touches. The web app reads archive tabs only when the requested date range reaches them, caches them for an hour, and reports unreadable archives in the banner.
+
 ---
 
 ## Documentation Manifest in `data/`

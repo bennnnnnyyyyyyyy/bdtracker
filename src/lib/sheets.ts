@@ -6,6 +6,7 @@ import { CONFIG, isExcludedAgent } from './config';
 import { CallRecord, AgentMapping, MeetingRecord, DataSourceInfo } from '../types/dashboard';
 import { parseAgentName, durationToSeconds, parseDateToISO } from './analytics';
 import { dedupeAndRedateCalls } from './callKeys';
+import { archiveMonthOfTitle, archiveTabName, monthKeysForRange } from './archive';
 import { AttendanceDataset, parseAttendanceRows } from './attendance';
 import { parseUltatelDeptRows, deptSummariesToCallRecords } from './ultatel';
 
@@ -54,36 +55,19 @@ function getSheetsClient() {
   return null;
 }
 
-/**
- * Fetches call logs and agent mappings from Google Sheets.
- */
-export async function fetchCallDashboardData(): Promise<{
-  calls: CallRecord[];
-  agentMappings: AgentMapping[];
-  duplicatesRemoved: number;
-}> {
-  const sheets = getSheetsClient();
-  if (!sheets) throw new Error('Google Sheets API credentials not configured');
-
-  const mappingRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
-    range: `${CONFIG.MAPPING_SHEET}!A2:B`
-  });
-
-  const agentMappings: AgentMapping[] = (mappingRes.data.values || [])
-    .filter(row => row && row[0] && !isExcludedAgent(row[0]) && !isExcludedAgent(row[1]))
-    .map(row => ({
-      agent: String(row[0]).trim(),
-      opener: String(row[1] || '').trim()
-    }));
-
+/** Reads one call-log tab (active or archive) in row chunks and returns its de-duplicated calls. */
+async function readCallTab(
+  sheets: NonNullable<ReturnType<typeof getSheetsClient>>,
+  tab: string
+): Promise<{ calls: CallRecord[]; duplicatesRemoved: number }> {
+  const quoted = `'${tab.replace(/'/g, "''")}'`;
   // Read the log in row chunks so a very large sheet never hits a single-response size limit.
   const CALL_LOG_CHUNK_ROWS = 20000;
   const callLogRows: unknown[][] = [];
   for (let start = 2; ; start += CALL_LOG_CHUNK_ROWS) {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
-      range: `${CONFIG.CALL_LOG_SHEET}!A${start}:O${start + CALL_LOG_CHUNK_ROWS - 1}`
+      range: `${quoted}!A${start}:O${start + CALL_LOG_CHUNK_ROWS - 1}`
     });
     const values = (res.data.values || []) as unknown[][];
     callLogRows.push(...values);
@@ -127,7 +111,35 @@ export async function fetchCallDashboardData(): Promise<{
   // The sheet can contain the same call twice (e.g. one copy with a raw export clock). Count each call once
   // and date it from its Call ID timestamp in Cairo time.
   const cleaned = dedupeAndRedateCalls(calls);
-  return { calls: cleaned.calls, agentMappings, duplicatesRemoved: cleaned.duplicatesRemoved };
+  return { calls: cleaned.calls, duplicatesRemoved: cleaned.duplicatesRemoved };
+}
+
+/**
+ * Fetches the active call log and agent mappings from Google Sheets (older closed months live in archive tabs,
+ * see getArchivedCalls).
+ */
+export async function fetchCallDashboardData(): Promise<{
+  calls: CallRecord[];
+  agentMappings: AgentMapping[];
+  duplicatesRemoved: number;
+}> {
+  const sheets = getSheetsClient();
+  if (!sheets) throw new Error('Google Sheets API credentials not configured');
+
+  const mappingRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
+    range: `${CONFIG.MAPPING_SHEET}!A2:B`
+  });
+
+  const agentMappings: AgentMapping[] = (mappingRes.data.values || [])
+    .filter(row => row && row[0] && !isExcludedAgent(row[0]) && !isExcludedAgent(row[1]))
+    .map(row => ({
+      agent: String(row[0]).trim(),
+      opener: String(row[1] || '').trim()
+    }));
+
+  const active = await readCallTab(sheets, CONFIG.CALL_LOG_SHEET);
+  return { calls: active.calls, agentMappings, duplicatesRemoved: active.duplicatesRemoved };
 }
 
 /**
@@ -392,6 +404,8 @@ let inFlight: Promise<RawDashboardDataset> | null = null;
 /** Drops the cached dataset (call after local source files change). */
 export function invalidateDashboardCache(): void {
   cached = null;
+  archiveCache.clear();
+  archiveTitles = null;
 }
 
 function loadAndCache(): Promise<RawDashboardDataset> {
@@ -421,13 +435,13 @@ function asStale(entry: NonNullable<typeof cached>, reason: string): RawDashboar
 }
 
 /**
- * Cached multi-source retrieval.
+ * Cached multi-source retrieval of the live data (active call log, tracker, attendance).
  * - default: serve data younger than DASHBOARD_CACHE_TTL_SECONDS (60 s).
  * - forceRefresh (manual refresh button): reload unless the cache is under 10 s old.
  * - fresh (used by /api/sync): always reload and never accept stale data.
  * If a reload fails or is partial and an older good copy exists, the older copy is served with a note.
  */
-export async function getDashboardRawData(
+async function getActiveDashboardData(
   opts: { forceRefresh?: boolean; fresh?: boolean } = {}
 ): Promise<RawDashboardDataset> {
   const now = Date.now();
@@ -446,4 +460,92 @@ export async function getDashboardRawData(
     if (opts.fresh || !previous) throw err;
     return asStale(previous, err instanceof Error ? err.message : 'unknown error');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Monthly archive tabs ("Call Logs 2026-09"). Closed months never change, so they are read only when a date
+// range reaches them and cached for an hour.
+// ---------------------------------------------------------------------------
+
+const ARCHIVE_TTL_MS = 60 * 60 * 1000;
+const TITLES_TTL_MS = 5 * 60 * 1000;
+const archiveCache = new Map<string, { calls: CallRecord[]; at: number }>();
+let archiveTitles: { months: Set<string>; at: number } | null = null;
+
+async function listArchiveMonths(sheets: NonNullable<ReturnType<typeof getSheetsClient>>): Promise<Set<string>> {
+  if (archiveTitles && Date.now() - archiveTitles.at < TITLES_TTL_MS) return archiveTitles.months;
+  const res = await sheets.spreadsheets.get({
+    spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
+    fields: 'sheets.properties.title'
+  });
+  const months = new Set<string>();
+  (res.data.sheets || []).forEach((sh) => {
+    const month = archiveMonthOfTitle(sh.properties?.title || '');
+    if (month) months.add(month);
+  });
+  archiveTitles = { months, at: Date.now() };
+  return months;
+}
+
+/** Calls from the archive tabs of the months a date range reaches. Failures become a note, never an error. */
+async function getArchivedCalls(startDate?: string, endDate?: string): Promise<{ calls: CallRecord[]; note?: string }> {
+  const wanted = monthKeysForRange(startDate, endDate);
+  if (wanted.length === 0) return { calls: [] };
+  const sheets = getSheetsClient();
+  if (!sheets) return { calls: [] };
+
+  try {
+    const existing = await listArchiveMonths(sheets);
+    const months = wanted.filter((m) => existing.has(m));
+    const failed: string[] = [];
+    const calls: CallRecord[] = [];
+    await Promise.all(months.map(async (month) => {
+      const hit = archiveCache.get(month);
+      if (hit && Date.now() - hit.at < ARCHIVE_TTL_MS) {
+        calls.push(...hit.calls);
+        return;
+      }
+      try {
+        const tab = await readCallTab(sheets, archiveTabName(month));
+        archiveCache.set(month, { calls: tab.calls, at: Date.now() });
+        calls.push(...tab.calls);
+      } catch (err) {
+        console.warn(`[Archive] ${month} failed:`, (err as Error).message);
+        const stale = archiveCache.get(month);
+        if (stale) calls.push(...stale.calls); else failed.push(month);
+      }
+    }));
+    return {
+      calls,
+      note: failed.length > 0
+        ? `Archive tab(s) for ${failed.sort().join(', ')} could not be read: call figures for those months may be incomplete.`
+        : undefined
+    };
+  } catch (err) {
+    console.warn('[Archive] listing failed:', (err as Error).message);
+    return { calls: [], note: 'Archived months could not be read: call figures before the active log may be incomplete.' };
+  }
+}
+
+/**
+ * Live data plus, when a date range is given, the archived months that range reaches.
+ * - default: serve data younger than DASHBOARD_CACHE_TTL_SECONDS.
+ * - forceRefresh (manual refresh button): reload unless the cache is under 10 s old.
+ * - fresh (used by /api/sync): always reload, never stale, active log only.
+ */
+export async function getDashboardRawData(
+  opts: { forceRefresh?: boolean; fresh?: boolean; startDate?: string; endDate?: string } = {}
+): Promise<RawDashboardDataset> {
+  const base = await getActiveDashboardData(opts);
+  if (opts.fresh) return base;
+  const archived = await getArchivedCalls(opts.startDate, opts.endDate);
+  if (archived.calls.length === 0 && !archived.note) return base;
+  return {
+    ...base,
+    calls: archived.calls.length > 0 ? [...archived.calls, ...base.calls] : base.calls,
+    dataSourceInfo: {
+      ...base.dataSourceInfo,
+      notes: [base.dataSourceInfo.notes, archived.note].filter(Boolean).join(' ') || undefined
+    }
+  };
 }

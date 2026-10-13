@@ -42,7 +42,7 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 ```
 
 ### Data sources (`src/lib/config.ts`)
-- **Call Logs sheet** (`CALL_DASHBOARD_SHEET_ID`): `Call Logs` (A:O) and `Agent Mapping` (A:B).
+- **Call Logs sheet** (`CALL_DASHBOARD_SHEET_ID`): `Call Logs` (A:O, the active log), `Call Logs YYYY-MM` archive tabs created by the sheet menu's *Archive closed months*, and `Agent Mapping` (A:B).
 - **BD Tracker sheet** (`BD_TRACKER_SHEET_ID`): tabs `New Meetings`, `Follow Ups`, `Contract Sent`, `Invoice Sent`, `Onboarded`, `No-Show`, `Dead Leads`, `Temporary Inactive`, read as `A1:Z`. Header names are auto-detected (opener, date, company, contact, `MEDB`, `PPO`).
 - **Attendance** (`ATTENDANCE_SHEET_ID`, tab `Attendance`, `A1:AT`): copied into the tracker by the French Dashboard Apps Script bridge. Falls back to the local `BD _ French Dashboard 2026 (3).xlsx`.
 - **Local Ultatel department report** `OutBound Calls Per Department ( BusinessDevelopmentTeam ).xlsx`: only used when the `Call Logs` sheet returns **zero** calls. It contains per-agent totals, not individual calls, so `ultatel.ts` synthesizes one `CallRecord` per call, **all dated today** (server date). Date filters are therefore not meaningful in this mode (the dashboard shows a warning banner).

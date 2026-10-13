@@ -32,3 +32,7 @@ The tracker has no ID column, so each row gets a key made of **opener | date add
 
 ## What is not live
 Phone-call numbers can only be as fresh as the last import into the `Call Logs` sheet (calls arrive by pasting the Ultatel export). Meetings and attendance update as soon as the sheet is edited (within about 30–60 seconds on screen). Making calls live too would need an Ultatel API/automatic export, which does not exist in this project today.
+
+## Keeping the call log fast: monthly archive
+`Call Logs` grows every day and the import, the repair tools and every dashboard refresh read all of it. Once a month, in the sheet, run **BD Call Dashboard > Archive closed months**. It moves calls older than 45 days into tabs named `Call Logs YYYY-MM` (a hidden backup of the active log is saved first). Nothing else changes: imports still go through `Import Staging`, and the dashboard reads archive tabs automatically when you pick a date range that reaches them. Do not rename the archive tabs, and keep the `Call Logs ` prefix.
+Run **Repair duplicate calls** *before* the first archive, so duplicates are not archived.

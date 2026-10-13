@@ -20,11 +20,13 @@ export interface DashboardInputs {
  * source failed; partial live data as the last resort. Meetings come back annotated with their
  * key and management confirmation state.
  */
-export async function loadDashboardInputs(opts: { forceRefresh?: boolean } = {}): Promise<DashboardInputs> {
+export async function loadDashboardInputs(
+  opts: { forceRefresh?: boolean; startDate?: string; endDate?: string } = {}
+): Promise<DashboardInputs> {
   let liveData: RawDashboardDataset | null = null;
   let liveError: unknown = null;
   try {
-    liveData = await getDashboardRawData({ forceRefresh: opts.forceRefresh });
+    liveData = await getDashboardRawData({ forceRefresh: opts.forceRefresh, startDate: opts.startDate, endDate: opts.endDate });
   } catch (err) {
     liveError = err;
     console.warn('[Data Ingest] Live pull failed:', err);

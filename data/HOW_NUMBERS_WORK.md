@@ -37,7 +37,8 @@ Two things never change in the pipeline: **the sheets are the single source of t
    - Appends the row to `Call Logs` (columns A–M raw, **N = Agent**, **O = Duration (sec)**).
    - Adds any **new agent name** to `Agent Mapping` column A with a blank Opener. *A person must fill in column B (the opener name) for the new agent.* Excluded people (Russ, George, Caroline) are not added.
    - Deletes the staging tab and refreshes the in-sheet `BD Dashboard` mirror.
-3. `Agent Mapping` (A = PBX agent name, B = canonical Opener name) is maintained by hand.
+3. **Monthly archive.** Once a month (or whenever the log gets big) run **BD Call Dashboard > Archive closed months**. Calls older than 45 days move out of `Call Logs` into one tab per month (`Call Logs 2026-08`, `Call Logs 2026-09`, …); the newest 45 days stay in `Call Logs`. A hidden backup is saved first, rows are only removed after the archive tabs are confirmed, and later imports compare against archive tabs too, so re-importing an old export never duplicates archived calls. The dashboard reads archive tabs only when your date range reaches those months (and caches them for an hour), so current numbers stay fast.
+4. `Agent Mapping` (A = PBX agent name, B = canonical Opener name) is maintained by hand.
 
 ### 2.2 Meetings (BD tracker)
 The team keeps one row per meeting in the tracker, **in the tab that is the meeting's current stage**: `New Meetings`, `Follow Ups`, `Contract Sent`, `Invoice Sent`, `Onboarded`, `No-Show`, `Dead Leads`, `Temporary Inactive`. Moving a lead between stages means moving its row to another tab. Columns the dashboard looks for (by header text, not fixed position): **Opener** (header contains "opener", or is "agent"/"rep"; default column B), **Date Added** (also accepts "meeting date", "date booked", "date", "created", "timestamp"), **Company**, **Authorized Person / Contact**, and the **MEDB** and **PPO** checkboxes (a row counts if ticked/TRUE/1/yes).
@@ -57,7 +58,7 @@ The French Dashboard workbook is copied into the tracker's `Attendance` tab by a
 1. **Auth**: the proxy requires a signed session cookie (`/api/sync` has its own secret).
 2. **Cache** (`sheets.ts › getDashboardRawData`): reuses the last load if it is under 30 s old (Refresh forces a reload, at most every 10 s). The open page also re-requests every 30 s, so the screen follows the sheets within about a minute. Concurrent requests share one load.
 3. **Load** (parallel):
-   - `Agent Mapping!A2:B` and `Call Logs!A2:O`, read in 20 000-row chunks.
+   - `Agent Mapping!A2:B` and `Call Logs!A2:O`, read in 20 000-row chunks; plus, when the date range reaches closed months, the matching `Call Logs YYYY-MM` archive tabs (cached for an hour).
    - The 8 stage tabs with one batch call, range `A1:Z`.
    - `Attendance!A1:AT`, falling back to the local workbook.
 4. **Failure handling**: if the call log or tracker cannot be read, the server serves the last good in-memory copy, else the Supabase snapshot, else partial data — and always says so in the yellow banner. A partial load is never cached and never written to Supabase.
@@ -159,6 +160,8 @@ Ben's calls: 486 outbound + 15 inbound = 501; the 2 internal calls are dropped. 
 ---
 
 ## 7. Known limits (be aware when reading the numbers)
+- The daily Supabase snapshot (emergency fallback) holds only the active `Call Logs`, not archived months.
+- The in-sheet `BD Dashboard` mirror (Apps Script) reads only the active `Call Logs`.
 - Show confirmations are keyed on opener + date added + company + contact; editing any of those cells makes the meeting need confirming again.
 - Stage counts are a snapshot of where each meeting is *now*, grouped by the date it was added.
 - Meetings without a valid Date Added disappear as soon as a date range is applied.
