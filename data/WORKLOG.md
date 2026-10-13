@@ -130,3 +130,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 23. Replace mode for re-uploaded history
 - Upload window option "Replace what the sheet has for the dates in this file". For the file's period, rows in `Call Logs` and the month archive tabs that the file does not hold (per call-row key, rows beyond the file's count) are removed. Needs a confirmation click. Each affected tab is first copied to a hidden tab `Backup <MMDDHHMM> <tab>`; if the copy fails nothing is removed. Delete backups manually once satisfied. Rows outside the file's first and last call time are never touched. Import window also scrolls inside the screen and shortens long check results.
+
+## 24. Replace mode split into steps
+- Doing the removal inside every import part made the first request exceed the 55 s limit ("operation was aborted due to timeout"). Replace mode now runs as: (1) import with the per-part check skipped, (2) `replacePlan` lists the tabs holding calls in the file's period, then one `replaceTab` request per tab (backup copy first, then removal; only the call-identifying columns are sent), (3) a final verifying import, which also produces the check. Each step can be repeated safely.

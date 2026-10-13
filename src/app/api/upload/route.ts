@@ -6,7 +6,7 @@ import { CONFIG } from '@/lib/config';
 import { invalidateDashboardCache } from '@/lib/sheets';
 import { requireUser } from '@/lib/api-auth';
 import { looksLikeCallExport, parseCallExportFile, parseCsv } from '@/lib/ultatelFile';
-import { isImportConfigured, missingImportSettings, sendRowsToSheet } from '@/lib/importWebhook';
+import { isImportConfigured, missingImportSettings, planReplace, replaceTabInSheet, sendRowsToSheet } from '@/lib/importWebhook';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -30,10 +30,22 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: `Uploading call exports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}. Settings only take effect after a redeploy (Vercel) or a restart (local), and must be added to the Production environment.` }, { status: 501 });
         }
         const parsed = parseCallExportFile(buf, upload.name);
+        // Replace mode runs in separate steps (see FileImportModal): plan, then one request per sheet tab.
+        const phase = String(peek.get('phase') ?? 'import');
+        if (phase === 'plan') {
+          const plan = await planReplace(parsed.rows);
+          return NextResponse.json({ success: true, fileType: 'ultatel_calls', phase, ...plan });
+        }
+        if (phase === 'tab') {
+          const tab = { name: String(peek.get('tab') ?? ''), minEpoch: Number(peek.get('minEpoch')), maxEpoch: Number(peek.get('maxEpoch')) };
+          const backupId = String(peek.get('backupId') ?? '').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20) || 'manual';
+          const removed = await replaceTabInSheet(parsed.rows, tab, backupId);
+          invalidateDashboardCache();
+          return NextResponse.json({ success: true, fileType: 'ultatel_calls', phase, removed });
+        }
         const result = await sendRowsToSheet(parsed.rows, fetch, {
           clock: peek.get('clock') === 'ultatel' ? 'ultatel' : 'local',
-          replace: peek.get('replace') === '1',
-          backupId: String(peek.get('backupId') ?? '').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20),
+          skipCheck: peek.get('skipCheck') === '1',
           startChunk: Math.max(0, Number(peek.get('startChunk')) || 0),
           budgetMs: 35_000, // a big file is imported in several requests (each under the 60 s limit)
         });
@@ -43,7 +55,6 @@ export async function POST(request: NextRequest) {
         }
         const parts = [`${result.imported} new call(s) added`];
         if (result.duplicates > 0) parts.push(`${result.duplicates} already in the sheet`);
-        if (result.removed > 0) parts.push(`${result.removed} old row(s) not in the file removed`);
         return NextResponse.json({
           success: true,
           fileType: 'ultatel_calls',

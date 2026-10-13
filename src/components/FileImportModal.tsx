@@ -76,41 +76,69 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
     setLastFile(target);
 
     try {
-      // A big call export is imported in several requests (each stays under the server's time limit); the
-      // server says where to continue, and the totals are added up here.
-      let startChunk = 0;
+      // A big call export is handled in several requests (each stays under the server's time limit). Replace
+      // mode: 1) add what is missing, 2) per sheet tab: back it up and remove what the file does not hold,
+      // 3) run the import once more, which now only verifies (everything is "already there").
       const backupId = new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '');
       let json: Record<string, unknown> = {};
-      const sum = { imported: 0, duplicates: 0, removed: 0, newAgents: [] as string[], checkOk: true, checkProblems: [] as string[] };
-      for (let guard = 0; guard < 100; guard++) {
+
+      const post = async (fields: Record<string, string>): Promise<Record<string, unknown>> => {
         const formData = new FormData();
         formData.append('file', target);
         formData.append('clock', clock);
-        if (replace) { formData.append('replace', '1'); formData.append('backupId', backupId); }
-        formData.append('startChunk', String(startChunk));
+        Object.entries(fields).forEach(([k, v]) => formData.append(k, v));
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const text = await res.text();
+        let body: Record<string, unknown>;
         try {
-          json = JSON.parse(text);
+          body = JSON.parse(text);
         } catch {
           throw new Error(`The server stopped answering (${res.status}${text ? `: ${text.slice(0, 80)}` : ''}). Uploading the file again only adds what is missing.`);
         }
-        if (!res.ok) throw new Error((json.error as string) || 'Upload failed');
-        if (json.fileType !== 'ultatel_calls') break;
-        sum.imported += (json.imported as number) ?? 0;
-        sum.duplicates += (json.duplicates as number) ?? 0;
-        sum.removed += (json.removed as number) ?? 0;
-        ((json.newAgents as string[]) ?? []).forEach((a) => { if (!sum.newAgents.includes(a)) sum.newAgents.push(a); });
-        if (json.checkOk === false) sum.checkOk = false;
-        sum.checkProblems.push(...((json.checkProblems as string[]) ?? []));
-        if (json.nextChunk === null || json.nextChunk === undefined) break;
-        startChunk = json.nextChunk as number;
-        setStatusMessage({ type: 'success', text: `Importing… ${startChunk} of ${json.chunks} parts done (${sum.imported} added so far).` });
+        if (!res.ok) throw new Error((body.error as string) || 'Upload failed');
+        return body;
+      };
+
+      const runImport = async (skipCheck: boolean, label: string) => {
+        const out = { imported: 0, duplicates: 0, newAgents: [] as string[], checkOk: true, checkProblems: [] as string[], last: {} as Record<string, unknown> };
+        let startChunk = 0;
+        for (let guard = 0; guard < 100; guard++) {
+          const body = await post({ startChunk: String(startChunk), ...(skipCheck ? { skipCheck: '1' } : {}) });
+          out.last = body;
+          if (body.fileType !== 'ultatel_calls') break;
+          out.imported += (body.imported as number) ?? 0;
+          out.duplicates += (body.duplicates as number) ?? 0;
+          ((body.newAgents as string[]) ?? []).forEach((a) => { if (!out.newAgents.includes(a)) out.newAgents.push(a); });
+          if (body.checkOk === false) out.checkOk = false;
+          out.checkProblems.push(...((body.checkProblems as string[]) ?? []));
+          if (body.nextChunk === null || body.nextChunk === undefined) break;
+          startChunk = body.nextChunk as number;
+          setStatusMessage({ type: 'success', text: `${label}… ${startChunk} of ${body.chunks} parts done.` });
+        }
+        return out;
+      };
+
+      const first = await runImport(replace, 'Importing');
+      json = first.last;
+      let removed = 0;
+      let sum = { imported: first.imported, duplicates: first.duplicates, newAgents: first.newAgents, checkOk: first.checkOk, checkProblems: first.checkProblems };
+      if (replace && json.fileType === 'ultatel_calls') {
+        setStatusMessage({ type: 'success', text: 'Looking for old rows that are not in the file…' });
+        const plan = await post({ phase: 'plan' });
+        const tabs = (plan.tabs as { name: string; minEpoch: number; maxEpoch: number }[]) ?? [];
+        for (let i = 0; i < tabs.length; i++) {
+          setStatusMessage({ type: 'success', text: `Backing up and cleaning "${tabs[i].name}" (${i + 1} of ${tabs.length})…` });
+          const r = await post({ phase: 'tab', tab: tabs[i].name, minEpoch: String(tabs[i].minEpoch), maxEpoch: String(tabs[i].maxEpoch), backupId });
+          removed += (r.removed as number) ?? 0;
+        }
+        const verify = await runImport(false, 'Checking');
+        json = verify.last;
+        sum = { ...sum, checkOk: verify.checkOk, checkProblems: verify.checkProblems, newAgents: Array.from(new Set([...sum.newAgents, ...verify.newAgents])) };
       }
       if (json.fileType === 'ultatel_calls') {
         const parts = [`${sum.imported} new call(s) added`];
         if (sum.duplicates > 0) parts.push(`${sum.duplicates} already in the sheet`);
-        if (sum.removed > 0) parts.push(`${sum.removed} old row(s) not in the file removed (backup tab "Backup ${backupId} …" kept, hidden)`);
+        if (replace) parts.push(`${removed} old row(s) not in the file removed${removed > 0 ? ` (hidden backup tabs "Backup ${backupId} …" kept)` : ''}`);
         json = { ...json, ...sum, message: `Call export imported: ${parts.join(', ')}.` };
       }
 

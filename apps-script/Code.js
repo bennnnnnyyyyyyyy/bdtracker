@@ -447,66 +447,84 @@ function reconcileImportData_(stagedRows, stagedDisp) {
 }
 
 /**
- * Deletes the rows of Call Logs (and its archive tabs) inside the export's period that the export does not
- * contain: for every call-row key, rows beyond the number the export holds are removed. Each tab is backed up
- * (hidden copy "Backup <id> <tab>") before it is rewritten, once, and only when it has rows to remove. If a
- * backup cannot be made, nothing is removed from that tab and the error is raised.
- * @param {string[][]} stagedDisp the export rows as text
- * @param {number} minEpoch
- * @param {number} maxEpoch
- * @param {string} backupId same for every request of one upload, so a tab is backed up only once
+ * Replace mode, step 1: which tabs (Call Logs and the month archive tabs) hold calls inside the export's period,
+ * with the first and last call time each holds. Cheap: reads only the Call ID column.
+ * @returns {{name: string, minEpoch: number, maxEpoch: number}[]}
+ */
+function replacePlan_(minEpoch, maxEpoch) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const names = [CONFIG.CALL_LOG_SHEET];
+  monthKeysForEpochRange_(minEpoch, maxEpoch).forEach(k => {
+    if (ss.getSheetByName(archiveTabName_(k))) names.push(archiveTabName_(k));
+  });
+  const tabs = [];
+  names.forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    let lo = Infinity;
+    let hi = -Infinity;
+    sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getDisplayValues().forEach(r => {
+      const e = callEpoch_(r[0]);
+      if (e !== null) { lo = Math.min(lo, e); hi = Math.max(hi, e); }
+    });
+    if (isFinite(lo) && hi >= minEpoch && lo <= maxEpoch) tabs.push({ name, minEpoch: Math.max(lo, minEpoch), maxEpoch: Math.min(hi, maxEpoch) });
+  });
+  return tabs;
+}
+
+/**
+ * Replace mode, step 2 (one tab per request): inside [minEpoch, maxEpoch], removes the tab's rows that the export
+ * rows do not contain (for every call-row key, rows beyond the number the export holds). The tab is first copied
+ * to a hidden "Backup <id> <tab>" tab; if that fails nothing is removed. Rows outside the period are untouched.
+ * @param {string} tabName
+ * @param {string[][]} exportRows export rows (columns A-M as text) whose calls fall in this tab's period
  * @returns {number} rows removed
  */
-function removeRowsNotInExport_(stagedDisp, minEpoch, maxEpoch, backupId) {
+function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const known = [CONFIG.CALL_LOG_SHEET].concat(monthKeysForEpochRange_(minEpoch, maxEpoch).map(archiveTabName_));
+  if (known.indexOf(tabName) < 0) throw new Error('Unexpected tab "' + tabName + '".');
+  const sheet = ss.getSheetByName(tabName);
+  if (!sheet || sheet.getLastRow() < 2 || !isFinite(minEpoch) || !isFinite(maxEpoch)) return 0;
+
   const exportKeyCount = new Map();
-  stagedDisp.forEach(d => {
+  exportRows.forEach(d => {
     if (callEpoch_(d[1]) === null) return;
     const key = callRowKey_(d, d[0]);
     exportKeyCount.set(key, (exportKeyCount.get(key) ?? 0) + 1);
   });
   SpreadsheetApp.flush();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
   const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
-  const tabs = [CONFIG.CALL_LOG_SHEET];
-  monthKeysForEpochRange_(minEpoch, maxEpoch).forEach(k => {
-    if (ss.getSheetByName(archiveTabName_(k))) tabs.push(archiveTabName_(k));
-  });
-
+  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols);
+  const vals = range.getValues();
+  const disp = range.getDisplayValues();
   const seen = new Map();
-  let removed = 0;
-  tabs.forEach(name => {
-    const sheet = ss.getSheetByName(name);
-    if (!sheet || sheet.getLastRow() < 2) return;
-    const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols);
-    const vals = range.getValues();
-    const disp = range.getDisplayValues();
-    const kept = [];
-    vals.forEach((v, i) => {
-      const epoch = callEpoch_(disp[i][1]);
-      if (epoch !== null && epoch >= minEpoch && epoch <= maxEpoch) {
-        const key = callRowKey_(disp[i], disp[i][0]);
-        const n = (seen.get(key) ?? 0) + 1;
-        seen.set(key, n);
-        if (n > (exportKeyCount.get(key) ?? 0)) return; // not in the export: drop
-      }
-      kept.push(v);
-    });
-    const dropped = vals.length - kept.length;
-    if (dropped === 0) return;
-
-    const backupName = ('Backup ' + backupId + ' ' + name).slice(0, 99);
-    if (!ss.getSheetByName(backupName)) {
-      sheet.copyTo(ss).setName(backupName).hideSheet();
-      SpreadsheetApp.flush();
+  const kept = [];
+  vals.forEach((v, i) => {
+    const epoch = callEpoch_(disp[i][1]);
+    if (epoch !== null && epoch >= minEpoch && epoch <= maxEpoch) {
+      const key = callRowKey_(disp[i], disp[i][0]);
+      const n = (seen.get(key) ?? 0) + 1;
+      seen.set(key, n);
+      if (n > (exportKeyCount.get(key) ?? 0)) return; // not in the export: drop
     }
-    if (!ss.getSheetByName(backupName)) throw new Error('Could not back up "' + name + '"; nothing was removed from it.');
-
-    range.clearContent();
-    if (kept.length > 0) sheet.getRange(2, 1, kept.length, numCols).setValues(kept);
-    removed += dropped;
+    kept.push(v);
   });
+  const dropped = vals.length - kept.length;
+  if (dropped === 0) return 0;
+
+  const backupName = ('Backup ' + backupId + ' ' + tabName).slice(0, 99);
+  if (!ss.getSheetByName(backupName)) {
+    sheet.copyTo(ss).setName(backupName).hideSheet();
+    SpreadsheetApp.flush();
+  }
+  if (!ss.getSheetByName(backupName)) throw new Error('Could not back up "' + tabName + '"; nothing was removed from it.');
+
+  range.clearContent();
+  if (kept.length > 0) sheet.getRange(2, 1, kept.length, numCols).setValues(kept);
   SpreadsheetApp.flush();
-  return removed;
+  return dropped;
 }
 
 /** Message lines for the result of reconcileImportData_. */
@@ -718,6 +736,15 @@ function doPost(e) {
       return jsonOut_({ ok: false, error: 'Unauthorized' });
     }
     if (body.action === 'ping') return jsonOut_({ ok: true, pong: true });
+    if (body.action === 'replacePlan') {
+      return jsonOut_({ ok: true, tabs: withLock_(() => replacePlan_(Number(body.minEpoch), Number(body.maxEpoch)), 50000) });
+    }
+    if (body.action === 'replaceTab') {
+      if (!Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
+      const backupId = String(body.backupId || 'manual').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20);
+      const removed = withLock_(() => replaceTab_(String(body.tab || ''), body.rows, Number(body.minEpoch), Number(body.maxEpoch), backupId), 50000);
+      return jsonOut_({ ok: true, removed });
+    }
     if (body.action !== 'import') return jsonOut_({ ok: true, ...runSheetAction_(body) });
     if (!Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
     if (body.rows.length > 12000) return jsonOut_({ ok: false, error: 'Too many rows in one request (max 12000)' });
@@ -730,7 +757,7 @@ function doPost(e) {
     });
     const display = rows.map(r => r.slice());
     const clock = body.clock === 'ultatel' ? 'ultatel' : 'local';
-    const result = withLock_(() => importCallRows_(rows, display, { clock, replace: body.replace === true, backupId: String(body.backupId || '').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20) }), 50000);
+    const result = withLock_(() => importCallRows_(rows, display, { clock, skipCheck: body.skipCheck === true }), 50000);
     return jsonOut_({ ok: true, ...result });
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err && err.message ? err.message : err) });
@@ -849,20 +876,11 @@ function importCallRows_(rawRows, dispRows, opts) {
     mapping.getRange(mapping.getLastRow() + 1, 1, newMappingRows.length, 2).setValues(newMappingRows);
   }
 
-  // Replace mode (re-uploading history): the file is the truth for its period, so rows the sheet holds for the
-  // same period that the file does not have (old wrong-clock / broken-format copies) are removed. Every tab that
-  // loses rows is first copied to a hidden "Backup ..." tab.
-  let removed = 0;
-  if (opts && opts.replace && isFinite(stagedMin)) {
-    removed = removeRowsNotInExport_(dispRows, stagedMin, stagedMax, (opts.backupId || 'manual'));
-  }
-
   return {
     imported: toAppend.length,
     duplicates: duplicateCount,
-    removed,
     newAgents: Array.from(newAgents),
-    check: reconcileImportData_(rawRows, dispRows)
+    check: opts && opts.skipCheck ? { ok: true, problems: [] } : reconcileImportData_(rawRows, dispRows)
   };
 }
 
