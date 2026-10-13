@@ -175,17 +175,15 @@ export function dedupeAndRedateCalls(calls: CallRecord[]): { calls: CallRecord[]
   const keep = new Set<number>();
   groups.forEach((byText, key) => {
     let best: number[] | null = null;
-    let bestText = '';
     const isCairoRow = (i: number) => {
       const e = callEpoch(calls[i].callId);
       return e !== null && classifyClock(String(calls[i].callDate ?? ''), e) === 'cairo';
     };
-    byText.forEach((idxs, text) => {
+    byText.forEach((idxs) => {
       const isCairo = isCairoRow(idxs[0]);
       const bestIsCairo = best !== null && isCairoRow(best[0]);
       if (!best || idxs.length > best.length || (idxs.length === best.length && isCairo && !bestIsCairo)) {
         best = idxs;
-        bestText = text;
       }
     });
     (best as number[] | null)?.forEach((i) => keep.add(i));

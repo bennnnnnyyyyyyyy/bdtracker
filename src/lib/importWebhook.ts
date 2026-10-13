@@ -46,6 +46,36 @@ export function chunkRowsByCall(rows: string[][], size = 2500): string[][][] {
 
 type Fetch = typeof fetch;
 
+/** Sends one request to the sheet's Apps Script web app and returns its JSON reply (errors become thrown messages). */
+async function postToSheet<T extends { ok?: boolean; error?: string }>(payload: Record<string, unknown>, fetchFn: Fetch): Promise<T> {
+  const url = (process.env.IMPORT_WEBHOOK_URL ?? '').trim();
+  const secret = (process.env.IMPORT_WEBHOOK_SECRET ?? '').trim();
+  if (!url || !secret) throw new Error('The sheet connection is not set up yet (IMPORT_WEBHOOK_URL / IMPORT_WEBHOOK_SECRET).');
+  const res = await fetchFn(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Apps Script web apps accept a JSON body sent as text
+    body: JSON.stringify({ secret, ...payload }),
+    redirect: 'follow',
+    signal: AbortSignal.timeout(55_000),
+  });
+  const text = await res.text();
+  let body: T;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error('The Apps Script web app did not answer with data. Check that it is deployed with access "Anyone" and that IMPORT_WEBHOOK_URL is the web app URL.');
+  }
+  if (!body.ok) throw new Error(`The sheet rejected the request: ${body.error || 'unknown error'}`);
+  return body;
+}
+
+export type SheetAction = 'status' | 'check' | 'repair' | 'archive' | 'fixTimes' | 'autoArchiveOn' | 'autoArchiveOff' | 'setMapping';
+
+/** A maintenance action on the call-log sheet (see runSheetAction_ in the Apps Script). */
+export async function runSheetAction(action: SheetAction, extra: Record<string, unknown> = {}, fetchFn: Fetch = fetch): Promise<Record<string, unknown>> {
+  return postToSheet<{ ok?: boolean; error?: string } & Record<string, unknown>>({ action, ...extra }, fetchFn);
+}
+
 /**
  * Hands the export rows to the sheet's Apps Script web app, which adds them to Call Logs under the sheet's lock
  * with the same rules as the Import Staging menu. Safe to repeat: rows already in the sheet are skipped.

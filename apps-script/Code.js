@@ -516,6 +516,114 @@ function processStagingImport() {
 // WEB APP: call-export upload from the dashboard
 // ==========================================
 
+// ==========================================
+// WEB APP: maintenance actions offered as buttons in the dashboard
+// ==========================================
+
+/** Rows in a tab (without the header). */
+function rowCount_(sheet) {
+  return Math.max(0, sheet.getLastRow() - 1);
+}
+
+/** Agents in Agent Mapping that still have no Opener name. Excluded people are never listed. */
+function unmappedAgents_() {
+  const mapping = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.MAPPING_SHEET);
+  if (!mapping || mapping.getLastRow() < 2) return [];
+  return mapping.getRange(2, 1, mapping.getLastRow() - 1, 2).getValues()
+    .filter(r => String(r[0] ?? '').trim() && !String(r[1] ?? '').trim() && !isExcludedAgent_(r[0]))
+    .map(r => String(r[0]).trim());
+}
+
+/**
+ * State of the call log for the dashboard's maintenance panel.
+ * @param {boolean} withCheck also count duplicates / wrong times (reads the whole active log)
+ */
+function sheetStatus_(withCheck) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
+  const archives = ss.getSheets()
+    .map(sh => sh.getName())
+    .filter(name => /^Call Logs \d{4}-\d{2}$/.test(name))
+    .sort()
+    .map(name => ({ tab: name, rows: rowCount_(ss.getSheetByName(name)) }));
+  const on = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'archiveClosedMonthsAuto');
+  const raw = PropertiesService.getScriptProperties().getProperty('ARCHIVE_LAST_RUN');
+  const status = {
+    activeRows: callLog ? rowCount_(callLog) : 0,
+    archives,
+    keepDays: CONFIG.ARCHIVE_KEEP_DAYS,
+    autoArchive: { on, last: raw ? JSON.parse(raw) : null },
+    unmappedAgents: unmappedAgents_()
+  };
+  if (withCheck) {
+    const plan = buildRepairedCallLog_();
+    status.check = plan ? { duplicates: plan.duplicates, redated: plan.redated, rowsAfter: plan.rows.length } : { duplicates: 0, redated: 0, rowsAfter: 0 };
+  }
+  return status;
+}
+
+/** Sets the Opener name for agents in Agent Mapping. */
+function setMapping_(entries) {
+  const mapping = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.MAPPING_SHEET);
+  if (!mapping || mapping.getLastRow() < 2) throw new Error('Agent Mapping is empty.');
+  const range = mapping.getRange(2, 1, mapping.getLastRow() - 1, 2);
+  const values = range.getValues();
+  let updated = 0;
+  entries.forEach(e => {
+    const agent = String((e && e.agent) || '').trim();
+    const opener = String((e && e.opener) || '').trim().slice(0, 60);
+    if (!agent || !opener) return;
+    values.forEach(row => {
+      if (String(row[0]).trim() === agent) { row[1] = opener; updated++; }
+    });
+  });
+  range.setValues(values);
+  return { updated };
+}
+
+/** Runs a maintenance action asked for by the dashboard. Everything that edits the log holds the script lock. */
+function runSheetAction_(body) {
+  switch (body.action) {
+    case 'status':
+      return sheetStatus_(false);
+    case 'check':
+      return withLock_(() => sheetStatus_(true), 50000);
+    case 'repair':
+      return withLock_(() => ({ repair: runRepair_({ interactive: false }), status: sheetStatus_(false) }), 50000);
+    case 'archive':
+      return withLock_(() => ({ archive: runArchive_({ interactive: false }), status: sheetStatus_(false) }), 50000);
+    case 'fixTimes':
+      return withLock_(() => {
+        const callLog = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.CALL_LOG_SHEET);
+        if (!callLog || callLog.getLastRow() < 2) return { changed: 0 };
+        const range = callLog.getRange(2, 1, callLog.getLastRow() - 1, 2);
+        const values = range.getValues();
+        const shown = range.getDisplayValues();
+        let changed = 0;
+        const out = values.map((row, i) => {
+          if (callEpoch_(shown[i][1]) === null) return [row[0]];
+          const exact = exactCairoTime_(shown[i][0], shown[i][1]);
+          if (sameCairoTime_(shown[i][0], exact)) return [row[0]];
+          changed++;
+          return [exact];
+        });
+        range.offset(0, 0, out.length, 1).setValues(out);
+        return { changed };
+      }, 50000);
+    case 'autoArchiveOn':
+      disableAutoArchive_();
+      ScriptApp.newTrigger('archiveClosedMonthsAuto').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
+      return { status: sheetStatus_(false) };
+    case 'autoArchiveOff':
+      disableAutoArchive_();
+      return { status: sheetStatus_(false) };
+    case 'setMapping':
+      return withLock_(() => ({ ...setMapping_(Array.isArray(body.entries) ? body.entries.slice(0, 200) : []), status: sheetStatus_(false) }), 50000);
+    default:
+      throw new Error('Unknown action');
+  }
+}
+
 function jsonOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -535,7 +643,9 @@ function safeEqual_(a, b) {
  * Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone). Put the web app URL and the same
  * secret in the dashboard's IMPORT_WEBHOOK_URL / IMPORT_WEBHOOK_SECRET settings. The secret is what protects it.
  *
- * Request body (JSON): { secret, action: 'ping' } or { secret, action: 'import', rows: string[13][] }
+ * Request body (JSON): { secret, action: 'ping' | 'status' | 'check' | 'repair' | 'archive' | 'fixTimes' |
+ * 'autoArchiveOn' | 'autoArchiveOff' | 'setMapping' (entries: [{agent, opener}]) } or
+ * { secret, action: 'import', rows: string[13][] }
  */
 function doPost(e) {
   try {
@@ -545,7 +655,8 @@ function doPost(e) {
       return jsonOut_({ ok: false, error: 'Unauthorized' });
     }
     if (body.action === 'ping') return jsonOut_({ ok: true, pong: true });
-    if (body.action !== 'import' || !Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
+    if (body.action !== 'import') return jsonOut_({ ok: true, ...runSheetAction_(body) });
+    if (!Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
     if (body.rows.length > 12000) return jsonOut_({ ok: false, error: 'Too many rows in one request (max 12000)' });
 
     const width = CONFIG.RAW_HEADERS.length;
@@ -1039,35 +1150,55 @@ function repairCallLogs() {
 
 function repairCallLogsLocked_() {
   const ui = SpreadsheetApp.getUi();
+  const result = runRepair_({ interactive: true });
+  if (result.skipped) return;
+  ui.alert(`Done. ${result.duplicates} duplicate row(s) removed, ${result.redated} call time(s) corrected.\n\nBackup saved as a hidden sheet named "${result.backup}" (right-click any tab > Show hidden sheets).`);
+  refreshDashboard();
+}
+
+/**
+ * Removes duplicate copies from Call Logs and puts times on exact Cairo time.
+ * @param {{interactive: boolean}} opts interactive = confirm first and keep a dated backup; otherwise a single
+ *   rolling backup sheet ("Call Logs backup (web repair)") is replaced each time so backups never pile up.
+ * @returns {{skipped?: string, duplicates: number, redated: number, rows: number, backup?: string}}
+ */
+function runRepair_(opts) {
+  const ui = opts.interactive ? SpreadsheetApp.getUi() : null;
   const plan = buildRepairedCallLog_();
   if (!plan) {
-    ui.alert('Call Logs is empty.');
-    return;
+    if (ui) ui.alert('Call Logs is empty.');
+    return { skipped: 'Call Logs is empty', duplicates: 0, redated: 0, rows: 0 };
   }
   if (plan.duplicates === 0 && plan.redated === 0) {
-    ui.alert('Nothing to repair: no duplicate calls and every call time is already exact.');
-    return;
+    if (ui) ui.alert('Nothing to repair: no duplicate calls and every call time is already exact.');
+    return { skipped: 'nothing to repair', duplicates: 0, redated: 0, rows: plan.rows.length };
   }
-  const answer = ui.alert(
-    'Repair Call Logs?',
-    `This will remove ${plan.duplicates} duplicate row(s) and correct ${plan.redated} call time(s), leaving ${plan.rows.length} rows.\n\nA backup copy of the sheet is saved first.`,
-    ui.ButtonSet.OK_CANCEL
-  );
-  if (answer !== ui.Button.OK) return;
+  if (ui) {
+    const answer = ui.alert(
+      'Repair Call Logs?',
+      `This will remove ${plan.duplicates} duplicate row(s) and correct ${plan.redated} call time(s), leaving ${plan.rows.length} rows.\n\nA backup copy of the sheet is saved first.`,
+      ui.ButtonSet.OK_CANCEL
+    );
+    if (answer !== ui.Button.OK) return { skipped: 'cancelled', duplicates: 0, redated: 0, rows: plan.original };
+  }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
-  const stamp = Utilities.formatDate(new Date(), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HHmm');
-  const backup = callLog.copyTo(ss).setName(`Call Logs backup ${stamp}`);
-  backup.hideSheet();
+  let backupName;
+  if (opts.interactive) {
+    backupName = `Call Logs backup ${Utilities.formatDate(new Date(), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HHmm')}`;
+  } else {
+    backupName = 'Call Logs backup (web repair)';
+    const old = ss.getSheetByName(backupName);
+    if (old) ss.deleteSheet(old);
+  }
+  callLog.copyTo(ss).setName(backupName).hideSheet();
 
   const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
   const lastRow = callLog.getLastRow();
   callLog.getRange(2, 1, lastRow - 1, numCols).clearContent();
   callLog.getRange(2, 1, plan.rows.length, numCols).setValues(plan.rows);
-
-  ui.alert(`Done. ${plan.duplicates} duplicate row(s) removed, ${plan.redated} call time(s) corrected.\n\nBackup saved as a hidden sheet named "${backup.getName()}" (right-click any tab > Show hidden sheets).`);
-  refreshDashboard();
+  return { duplicates: plan.duplicates, redated: plan.redated, rows: plan.rows.length, backup: backupName };
 }
 
 /**

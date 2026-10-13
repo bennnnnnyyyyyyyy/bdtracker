@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mapCallExportRows, parseCallExportFile, parseCsv } from '../src/lib/ultatelFile';
-import { chunkRowsByCall, sendRowsToSheet } from '../src/lib/importWebhook';
+import { chunkRowsByCall, runSheetAction, sendRowsToSheet } from '../src/lib/importWebhook';
 
 const HEADER = 'Call Date,Call ID,From,To,Extension,Department,DID,Description,Type,Outcome,Duration,Notes,Call Path,Team Call';
 const csv = [
@@ -83,5 +83,25 @@ describe('sending rows to the sheet', () => {
   it('refuses to run when not configured', async () => {
     delete process.env.IMPORT_WEBHOOK_URL;
     await expect(sendRowsToSheet([row('1791000001.1')], vi.fn() as unknown as typeof fetch)).rejects.toThrow(/not set up/);
+  });
+});
+
+describe('sheet maintenance actions', () => {
+  const reply = (body: unknown) => ({ text: async () => JSON.stringify(body) }) as Response;
+
+  it('sends the action and extra data with the secret, and returns the sheet reply', async () => {
+    process.env.IMPORT_WEBHOOK_URL = 'https://script.example/exec';
+    process.env.IMPORT_WEBHOOK_SECRET = 'shh';
+    const fetchFn = vi.fn().mockResolvedValue(reply({ ok: true, repair: { duplicates: 3 } }));
+    const result = await runSheetAction('repair', { entries: [] }, fetchFn as unknown as typeof fetch);
+    expect(result).toMatchObject({ repair: { duplicates: 3 } });
+    const sent = JSON.parse(fetchFn.mock.calls[0][1].body);
+    expect(sent).toMatchObject({ secret: 'shh', action: 'repair', entries: [] });
+  });
+
+  it('turns a rejection into an error message', async () => {
+    process.env.IMPORT_WEBHOOK_URL = 'https://script.example/exec';
+    process.env.IMPORT_WEBHOOK_SECRET = 'shh';
+    await expect(runSheetAction('archive', {}, vi.fn().mockResolvedValue(reply({ ok: false, error: 'Unknown action' })) as unknown as typeof fetch)).rejects.toThrow(/Unknown action/);
   });
 });

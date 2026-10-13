@@ -8,6 +8,7 @@ import { CallLogsView } from '@/components/CallLogsView';
 import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
+import { SheetToolsModal } from '@/components/SheetToolsModal';
 import { ConfirmationsView } from '@/components/ConfirmationsView';
 import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse, CallRecord } from '@/types/dashboard';
@@ -116,6 +117,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('agents');
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [sheetToolsOpen, setSheetToolsOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [callLogs, setCallLogs] = useState<{ key: string; calls: CallRecord[] } | null>(null);
   const [callLogsError, setCallLogsError] = useState<string | null>(null);
@@ -270,6 +272,7 @@ export default function DashboardPage() {
         openers={data?.openers || []}
         onRefresh={() => fetchData(true)}
         onOpenImportModal={() => setImportModalOpen(true)}
+        onOpenSheetTools={data?.viewer && (data.viewer.role === 'admin' || data.viewer.role === 'manager') ? () => setSheetToolsOpen(true) : undefined}
         onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
         onExportCsv={data ? (kind) => exportDashboardCsv(data, filters, kind) : undefined}
         loading={loading}
@@ -280,10 +283,18 @@ export default function DashboardPage() {
         dataSourceInfo={data?.dataSourceInfo}
       />
 
+      <SheetToolsModal
+        isOpen={sheetToolsOpen}
+        onClose={() => setSheetToolsOpen(false)}
+        isAdmin={data?.viewer?.role === 'admin'}
+        onChanged={() => fetchData(true, true)}
+      />
+
       <FileImportModal
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
         onSuccess={() => fetchData(true)}
+        isAdmin={data?.viewer?.role === 'admin'}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">

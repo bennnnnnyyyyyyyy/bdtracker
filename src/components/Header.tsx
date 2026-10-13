@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Calendar, ChevronDown, FileSpreadsheet, FileText, LogOut, PhoneCall, RefreshCw, Upload, User, Users, X } from 'lucide-react';
+import { Calendar, ChevronDown, FileSpreadsheet, FileText, LogOut, Wrench, PhoneCall, RefreshCw, Upload, User, Users, X } from 'lucide-react';
 import { DataSourceInfo, FilterState, OpenerStats, ViewerInfo } from '@/types/dashboard';
 import { CSV_KINDS, CsvKind } from '@/lib/exportXlsx';
 
@@ -14,6 +14,7 @@ interface HeaderProps {
   onOpenImportModal?: () => void;
   onExportXlsx?: () => void;
   onExportCsv?: (kind: CsvKind) => void;
+  onOpenSheetTools?: () => void;
   loading: boolean;
   lastUpdated: string;
   isMockData?: boolean;
@@ -37,7 +38,7 @@ const PRESETS: PresetOption[] = [
   { label: 'Last 30 days', value: 'last_30_days', getRange: () => { const end = new Date(); const start = new Date(end); start.setDate(end.getDate() - 29); return { startDate: formatLocalDateYMD(start), endDate: formatLocalDateYMD(end) }; } },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, onExportCsv, loading, lastUpdated, isMockData, dataSourceInfo, viewer, pollFailed }) => {
+export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, onExportCsv, onOpenSheetTools, loading, lastUpdated, isMockData, dataSourceInfo, viewer, pollFailed }) => {
   const updatedAt = lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
   const signOut = async () => {
     await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
@@ -64,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {(onExportXlsx || onExportCsv || onOpenImportModal) && (
+            {(onExportXlsx || onExportCsv || onOpenImportModal || onOpenSheetTools) && (
               <details className="relative">
                 <summary className="list-none flex items-center gap-1.5 min-h-9 px-3 rounded-lg text-xs font-semibold cursor-pointer border border-white/10 text-text-primary"><ChevronDown className="w-3.5 h-3.5" />Actions</summary>
                 <div className="absolute right-0 top-11 z-40 w-64 rounded-lg bg-card border border-white/10 shadow-xl p-1.5">
@@ -77,6 +78,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
                       ))}
                     </>
                   )}
+                  {onOpenSheetTools && <button onClick={onOpenSheetTools} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><Wrench className="w-3.5 h-3.5 text-gold-light" />Call log maintenance</button>}
                   {onOpenImportModal && <button onClick={onOpenImportModal} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><Upload className="w-3.5 h-3.5 text-gold-light" />Import Excel</button>}
                 </div>
               </details>

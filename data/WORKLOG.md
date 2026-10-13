@@ -101,6 +101,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 ### 18. CSV in and out
 - Import: Ultatel Call Details files can be CSV or Excel (already supported for call exports); the Ultatel per-department summary can now also be a CSV (local use). Export: Actions menu > Export CSV (agent overview, meetings with show confirmation, daily / weekly / monthly performance) and an Export CSV button on the Call Logs tab (respects its search and filters). CSV cells that could run as spreadsheet formulas are neutralised; XLSX export gained Weekly / Monthly sheets and confirmation columns.
 
+### 19. Maintenance buttons
+- The Apps Script web app now also runs status, check, repair, archive, fix times, automatic archiving on/off and Opener-name saving; the dashboard exposes them in **Actions > Call log maintenance** and in the upload dialog (repair and re-check; name new agents). Rolling single backup for web repairs.
+
 ---
 
 ## Documentation Manifest in `data/`

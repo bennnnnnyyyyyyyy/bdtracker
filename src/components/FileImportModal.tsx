@@ -7,14 +7,28 @@ interface FileImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** Admins also get the one-click "Repair duplicates" fix when the check fails. */
+  isAdmin?: boolean;
 }
 
-export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClose, onSuccess }) => {
+async function sheetCall(action: string, extra: Record<string, unknown> = {}) {
+  const res = await fetch('/api/sheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }) });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'The action failed');
+  return json;
+}
+
+export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClose, onSuccess, isAdmin }) => {
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [details, setDetails] = useState<string[]>([]);
+  const [lastFile, setLastFile] = useState<File | null>(null);   // kept so a failed check can be retried after a repair
+  const [checkFailed, setCheckFailed] = useState(false);
+  const [newAgents, setNewAgents] = useState<string[]>([]);
+  const [openers, setOpeners] = useState<Record<string, string>>({});
+  const [fixing, setFixing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -52,14 +66,16 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
     }
   };
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const uploadFile = async (target: File) => {
     setUploading(true);
     setStatusMessage(null);
+    setCheckFailed(false);
+    setNewAgents([]);
+    setLastFile(target);
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', target);
 
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -86,13 +102,15 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
           lines.push('Check passed: every agent in the file matches the sheet.');
         }
         if ((json.newAgents as string[] | undefined)?.length) {
-          lines.push(`New agent(s) added to Agent Mapping: ${(json.newAgents as string[]).join(', ')}. Fill in their Opener name in the sheet.`);
+          lines.push(`New agent(s) added to Agent Mapping: ${(json.newAgents as string[]).join(', ')}. Enter their Opener name below.`);
         }
       }
       setDetails(lines);
+      setCheckFailed(json.fileType === 'ultatel_calls' && json.checkOk === false);
+      setNewAgents((json.newAgents as string[] | undefined) ?? []);
       setFile(null);
 
-      // Trigger automatic dashboard refresh; stay open longer when there is something to read.
+      // Trigger automatic dashboard refresh; stay open longer when there is something to read or do.
       setTimeout(() => {
         onSuccess();
         if (lines.length === 0) onClose();
@@ -104,6 +122,39 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
       });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleUpload = () => {
+    if (file) void uploadFile(file);
+  };
+
+  // One click: repair duplicate rows in the sheet, then upload the same file again to re-check it.
+  const repairAndRecheck = async () => {
+    if (!lastFile) return;
+    setFixing(true);
+    try {
+      await sheetCall('repair');
+      await uploadFile(lastFile);
+    } catch (err: unknown) {
+      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Repair failed' });
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  const saveOpenerNames = async () => {
+    setFixing(true);
+    try {
+      const entries = newAgents.map((agent) => ({ agent, opener: (openers[agent] ?? '').trim() || agent.split(' ')[0] }));
+      await sheetCall('setMapping', { entries });
+      setNewAgents([]);
+      setDetails((prev) => [...prev, 'Opener names saved.']);
+      onSuccess();
+    } catch (err: unknown) {
+      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not save the names' });
+    } finally {
+      setFixing(false);
     }
   };
 
@@ -212,6 +263,32 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
             <ul className="space-y-1 text-[11px] text-slate-300 list-disc pl-5">
               {details.map((line) => <li key={line}>{line}</li>)}
             </ul>
+          )}
+          {checkFailed && (
+            isAdmin ? (
+              <button onClick={repairAndRecheck} disabled={fixing || uploading} className="px-3 py-2 rounded-lg text-xs font-semibold border border-[rgba(201,168,76,0.35)] text-[#e8c56a] disabled:opacity-40 flex items-center gap-2">
+                {(fixing || uploading) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}Repair duplicates and check again
+              </button>
+            ) : (
+              <p className="text-[11px] text-slate-400">Ask an admin to repair the duplicates (Actions &gt; Call log maintenance).</p>
+            )
+          )}
+          {newAgents.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-white/10 p-3">
+              <p className="text-[11px] text-slate-300">New agent(s) need the name the BD tracker uses for them:</p>
+              {newAgents.map((agent) => (
+                <label key={agent} className="flex items-center gap-2 text-[11px]">
+                  <span className="w-40 shrink-0 truncate text-slate-300">{agent}</span>
+                  <input
+                    value={openers[agent] ?? ''}
+                    onChange={(e) => setOpeners({ ...openers, [agent]: e.target.value })}
+                    placeholder={agent.split(' ')[0]}
+                    className="flex-1 rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-xs focus:outline-none focus:border-[#e8c56a]"
+                  />
+                </label>
+              ))}
+              <button onClick={saveOpenerNames} disabled={fixing} className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-white disabled:opacity-40">Save names</button>
+            </div>
           )}
         </div>
 
