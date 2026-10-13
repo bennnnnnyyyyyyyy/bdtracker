@@ -104,6 +104,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 ### 19. Maintenance buttons
 - The Apps Script web app now also runs status, check, repair, archive, fix times, automatic archiving on/off and Opener-name saving; the dashboard exposes them in **Actions > Call log maintenance** and in the upload dialog (repair and re-check; name new agents). Rolling single backup for web repairs.
 
+### 20. Attendance dates without a year
+- Checked the real `BD _ French Dashboard 2026.xlsx`: 13 people, 2025-12-28 to 2026-11-28. Reading the file directly worked, but the Google Sheets API (formatted text) returns headers like `12/28` with no year, which parsed to nothing. The attendance read now asks for raw values and, as a safety net, infers the year from text headers.
+
 ---
 
 ## Documentation Manifest in `data/`

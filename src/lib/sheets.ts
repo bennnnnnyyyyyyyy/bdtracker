@@ -253,7 +253,10 @@ export async function fetchAttendanceData(): Promise<AttendanceFetchResult> {
     try {
       const res = await sheets.spreadsheets.values.get({
         spreadsheetId: CONFIG.ATTENDANCE_SHEET_ID,
-        range: `'${CONFIG.ATTENDANCE_SHEET_NAME}'!A1:AT`
+        range: `'${CONFIG.ATTENDANCE_SHEET_NAME}'!A1:AT`,
+        // Raw values: dates arrive as date numbers (the header shows "12/28" without a year when formatted).
+        valueRenderOption: 'UNFORMATTED_VALUE',
+        dateTimeRenderOption: 'SERIAL_NUMBER'
       });
 
       if (res.data.values && res.data.values.length > 0) {

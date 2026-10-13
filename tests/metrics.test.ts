@@ -176,3 +176,28 @@ describe('shows require management confirmation', () => {
     expect(new Set(keys).size).toBe(2);
   });
 });
+
+describe('attendance headers without a year', () => {
+  const text = [
+    ['Date', '12/28', '12/29', '1/1', '1/2'],
+    ['Ben Arthur', 'P', 'H', 'Q', 'P'],
+    ['Date', '1/28', '1/29', '2/1'],
+    ['Ben Arthur', 'P', 'P', 'L1'],
+  ];
+
+  it('infers the year, rolling over New Year, when the dates are plain text like 12/28', () => {
+    const att = parseAttendanceRows(text, { year: 2026 });
+    expect(Object.keys(att.agentDaily['Ben Arthur']).sort()).toEqual([
+      '2025-12-28', '2025-12-29', '2026-01-01', '2026-01-02', '2026-01-28', '2026-01-29', '2026-02-01',
+    ]);
+    expect(att.agentDaily['Ben Arthur']['2025-12-29']).toBe(0.5);
+  });
+
+  it('gives the same result for real date cells (serial numbers)', () => {
+    const serial = (iso: string) => Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000) + 25569;
+    const real = [['Date', serial('2025-12-28'), serial('2025-12-29'), serial('2026-01-01'), serial('2026-01-02')], text[1]];
+    const a = parseAttendanceRows(real, { year: 2026 });
+    const b = parseAttendanceRows(text.slice(0, 2), { year: 2026 });
+    expect(a.agentDaily).toEqual(b.agentDaily);
+  });
+});

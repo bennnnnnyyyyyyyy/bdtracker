@@ -39,7 +39,37 @@ export function normalizeAttendanceAgent(name: string): string {
 /**
  * Parses attendance rows from either a Google Sheets 2D array or an xlsx sheet_to_json 2D array.
  */
-export function parseAttendanceRows(rows: unknown[][]): AttendanceDataset {
+/**
+ * Dates in the Attendance header rows are normally real date cells. When they come as plain text such as "12/28"
+ * (no year), the year is inferred: it starts at `year` (or the year before if the block begins in December and runs
+ * into the new year) and moves forward whenever the month wraps around.
+ */
+function headerDates(row: unknown[], year: number): { colIndex: number; date: string }[] {
+  const out: { colIndex: number; date: string }[] = [];
+  const textual = (v: unknown) => /^\s*(\d{1,2})\/(\d{1,2})\s*$/.exec(String(v ?? ''));
+  const months = row.slice(1, 33).map((v) => textual(v)).filter(Boolean).map((m) => Number((m as RegExpExecArray)[1]));
+  let currentYear = months.length > 0 && months[0] === 12 && months.some((m) => m <= 2) ? year - 1 : year;
+  let prevMonth = 0;
+  for (let c = 1; c < Math.min(row.length, 33); c++) {
+    const m = textual(row[c]);
+    if (m) {
+      const month = Number(m[1]);
+      const day = Number(m[2]);
+      if (month < prevMonth) currentYear++;
+      prevMonth = month;
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        out.push({ colIndex: c, date: `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` });
+      }
+      continue;
+    }
+    const iso = parseDateToISO(row[c]);
+    if (iso) out.push({ colIndex: c, date: iso });
+  }
+  return out;
+}
+
+export function parseAttendanceRows(rows: unknown[][], opts: { year?: number } = {}): AttendanceDataset {
+  const defaultYear = opts.year ?? (Number(process.env.ATTENDANCE_YEAR) || new Date().getFullYear());
   const agentDaily: AgentDailyAttendance = {};
   const agentMonthly: AgentMonthlyAttendance = {};
 
@@ -57,15 +87,8 @@ export function parseAttendanceRows(rows: unknown[][]): AttendanceDataset {
 
     // Header row containing dates
     if (col0 === 'date') {
-      currentDates = [];
       // Columns B through AG (indices 1 to 32) represent days of the pay period
-      for (let c = 1; c < Math.min(row.length, 33); c++) {
-        const cellVal = row[c];
-        const iso = parseDateToISO(cellVal);
-        if (iso) {
-          currentDates.push({ colIndex: c, date: iso });
-        }
-      }
+      currentDates = headerDates(row, defaultYear);
       continue;
     }
 
