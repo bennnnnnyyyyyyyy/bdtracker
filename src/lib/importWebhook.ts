@@ -77,7 +77,7 @@ function describeBadReply(text: string): string {
   return `The Apps Script web app did not answer with data. It said: "${plain || 'nothing'}". Check that the web app is deployed with access "Anyone", that IMPORT_WEBHOOK_URL is its current /exec URL (a new deployment creates a new URL; use Manage deployments > edit > New version to keep the old one), and that the script did not run out of time.`;
 }
 
-export type SheetAction = 'status' | 'check' | 'repair' | 'archive' | 'fixTimes' | 'autoArchiveOn' | 'autoArchiveOff' | 'setMapping';
+export type SheetAction = 'status' | 'check' | 'repair' | 'archive' | 'fixTimes' | 'autoArchiveOn' | 'autoArchiveOff' | 'setMapping' | 'replaceStatus';
 
 /** A maintenance action on the call-log sheet (see runSheetAction_ in the Apps Script). */
 export async function runSheetAction(action: SheetAction, extra: Record<string, unknown> = {}, fetchFn: Fetch = fetch): Promise<Record<string, unknown>> {
@@ -131,36 +131,24 @@ export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch, 
   return total;
 }
 
-export interface ReplaceTab { name: string; minEpoch: number; maxEpoch: number }
-
-/** Replace mode, step 1: which sheet tabs hold calls in the period the file covers (and the file's period). */
-export async function planReplace(rows: string[][], fetchFn: Fetch = fetch): Promise<{ minEpoch: number; maxEpoch: number; tabs: ReplaceTab[] }> {
+/**
+ * Replace mode: hands the sheet the call-identifying columns of the whole file. The sheet then backs up and cleans
+ * every affected tab in the background (a trigger), because that takes longer than one web request may. Progress
+ * comes from the "replaceStatus" action.
+ */
+export async function startReplace(rows: string[][], backupId: string, fetchFn: Fetch = fetch): Promise<Record<string, unknown>> {
   let minEpoch = Infinity;
   let maxEpoch = -Infinity;
+  const KEEP = [1, 2, 3, 4, 8, 9, 10];
+  const slim: string[][] = [];
   rows.forEach((r) => {
     const e = callEpoch(r[1]);
-    if (e !== null) { minEpoch = Math.min(minEpoch, e); maxEpoch = Math.max(maxEpoch, e); }
+    if (e === null) return;
+    minEpoch = Math.min(minEpoch, e);
+    maxEpoch = Math.max(maxEpoch, e);
+    slim.push(r.map((cell, i) => (KEEP.includes(i) ? cell : '')));
   });
-  if (!isFinite(minEpoch)) throw new Error('The file has no calls with a Call ID timestamp, so there is nothing to replace.');
-  const reply = await postToSheet<{ ok?: boolean; error?: string; tabs: ReplaceTab[] }>({ action: 'replacePlan', minEpoch, maxEpoch }, fetchFn);
-  return { minEpoch, maxEpoch, tabs: reply.tabs ?? [] };
-}
-
-/**
- * Replace mode, step 2 (one tab per request): the sheet backs the tab up (hidden "Backup ..." tab), then removes the
- * tab's calls inside the period that the file does not hold. Only the columns that identify a call are sent.
- */
-export async function replaceTabInSheet(rows: string[][], tab: ReplaceTab, backupId: string, fetchFn: Fetch = fetch): Promise<number> {
-  const KEEP = [1, 2, 3, 4, 8, 9, 10];
-  const slim = rows
-    .filter((r) => {
-      const e = callEpoch(r[1]);
-      return e !== null && e >= tab.minEpoch && e <= tab.maxEpoch;
-    })
-    .map((r) => r.map((cell, i) => (KEEP.includes(i) ? cell : '')));
-  const reply = await postToSheet<{ ok?: boolean; error?: string; removed?: number }>(
-    { action: 'replaceTab', tab: tab.name, minEpoch: tab.minEpoch, maxEpoch: tab.maxEpoch, backupId, rows: slim },
-    fetchFn,
-  );
-  return reply.removed ?? 0;
+  if (slim.length === 0) throw new Error('The file has no calls with a Call ID timestamp, so there is nothing to replace.');
+  const reply = await postToSheet<{ ok?: boolean; error?: string; job?: Record<string, unknown> }>({ action: 'replaceStart', minEpoch, maxEpoch, backupId, rows: slim }, fetchFn);
+  return reply.job ?? {};
 }

@@ -123,14 +123,20 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
       let removed = 0;
       let sum = { imported: first.imported, duplicates: first.duplicates, newAgents: first.newAgents, checkOk: first.checkOk, checkProblems: first.checkProblems };
       if (replace && json.fileType === 'ultatel_calls') {
-        setStatusMessage({ type: 'success', text: 'Looking for old rows that are not in the file…' });
-        const plan = await post({ phase: 'plan' });
-        const tabs = (plan.tabs as { name: string; minEpoch: number; maxEpoch: number }[]) ?? [];
-        for (let i = 0; i < tabs.length; i++) {
-          setStatusMessage({ type: 'success', text: `Backing up and cleaning "${tabs[i].name}" (${i + 1} of ${tabs.length})…` });
-          const r = await post({ phase: 'tab', tab: tabs[i].name, minEpoch: String(tabs[i].minEpoch), maxEpoch: String(tabs[i].maxEpoch), backupId });
-          removed += (r.removed as number) ?? 0;
+        setStatusMessage({ type: 'success', text: 'Sending the file to the sheet for cleaning…' });
+        await post({ phase: 'start', backupId });
+        // The sheet backs up and cleans each affected tab in the background; ask it how far it is.
+        let job: Record<string, unknown> | null = null;
+        for (let i = 0; i < 300; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          job = ((await sheetCall('replaceStatus')).job as Record<string, unknown> | null) ?? null;
+          if (!job) throw new Error('The sheet lost track of the clean-up. Run it again.');
+          if (job.state === 'error') throw new Error(`The clean-up failed: ${job.error as string}`);
+          if (job.state === 'done') break;
+          setStatusMessage({ type: 'success', text: `Backing up and cleaning old rows… ${job.current ? `"${job.current as string}" ` : ''}(${(job.done as number) ?? 0} of ${(job.total as number) || '?'} tabs, ${(job.removed as number) ?? 0} removed so far)` });
         }
+        if (!job || job.state !== 'done') throw new Error('The clean-up is still running in the sheet. Wait a few minutes, then upload the file again (without Replace) to check.');
+        removed = (job.removed as number) ?? 0;
         const verify = await runImport(false, 'Checking');
         json = verify.last;
         sum = { ...sum, checkOk: verify.checkOk, checkProblems: verify.checkProblems, newAgents: Array.from(new Set([...sum.newAgents, ...verify.newAgents])) };

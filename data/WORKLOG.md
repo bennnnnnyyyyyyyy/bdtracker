@@ -133,3 +133,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 24. Replace mode split into steps
 - Doing the removal inside every import part made the first request exceed the 55 s limit ("operation was aborted due to timeout"). Replace mode now runs as: (1) import with the per-part check skipped, (2) `replacePlan` lists the tabs holding calls in the file's period, then one `replaceTab` request per tab (backup copy first, then removal; only the call-identifying columns are sent), (3) a final verifying import, which also produces the check. Each step can be repeated safely.
+
+## 25. Replace mode cleans in the background
+- Even one tab per request could exceed a web request's time. The upload now sends the file's call-identifying columns once (`replaceStart`); the sheet stores them in a hidden `Replace Job` tab and a time-driven trigger (`replaceJobRun_`, up to 6 minutes) backs up and cleans every affected tab. The dashboard polls `replaceStatus` (via `/api/sheet`) every 5 s, then runs the verifying import. A stalled job is reported as an error after 12 minutes; tabs already cleaned stay cleaned and backed up.

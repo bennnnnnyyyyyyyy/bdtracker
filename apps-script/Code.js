@@ -527,6 +527,110 @@ function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId) {
   return dropped;
 }
 
+// ---- Replace mode runs in the background (a time-driven trigger), because cleaning big tabs takes longer than a web request may ----
+const REPLACE_JOB_SHEET_ = 'Replace Job';
+const REPLACE_JOB_PROP_ = 'REPLACE_JOB';
+
+function getReplaceJob_() {
+  const raw = PropertiesService.getScriptProperties().getProperty(REPLACE_JOB_PROP_);
+  return raw ? JSON.parse(raw) : null;
+}
+
+function saveReplaceJob_(job) {
+  job.updated = Date.now();
+  PropertiesService.getScriptProperties().setProperty(REPLACE_JOB_PROP_, JSON.stringify(job));
+}
+
+function deleteReplaceTriggers_() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'replaceJobRun_') ScriptApp.deleteTrigger(t);
+  });
+}
+
+/** Current state of the background clean-up: {state: 'queued'|'running'|'done'|'error', ...} or null. */
+function replaceJobStatus_() {
+  const job = getReplaceJob_();
+  if (!job) return null;
+  if ((job.state === 'queued' || job.state === 'running') && Date.now() - job.updated > 12 * 60 * 1000) {
+    job.state = 'error';
+    job.error = 'The clean-up stopped before finishing. Rows already removed are backed up; run it again.';
+  }
+  return job;
+}
+
+/**
+ * Starts the background clean-up of replace mode: stores the file's calls in a hidden "Replace Job" tab and schedules
+ * replaceJobRun_ to back up and clean every affected tab (see replaceTab_).
+ * @param {string[][]} rows slim export rows (only the call-identifying columns filled)
+ */
+function replaceStart_(rows, minEpoch, maxEpoch, backupId) {
+  const existing = replaceJobStatus_();
+  if (existing && (existing.state === 'queued' || existing.state === 'running')) {
+    throw new Error('A clean-up is already running (' + (existing.current || 'starting') + '). Wait for it to finish.');
+  }
+  if (!isFinite(minEpoch) || !isFinite(maxEpoch) || rows.length === 0) throw new Error('Nothing to replace.');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const old = ss.getSheetByName(REPLACE_JOB_SHEET_);
+  if (old) ss.deleteSheet(old);
+  const width = CONFIG.RAW_HEADERS.length;
+  const sheet = ss.insertSheet(REPLACE_JOB_SHEET_);
+  sheet.hideSheet();
+  const data = rows.map(r => {
+    const row = [];
+    for (let i = 0; i < width; i++) row.push(r && r[i] !== undefined && r[i] !== null ? String(r[i]) : '');
+    return row;
+  });
+  sheet.getRange(1, 1, data.length, width).setNumberFormat('@').setValues(data);
+  SpreadsheetApp.flush();
+  const job = { state: 'queued', minEpoch, maxEpoch, backupId, rows: data.length, removed: 0, done: 0, total: 0, current: '' };
+  saveReplaceJob_(job);
+  deleteReplaceTriggers_();
+  ScriptApp.newTrigger('replaceJobRun_').timeBased().after(2000).create();
+  return job;
+}
+
+/** Trigger handler: backs up and cleans every tab holding calls of the stored export. */
+function replaceJobRun_() {
+  deleteReplaceTriggers_();
+  const job = getReplaceJob_();
+  if (!job || job.state !== 'queued') return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    job.current = 'waiting for the sheet';
+    saveReplaceJob_(job);
+    ScriptApp.newTrigger('replaceJobRun_').timeBased().after(30000).create();
+    return;
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  try {
+    job.state = 'running';
+    saveReplaceJob_(job);
+    const jobSheet = ss.getSheetByName(REPLACE_JOB_SHEET_);
+    if (!jobSheet || jobSheet.getLastRow() < 1) throw new Error('The stored export is missing.');
+    const rows = jobSheet.getRange(1, 1, jobSheet.getLastRow(), CONFIG.RAW_HEADERS.length).getDisplayValues();
+    const tabs = replacePlan_(job.minEpoch, job.maxEpoch);
+    job.total = tabs.length;
+    tabs.forEach((t, i) => {
+      job.current = t.name;
+      saveReplaceJob_(job);
+      job.removed += replaceTab_(t.name, rows, t.minEpoch, t.maxEpoch, job.backupId);
+      job.done = i + 1;
+      saveReplaceJob_(job);
+    });
+    job.state = 'done';
+    job.current = '';
+  } catch (err) {
+    job.state = 'error';
+    job.error = String(err && err.message ? err.message : err);
+  } finally {
+    saveReplaceJob_(job);
+    const js = ss.getSheetByName(REPLACE_JOB_SHEET_);
+    if (js) ss.deleteSheet(js);
+    lock.releaseLock();
+  }
+}
+
+
 /** Message lines for the result of reconcileImportData_. */
 function formatReconcile_(check) {
   return check.ok
@@ -691,6 +795,8 @@ function runSheetAction_(body) {
         range.offset(0, 0, out.length, 1).setValues(out);
         return { changed };
       }, 50000);
+    case 'replaceStatus':
+      return { job: replaceJobStatus_() };
     case 'autoArchiveOn':
       disableAutoArchive_();
       ScriptApp.newTrigger('archiveClosedMonthsAuto').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
@@ -736,14 +842,10 @@ function doPost(e) {
       return jsonOut_({ ok: false, error: 'Unauthorized' });
     }
     if (body.action === 'ping') return jsonOut_({ ok: true, pong: true });
-    if (body.action === 'replacePlan') {
-      return jsonOut_({ ok: true, tabs: withLock_(() => replacePlan_(Number(body.minEpoch), Number(body.maxEpoch)), 50000) });
-    }
-    if (body.action === 'replaceTab') {
+    if (body.action === 'replaceStart') {
       if (!Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
       const backupId = String(body.backupId || 'manual').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20);
-      const removed = withLock_(() => replaceTab_(String(body.tab || ''), body.rows, Number(body.minEpoch), Number(body.maxEpoch), backupId), 50000);
-      return jsonOut_({ ok: true, removed });
+      return jsonOut_({ ok: true, job: withLock_(() => replaceStart_(body.rows, Number(body.minEpoch), Number(body.maxEpoch), backupId), 50000) });
     }
     if (body.action !== 'import') return jsonOut_({ ok: true, ...runSheetAction_(body) });
     if (!Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
