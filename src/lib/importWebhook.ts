@@ -65,10 +65,16 @@ async function postToSheet<T extends { ok?: boolean; error?: string }>(payload: 
   try {
     body = JSON.parse(text);
   } catch {
-    throw new Error('The Apps Script web app did not answer with data. Check that it is deployed with access "Anyone" and that IMPORT_WEBHOOK_URL is the web app URL.');
+    throw new Error(describeBadReply(text));
   }
   if (!body.ok) throw new Error(`The sheet rejected the request: ${body.error || 'unknown error'}`);
   return body;
+}
+
+/** Explains a reply that is not JSON, quoting what Google actually sent (HTML tags removed). */
+function describeBadReply(text: string): string {
+  const plain = text.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240);
+  return `The Apps Script web app did not answer with data. It said: "${plain || 'nothing'}". Check that the web app is deployed with access "Anyone", that IMPORT_WEBHOOK_URL is its current /exec URL (a new deployment creates a new URL; use Manage deployments > edit > New version to keep the old one), and that the script did not run out of time.`;
 }
 
 export type SheetAction = 'status' | 'check' | 'repair' | 'archive' | 'fixTimes' | 'autoArchiveOn' | 'autoArchiveOff' | 'setMapping';
@@ -106,7 +112,7 @@ export async function sendRowsToSheet(rows: string[][], fetchFn: Fetch = fetch, 
       try {
         body = JSON.parse(text);
       } catch {
-        throw new Error('The Apps Script web app did not answer with data. Check that it is deployed with access "Anyone" and that IMPORT_WEBHOOK_URL is the web app URL.');
+        throw new Error(describeBadReply(text));
       }
     } catch (err) {
       const done = total.imported + total.duplicates;
