@@ -221,7 +221,7 @@ function collectLogRowsDisplay_(minEpoch, maxEpoch) {
   tabs.forEach(name => {
     const sheet = ss.getSheetByName(name);
     if (!sheet || sheet.getLastRow() < 2) return;
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getDisplayValues().forEach(r => rows.push(r));
+    getDisplayExact_(sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols)).forEach(r => rows.push(r));
   });
   return rows;
 }
@@ -244,7 +244,7 @@ function runArchive_(opts) {
   const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
   const range = callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols);
   const vals = range.getValues();
-  const disp = range.getDisplayValues();
+  const disp = getDisplayExact_(range);
   const cutoff = Math.floor(Date.now() / 1000) - CONFIG.ARCHIVE_KEEP_DAYS * 86400;
 
   const keep = [];
@@ -476,7 +476,7 @@ function replacePlan_(minEpoch, maxEpoch) {
     if (!sheet || sheet.getLastRow() < 2) return;
     let lo = Infinity;
     let hi = -Infinity;
-    sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getDisplayValues().forEach(r => {
+    getDisplayExact_(sheet.getRange(2, 2, sheet.getLastRow() - 1, 1)).forEach(r => {
       const e = callEpoch_(r[0]);
       if (e !== null) { lo = Math.min(lo, e); hi = Math.max(hi, e); }
     });
@@ -511,7 +511,7 @@ function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId) {
   const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
   const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols);
   const vals = range.getValues();
-  const disp = range.getDisplayValues();
+  const disp = getDisplayExact_(range);
   const seen = new Map();
   const kept = [];
   vals.forEach((v, i) => {
@@ -683,7 +683,7 @@ function processStagingImport() {
 
   const stagingRange = staging.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length);
   const rawRows = stagingRange.getValues();
-  const stagingDisp = stagingRange.getDisplayValues(); // text as shown (e.g. "0:37"), used for comparing
+  const stagingDisp = getDisplayExact_(stagingRange); // text as shown (e.g. "0:37"), used for comparing
 
   const result = withLock_(() => importCallRows_(rawRows, stagingDisp));
 
@@ -796,7 +796,7 @@ function runSheetAction_(body) {
         if (!callLog || callLog.getLastRow() < 2) return { changed: 0 };
         const range = callLog.getRange(2, 1, callLog.getLastRow() - 1, 2);
         const values = range.getValues();
-        const shown = range.getDisplayValues();
+        const shown = getDisplayExact_(range);
         let changed = 0;
         const out = values.map((row, i) => {
           if (callEpoch_(shown[i][1]) === null) return [row[0]];
@@ -1131,6 +1131,24 @@ function callRowKey_(r, dateText) {
   return id ? `${id}|${base}` : `nid|${norm(dateText)}|${base}`;
 }
 
+/**
+ * Text shown in a range's cells, except that the Call ID column (B) keeps its exact value. Sheets can display a Call ID
+ * such as 1784653605.786 as "1784653606" (number format with no decimals), which would change the timestamp inside the ID
+ * by a second and make the same call look different from the export.
+ * @param {GoogleAppsScript.Spreadsheet.Range} range
+ * @returns {string[][]}
+ */
+function getDisplayExact_(range) {
+  const disp = range.getDisplayValues();
+  const idIdx = 2 - range.getColumn();
+  if (idIdx < 0 || idIdx >= range.getWidth()) return disp;
+  const ids = range.offset(0, idIdx, range.getNumRows(), 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (typeof ids[i][0] === 'number') disp[i][idIdx] = String(ids[i][0]);
+  }
+  return disp;
+}
+
 /** Text of any cell (dates in the spreadsheet's time zone). */
 function cellText_(v) {
   return v instanceof Date ? dateText_(v) : String(v ?? '').trim();
@@ -1239,7 +1257,7 @@ function convertAllCallLogDatesToCairo() {
 
   const range = callLog.getRange(2, 1, callLog.getLastRow() - 1, 2);
   const values = range.getValues();
-  const shown = range.getDisplayValues();
+  const shown = getDisplayExact_(range);
   let changed = 0;
   const out = values.map((row, i) => {
     if (callEpoch_(shown[i][1]) === null) return [row[0]];
@@ -1274,7 +1292,7 @@ function buildRepairedCallLog_() {
   // Two bulk reads: the real values (written back) and the text shown in each cell (used for comparing, which
   // avoids slow per-cell calls and sidesteps Sheets turning "0:37" into a time).
   const allVals = range.getValues();
-  const allDisp = range.getDisplayValues();
+  const allDisp = getDisplayExact_(range);
   const data = [];
   const disp = [];
   allVals.forEach((row, i) => {

@@ -142,3 +142,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 27. Clearer import check
 - A failed check now shows, next to each "not in the export" row, what the file holds for that same call, and lists calls the file has that the sheet is missing ("missing from the sheet"). Redeploy the Apps Script web app to get it.
+
+## 28. Call ID rounding in the sheet (root cause of the leftover import differences)
+- Sheets can show a numeric Call ID such as `1784653605.786` as `1784653606` (number format without decimals). Reading the displayed text moved the timestamp inside the ID by a second, so about half of the rows never matched the export: re-uploading a file added them again (+N duplicates), and the check listed the pairs as "not in the export" / "missing from the sheet". The Apps Script now reads the Call ID column from the cell's real value (`getDisplayExact_`) everywhere it compares rows (import, check, repair, archive, replace). The web app already read unformatted values. After deploying, upload the file once with **Replace** ticked to remove the duplicates from the earlier re-uploads.
