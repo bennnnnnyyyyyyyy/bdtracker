@@ -404,6 +404,9 @@ function autoArchiveStatus() {
 function reconcileImportData_(stagedRows, stagedDisp) {
   const expected = new Map();
   const exportKeyCount = new Map();
+  const exportByEpoch = new Map();
+  const exportKeyText = new Map();
+  const exportKeyAgent = new Map();
   let minEpoch = Infinity;
   let maxEpoch = -Infinity;
   stagedRows.forEach((r, i) => {
@@ -415,6 +418,10 @@ function reconcileImportData_(stagedRows, stagedDisp) {
     expected.set(agent, (expected.get(agent) ?? 0) + 1);
     const key = callRowKey_(stagedDisp[i], stagedDisp[i][0]);
     exportKeyCount.set(key, (exportKeyCount.get(key) ?? 0) + 1);
+    if (!exportByEpoch.has(epoch)) exportByEpoch.set(epoch, []);
+    exportByEpoch.get(epoch).push(`to ${stagedDisp[i][3]} ${stagedDisp[i][8]} ${stagedDisp[i][9]} ${stagedDisp[i][10]}`);
+    exportKeyText.set(key, `${stagedDisp[i][0]} id ${stagedDisp[i][1]} to ${stagedDisp[i][3]} ${stagedDisp[i][8]} ${stagedDisp[i][9]} ${stagedDisp[i][10]}`);
+    exportKeyAgent.set(key, agent);
   });
   if (expected.size === 0) return { ok: true, problems: [] };
 
@@ -432,7 +439,9 @@ function reconcileImportData_(stagedRows, stagedDisp) {
     sheetKeyCount.set(key, n);
     if (n > (exportKeyCount.get(key) ?? 0)) {
       if (!extras.has(agent)) extras.set(agent, []);
-      extras.get(agent).push(`${exportKeyCount.has(key) ? 'extra copy' : 'not in the export'}: ${r[0]} id ${r[1]} to ${r[3]} ${r[8]} ${r[9]} ${r[10]}`);
+      const same = exportByEpoch.get(epoch);
+      const note = !exportKeyCount.has(key) && same ? ` [the file has for that call: ${same.slice(0, 2).join('; ')}]` : '';
+      extras.get(agent).push(`${exportKeyCount.has(key) ? 'extra copy' : 'not in the export'}: ${r[0]} id ${r[1]} to ${r[3]} ${r[8]} ${r[9]} ${r[10]}${note}`);
     }
   });
 
@@ -440,7 +449,11 @@ function reconcileImportData_(stagedRows, stagedDisp) {
   expected.forEach((n, agent) => {
     const got = actual.get(agent) ?? 0;
     if (got === n) return;
-    const examples = (extras.get(agent) ?? []).slice(0, 4).join(' | ');
+    const missing = [];
+    exportKeyCount.forEach((cnt, key) => {
+      if (exportKeyAgent.get(key) === agent && (sheetKeyCount.get(key) ?? 0) < cnt) missing.push(`missing from the sheet: ${exportKeyText.get(key)}`);
+    });
+    const examples = (extras.get(agent) ?? []).slice(0, 3).concat(missing.slice(0, 3)).join(' | ');
     problems.push(`${agent}: export ${n}, Call Logs ${got} (${got - n > 0 ? '+' : ''}${got - n})${examples ? ' - ' + examples : ''}`);
   });
   return { ok: problems.length === 0, problems };

@@ -139,3 +139,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 26. Ignore agents
 - Typing `ignore` (or `-`) as the Opener of an agent in Agent Mapping (or in the "Agents without an Opener name" boxes) hides that agent from every number. Non-destructive and reversible: change the Opener back to restore. Used for people in an export who are not on the BD team.
+
+## 27. Clearer import check
+- A failed check now shows, next to each "not in the export" row, what the file holds for that same call, and lists calls the file has that the sheet is missing ("missing from the sheet"). Redeploy the Apps Script web app to get it.
