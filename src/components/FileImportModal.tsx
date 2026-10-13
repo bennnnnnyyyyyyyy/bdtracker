@@ -360,7 +360,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
           )}
           {newAgents.length > 0 && (
             <div className="space-y-2 rounded-lg border border-white/10 p-3">
-              <p className="text-[11px] text-slate-300">New agent(s) need the name the BD tracker uses for them:</p>
+              <p className="text-[11px] text-slate-300">New agent(s) need the name the BD tracker uses for them (type “ignore” for anyone who is not on the BD team):</p>
               {newAgents.map((agent) => (
                 <label key={agent} className="flex items-center gap-2 text-[11px]">
                   <span className="w-40 shrink-0 truncate text-slate-300">{agent}</span>

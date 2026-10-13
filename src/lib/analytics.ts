@@ -243,13 +243,18 @@ export function getIsoMonthKey(dateStr: string): { key: string; label: string; s
 /**
  * Canonical agent / opener normalizer.
  */
+/** An Agent Mapping Opener of "ignore" (or "-") hides that agent from every number without deleting anything. */
+function isIgnoreMarker(v: string | null | undefined): boolean {
+  return /^(ignore|ignored|-)$/i.test(String(v ?? '').trim());
+}
+
 export function resolveOpener(
   rawName: string | undefined | null,
   agentMappings: AgentMapping[]
 ): string | null {
   if (!rawName) return null;
   const clean = String(rawName).trim();
-  if (!clean || isExcludedAgent(clean)) return null;
+  if (!clean || isExcludedAgent(clean) || isIgnoreMarker(clean)) return null;
 
   if (/^\d+$/.test(clean) || /^(front desk|conference|support|ivr|unmapped|main line|fax|unknown)/i.test(clean)) {
     return null;
@@ -261,10 +266,10 @@ export function resolveOpener(
   for (const m of agentMappings) {
     if (m.agent && m.agent.toLowerCase() === cleanLower) {
       const target = (m.opener || m.agent).trim();
-      return isExcludedAgent(target) ? null : target;
+      return isExcludedAgent(target) || isIgnoreMarker(target) ? null : target;
     }
     if (m.opener && m.opener.toLowerCase() === cleanLower) {
-      return isExcludedAgent(m.opener) ? null : m.opener.trim();
+      return isExcludedAgent(m.opener) || isIgnoreMarker(m.opener) ? null : m.opener.trim();
     }
   }
 
@@ -281,7 +286,7 @@ export function resolveOpener(
   }
   if (firstNameTargets.size === 1) {
     const target = Array.from(firstNameTargets)[0];
-    return isExcludedAgent(target) ? null : target;
+    return isExcludedAgent(target) || isIgnoreMarker(target) ? null : target;
   }
 
   // 3. Fallback: Capitalized clean name if valid person name

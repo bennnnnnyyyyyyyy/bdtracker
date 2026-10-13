@@ -18,6 +18,17 @@ function call(over: Partial<CallRecord>): CallRecord {
 }
 const meeting = (stage: string, opener: string, dateAdded: string, extra: Partial<MeetingRecord> = {}): MeetingRecord => ({ stage, opener, dateAdded, ...extra });
 
+describe('ignored agents', () => {
+  it('hides an agent whose Opener is "ignore" from every number', () => {
+    const maps: AgentMapping[] = [...mappings, { agent: 'Eric Dean', opener: 'ignore' }];
+    expect(resolveOpener('Eric Dean', maps)).toBeNull();
+    expect(resolveOpener('Eric', maps)).toBeNull();
+    const res = computeDashboardMetrics([call({ agent: 'Eric Dean', extension: '120 (MMS-Eric Dean)' }), call({})], [], {}, maps, { startDate: '2026-08-10', endDate: '2026-08-10' });
+    expect(res.openers.map((o) => o.opener)).not.toContain('ignore');
+    expect(res.openers.map((o) => o.opener)).not.toContain('Eric Dean');
+  });
+});
+
 describe('resolveOpener', () => {
   it('maps PBX names, first names and rejects system channels', () => {
     expect(resolveOpener('Ben Arthur', mappings)).toBe('Ben');

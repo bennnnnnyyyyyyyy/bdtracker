@@ -136,3 +136,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 25. Replace mode cleans in the background
 - Even one tab per request could exceed a web request's time. The upload now sends the file's call-identifying columns once (`replaceStart`); the sheet stores them in a hidden `Replace Job` tab and a time-driven trigger (`replaceJobRun_`, up to 6 minutes) backs up and cleans every affected tab. The dashboard polls `replaceStatus` (via `/api/sheet`) every 5 s, then runs the verifying import. A stalled job is reported as an error after 12 minutes; tabs already cleaned stay cleaned and backed up.
+
+## 26. Ignore agents
+- Typing `ignore` (or `-`) as the Opener of an agent in Agent Mapping (or in the "Agents without an Opener name" boxes) hides that agent from every number. Non-destructive and reversible: change the Opener back to restore. Used for people in an export who are not on the BD team.

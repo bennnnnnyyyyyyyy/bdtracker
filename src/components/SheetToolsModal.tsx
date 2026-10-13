@@ -149,7 +149,7 @@ export const SheetToolsModal: React.FC<Props> = ({ isOpen, onClose, isAdmin, onC
             {status && status.unmappedAgents.length === 0 && <p className="text-emerald-400">Every agent has an Opener name.</p>}
             {status && status.unmappedAgents.length > 0 && (
               <>
-                <p className="text-slate-400">Type the name the BD tracker uses for each person (for example “Rick”) so their calls and meetings appear together.</p>
+                <p className="text-slate-400">Type the name the BD tracker uses for each person (for example “Rick”) so their calls and meetings appear together. For people who are not on the BD team, type “ignore”: they disappear from every number (nothing is deleted, and you can change it later).</p>
                 {status.unmappedAgents.map((agent) => (
                   <label key={agent} className="flex items-center gap-2">
                     <span className="w-44 shrink-0 truncate">{agent}</span>
