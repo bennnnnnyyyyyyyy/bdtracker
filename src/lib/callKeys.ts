@@ -85,6 +85,39 @@ export function exactCairoTime(callDate: string, callId: unknown): string {
   return written;
 }
 
+/**
+ * Time zone that decides which DAY a call belongs to (and the time shown for it in the app).
+ * Default "Etc/GMT+6" is Ultatel's own clock (UTC-6), so daily, weekly and monthly numbers equal Ultatel's
+ * reports. Set CALL_DAY_TIMEZONE=Africa/Cairo to count days from Cairo midnight instead.
+ */
+export function callDayZone(): string {
+  return process.env.CALL_DAY_TIMEZONE || 'Etc/GMT+6';
+}
+
+const zoneFormats = new Map<string, Intl.DateTimeFormat>();
+function formatInZone(ms: number, zone: string): string {
+  let f = zoneFormats.get(zone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    });
+    zoneFormats.set(zone, f);
+  }
+  const p: Record<string, string> = {};
+  f.formatToParts(new Date(ms)).forEach((x) => { p[x.type] = x.value; });
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+}
+
+/** Moves a Cairo-clock call time ("YYYY-MM-DD HH:mm:ss") onto another zone's clock. */
+function cairoTextToZone(cairoText: string, epoch: number, zone: string): string {
+  if (zone === 'Africa/Cairo') return cairoText;
+  const naive = naiveMs(cairoText);
+  if (naive === null) return cairoText;
+  const cairoOffset = (naiveMs(cairoDateTime(epoch)) as number) - epoch * 1000;
+  return formatInZone(naive - cairoOffset, zone);
+}
+
 function norm(v: unknown): string {
   return String(v ?? '').trim().toLowerCase();
 }
@@ -143,11 +176,14 @@ export function dedupeAndRedateCalls(calls: CallRecord[]): { calls: CallRecord[]
     void key;
   });
 
+  const zone = callDayZone();
   let redated = 0;
   const out: CallRecord[] = [];
   calls.forEach((c, i) => {
     if (!keep.has(i)) return;
-    const exact = exactCairoTime(String(c.callDate ?? ''), c.callId);
+    const epoch = callEpoch(c.callId);
+    const cairo = exactCairoTime(String(c.callDate ?? ''), c.callId);
+    const exact = epoch !== null ? cairoTextToZone(cairo, epoch, zone) : cairo;
     if (exact !== c.callDate) redated++;
     out.push(exact === c.callDate ? c : { ...c, callDate: exact });
   });

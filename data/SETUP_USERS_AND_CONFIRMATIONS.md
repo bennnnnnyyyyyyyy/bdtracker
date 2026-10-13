@@ -16,6 +16,7 @@
    | `SUPABASE_SERVICE_ROLE_KEY` | Required for accounts and confirmations (the anon key cannot access these tables). |
    | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase URL (already defaulted in code). |
    | `CRON_SECRET` | Protects `/api/sync` (unchanged). |
+   | `CALL_DAY_TIMEZONE` | Optional. Which clock decides a call's day. Default `Etc/GMT+6` (Ultatel's clock, matches Ultatel reports). Use `Africa/Cairo` to count days from Cairo midnight. |
    | `DASHBOARD_CACHE_TTL_SECONDS` | Optional. How long server-side sheet reads are reused (default 30). |
 3. **Create the first admin** on your computer (needs `.env.local` with the two Supabase variables):
    ```

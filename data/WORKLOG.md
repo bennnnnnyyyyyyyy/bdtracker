@@ -82,6 +82,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Calls are now identified and dated from the Call ID timestamp in the sheet import, in the sheet repair menu (`Preview duplicate-call repair`, `Repair duplicate calls`, `Fix call times`) and in the web app (which ignores duplicate rows and shows a banner).
 - Correction after checking a real export (`Call Details - 10-12-2026`): one Call ID can appear on several rows (legs), and Ultatel counts each row. The first version collapsed them (Selene 477 instead of 482). Identity now includes Type, Outcome and Duration, only differing-clock copies are removed, and the import adds rows only beyond what the sheet already holds. Re-importing the export fills in any legs the old import skipped.
 
+### 13. Day boundary
+- Five agents matched the export exactly while two (Norman, Rick) were higher. Likely cause: the sheet stores Cairo time, so evening-before calls after 3:00 pm Ultatel time count as the next Cairo day. The web app now assigns days on Ultatel's clock by default (`CALL_DAY_TIMEZONE`, default `Etc/GMT+6`; set `Africa/Cairo` to restore the previous behaviour).
+
 ---
 
 ## Documentation Manifest in `data/`

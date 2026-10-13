@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { callEpoch, cairoDateTime, dedupeAndRedateCalls, exactCairoTime } from '../src/lib/callKeys';
 import type { CallRecord } from '../src/types/dashboard';
 
@@ -30,6 +30,10 @@ describe('call ids and times', () => {
 });
 
 describe('duplicates versus legitimate repeated Call IDs', () => {
+  // These expectations are written on Cairo time.
+  beforeEach(() => { process.env.CALL_DAY_TIMEZONE = 'Africa/Cairo'; });
+  afterEach(() => { delete process.env.CALL_DAY_TIMEZONE; });
+
   it('removes extra copies (raw clock / shortened ID) but keeps real calls', () => {
     const rows = [
       call('10-12-2026 6:33:00', '1791808392', '4154400444'),                  // raw copy
@@ -61,5 +65,25 @@ describe('duplicates versus legitimate repeated Call IDs', () => {
   it('matches text IDs with trailing zeros to numeric IDs', () => {
     const rows = [call('10-12-2026 15:33:12', '1791808392.14500', '1'), call('10-12-2026 06:33:12', '1791808392.145', '1')];
     expect(dedupeAndRedateCalls(rows).calls).toHaveLength(1);
+  });
+});
+
+describe('which day a call belongs to', () => {
+  afterEach(() => { delete process.env.CALL_DAY_TIMEZONE; });
+  // 1791840000 = 2026-10-12 21:20:00 UTC: Cairo 2026-10-13 00:20, Ultatel clock (UTC-6) 2026-10-12 15:20
+  const late = () => call('10-13-2026 00:20:00', '1791840000.1', '555', '0:10');
+
+  it('defaults to Ultatel\'s own clock so days match Ultatel reports', () => {
+    expect(dedupeAndRedateCalls([late()]).calls[0].callDate).toBe('2026-10-12 15:20:00');
+  });
+
+  it('can count days on Cairo midnight instead', () => {
+    process.env.CALL_DAY_TIMEZONE = 'Africa/Cairo';
+    expect(dedupeAndRedateCalls([late()]).calls[0].callDate).toBe('2026-10-13 00:20:00');
+  });
+
+  it('puts a row from the 10-12 export on its own export day', () => {
+    const row = call('10-12-2026 06:33:12', '1791808392.14495', '4154400444');
+    expect(dedupeAndRedateCalls([row]).calls[0].callDate).toBe('2026-10-12 06:33:12');
   });
 });
