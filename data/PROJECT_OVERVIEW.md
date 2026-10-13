@@ -83,12 +83,12 @@ Four tabs, switched by CSS show/hide (no unmount):
 
 | Tab | Component | Content |
 | :--- | :--- | :--- |
-| **Team** | `AgentDashboardView` | One card per opener with status pill, key metrics, per-person XLSX export. |
+| **Team** | `AgentDashboardView` | One card per opener with status pill, key metrics, XLSX export (and CSV for each table: Actions > Export CSV; Call Logs tab has its own CSV button). |
 | **Trends** | `PeriodicBreakdownTable` (+ `DashboardCharts`) | Daily / Weekly (Mon–Sun) / Monthly drill-downs, paginated 20 per page. |
 | **Details** | `OpenerTable` | Full sortable opener table, totals row, CSV export. |
 | **Call Logs** | `CallLogsView` | Raw filtered call records with search. |
 
-`Header` provides presets (Today, This week, This month, Last 30 days), custom dates, agent filter, refresh, and the data-source label. `FileImportModal` posts to `/api/upload`. `exportXlsx.ts` builds the per-person workbook (*Agent Overview*, *Meeting Pipeline*, *Daily Performance*). Filters and active tab are cached in `localStorage` (`bd-tracker-dashboard-ui-cache-v1`).
+`Header` provides presets (Today, This week, This month, Last 30 days), custom dates, agent filter, refresh, and the data-source label. `FileImportModal` posts to `/api/upload` (CSV or Excel). `exportXlsx.ts` builds the per-person workbook (*Agent Overview*, *Meeting Pipeline*, *Daily Performance*). Filters and active tab are cached in `localStorage` (`bd-tracker-dashboard-ui-cache-v1`).
 
 ---
 

@@ -9,7 +9,7 @@ import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
 import { ConfirmationsView } from '@/components/ConfirmationsView';
-import { exportDashboardAnalyticsXlsx } from '@/lib/exportXlsx';
+import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse, CallRecord } from '@/types/dashboard';
 import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2 } from 'lucide-react';
 
@@ -271,6 +271,7 @@ export default function DashboardPage() {
         onRefresh={() => fetchData(true)}
         onOpenImportModal={() => setImportModalOpen(true)}
         onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
+        onExportCsv={data ? (kind) => exportDashboardCsv(data, filters, kind) : undefined}
         loading={loading}
         lastUpdated={data?.dataAsOf || data?.lastUpdated || ''}
         viewer={data?.viewer}

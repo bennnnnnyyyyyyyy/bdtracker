@@ -98,6 +98,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Call exports are uploaded from the dashboard (CSV or Excel): the server parses them, splits them so rows of one call stay together, and posts them to an Apps Script web app that imports under a script lock using the same rules as the Import Staging menu (duplicates skipped, repeated legs kept, archive-aware, per-agent check). Only admins and managers can upload.
 - Archiving runs weekly from a time-driven trigger (`Turn ON automatic archiving`), without prompts; imports, repairs and archiving now share a script lock so they cannot overwrite each other.
 
+### 18. CSV in and out
+- Import: Ultatel Call Details files can be CSV or Excel (already supported for call exports); the Ultatel per-department summary can now also be a CSV (local use). Export: Actions menu > Export CSV (agent overview, meetings with show confirmation, daily / weekly / monthly performance) and an Export CSV button on the Call Logs tab (respects its search and filters). CSV cells that could run as spreadsheet formulas are neutralised; XLSX export gained Weekly / Monthly sheets and confirmation columns.
+
 ---
 
 ## Documentation Manifest in `data/`

@@ -1,5 +1,22 @@
 import * as xlsx from 'xlsx';
-import { DashboardResponse, FilterState } from '../types/dashboard';
+import { CallRecord, DashboardResponse, FilterState, PeriodicGroupSummary } from '../types/dashboard';
+import { downloadCsv } from './csv';
+
+type Cell = string | number;
+export interface ExportTable {
+  headers: string[];
+  rows: Cell[][];
+}
+
+export type CsvKind = 'overview' | 'meetings' | 'daily' | 'weekly' | 'monthly';
+
+export const CSV_KINDS: { kind: CsvKind; label: string }[] = [
+  { kind: 'overview', label: 'Agent overview' },
+  { kind: 'meetings', label: 'Meetings (with show confirmation)' },
+  { kind: 'daily', label: 'Daily performance' },
+  { kind: 'weekly', label: 'Weekly performance' },
+  { kind: 'monthly', label: 'Monthly performance' },
+];
 
 /**
  * Formats duration in seconds to HH:MM:SS string.
@@ -30,20 +47,14 @@ function autoFitColumns(rows: (string | number | boolean | null | undefined)[][]
   return colWidths.map(w => ({ wch: w }));
 }
 
-/**
- * Generates and downloads a complete multi-tab Excel analytics workbook.
- */
-export function exportDashboardAnalyticsXlsx(
-  data: DashboardResponse,
-  filters: FilterState
-): void {
-  const wb = xlsx.utils.book_new();
+function pct(rate: number | undefined): string {
+  return `${((rate || 0) * 100).toFixed(1)}%`;
+}
 
-  // ==========================================
-  // SHEET 1: Agent Analytics Summary
-  // ==========================================
+/** Agent overview: one row per opener plus a team totals row. */
+export function buildOverviewTable(data: DashboardResponse): ExportTable {
   const stages = data.stages || [];
-  const summaryHeaders = [
+  const headers = [
     'Agent / Opener',
     'Total Calls',
     'Outbound Calls',
@@ -57,7 +68,8 @@ export function exportDashboardAnalyticsXlsx(
     'Med B %',
     'PPO Count',
     'PPO %',
-    'Attended Meetings',
+    'Confirmed Shows',
+    'Awaiting Confirmation',
     'Show Rate %',
     'Onboarded',
     'Close Rate %',
@@ -68,7 +80,7 @@ export function exportDashboardAnalyticsXlsx(
     ...stages
   ];
 
-  const summaryRows: (string | number)[][] = [];
+  const summaryRows: Cell[][] = [];
 
   // Individual Opener Rows
   data.openers.forEach(op => {
@@ -88,6 +100,7 @@ export function exportDashboardAnalyticsXlsx(
       op.ppoCount || 0,
       `${(op.ppoRate || 0).toFixed(1)}%`,
       op.attended,
+      op.awaitingConfirmation || 0,
       `${(op.showRate * 100).toFixed(1)}%`,
       op.onboarded,
       `${(op.closeRate * 100).toFixed(1)}%`,
@@ -118,6 +131,7 @@ export function exportDashboardAnalyticsXlsx(
       tot.ppoCount || 0,
       `${(tot.ppoRate || 0).toFixed(1)}%`,
       tot.attended,
+      tot.awaitingConfirmation || 0,
       `${(tot.showRate * 100).toFixed(1)}%`,
       tot.onboarded,
       `${(tot.closeRate * 100).toFixed(1)}%`,
@@ -129,88 +143,87 @@ export function exportDashboardAnalyticsXlsx(
     ]);
   }
 
-  const wsSummary = xlsx.utils.aoa_to_sheet([summaryHeaders, ...summaryRows]);
-  wsSummary['!cols'] = autoFitColumns([summaryHeaders, ...summaryRows]);
-  xlsx.utils.book_append_sheet(wb, wsSummary, 'Agent Overview');
+  return { headers, rows: summaryRows };
+}
 
-  // ==========================================
-  // SHEET 2: Meeting Pipeline Details
-  // ==========================================
-  if (data.meetings && data.meetings.length > 0) {
-    const meetingHeaders = [
-      'Date Added',
-      'Opener',
-      'Stage',
-      'Company Name',
-      'Authorized Person',
-      'Med B',
-      'PPO'
-    ];
+/** Meetings in the selected range, with whether management confirmed the show. */
+export function buildMeetingsTable(data: DashboardResponse): ExportTable {
+  const headers = ['Date Added', 'Opener', 'Stage', 'Company Name', 'Authorized Person', 'Med B', 'PPO', 'Show Confirmed', 'Confirmed By', 'Confirmed At'];
+  const rows = (data.meetings || []).map((m) => [
+    m.dateAdded || '',
+    m.opener || '',
+    m.stage || '',
+    m.companyName || '',
+    m.authorizedPerson || '',
+    m.medB ? 'Yes' : 'No',
+    m.ppo ? 'Yes' : 'No',
+    m.showConfirmed ? 'Yes' : 'No',
+    m.confirmedBy || '',
+    m.confirmedAt || '',
+  ]);
+  return { headers, rows };
+}
 
-    const meetingRows = data.meetings.map(m => [
-      m.dateAdded || '',
-      m.opener || '',
-      m.stage || '',
-      m.companyName || '',
-      m.authorizedPerson || '',
-      m.medB ? 'Yes' : 'No',
-      m.ppo ? 'Yes' : 'No'
-    ]);
-
-    const wsMeetings = xlsx.utils.aoa_to_sheet([meetingHeaders, ...meetingRows]);
-    wsMeetings['!cols'] = autoFitColumns([meetingHeaders, ...meetingRows]);
-    xlsx.utils.book_append_sheet(wb, wsMeetings, 'Meeting Pipeline');
-  }
-
-  // ==========================================
-  // SHEET 3: Daily Performance Breakdown
-  // ==========================================
-  if (data.dailyBreakdown && data.dailyBreakdown.length > 0) {
-    const dailyHeaders = [
-      'Date',
-      'Opener',
-      'Calls',
-      'Outbound',
-      'Inbound',
-      'Answered',
-      'Connection Rate %',
-      'Meetings Booked',
-      'Attended',
-      'Onboarded',
-      'Present Days',
-      'Calls / Present Day'
-    ];
-
-    const dailyRows: (string | number)[][] = [];
-    data.dailyBreakdown.forEach(group => {
-      group.agents.forEach(ag => {
-        dailyRows.push([
-          group.periodLabel,
-          ag.opener,
-          ag.calls,
-          ag.outbound,
-          ag.inbound,
-          ag.answered,
-          `${(ag.connectionRate * 100).toFixed(1)}%`,
-          ag.meetings,
-          ag.attended,
-          ag.onboarded,
-          ag.presentDays,
-          ag.callsPerPresentDay
-        ]);
-      });
+/** Daily / weekly / monthly performance: one row per opener per period. */
+export function buildPeriodTable(groups: PeriodicGroupSummary[] | undefined, periodName: string): ExportTable {
+  const headers = [periodName, 'Opener', 'Calls', 'Outbound', 'Inbound', 'Answered', 'Connection Rate %', 'Meetings Booked', 'Attended', 'Show Rate %', 'Onboarded', 'Present Days', 'Calls / Present Day'];
+  const rows: Cell[][] = [];
+  (groups || []).forEach((group) => {
+    group.agents.forEach((ag) => {
+      rows.push([group.periodLabel, ag.opener, ag.calls, ag.outbound, ag.inbound, ag.answered, pct(ag.connectionRate), ag.meetings, ag.attended, pct(ag.showRate), ag.onboarded, ag.presentDays ?? 0, ag.callsPerPresentDay ?? 0]);
     });
+  });
+  return { headers, rows };
+}
 
-    const wsDaily = xlsx.utils.aoa_to_sheet([dailyHeaders, ...dailyRows]);
-    wsDaily['!cols'] = autoFitColumns([dailyHeaders, ...dailyRows]);
-    xlsx.utils.book_append_sheet(wb, wsDaily, 'Daily Performance');
+export function buildTable(data: DashboardResponse, kind: CsvKind): ExportTable {
+  switch (kind) {
+    case 'overview': return buildOverviewTable(data);
+    case 'meetings': return buildMeetingsTable(data);
+    case 'daily': return buildPeriodTable(data.dailyBreakdown, 'Date');
+    case 'weekly': return buildPeriodTable(data.weeklyBreakdown, 'Week');
+    case 'monthly': return buildPeriodTable(data.monthlyBreakdown, 'Month');
   }
+}
 
-  // Generate file name with filter date info
+function rangeSuffix(filters: FilterState): string {
   const startStr = filters.startDate ? filters.startDate.replace(/[^0-9]/g, '') : 'all';
   const endStr = filters.endDate ? filters.endDate.replace(/[^0-9]/g, '') : 'all';
-  const fileName = `BD_Analytics_${startStr}_to_${endStr}.xlsx`;
+  return `${startStr}_to_${endStr}`;
+}
 
-  // Write and trigger download in browser
-  xlsx.writeFile(wb, fileName);
+/** Downloads one table of the dashboard as a CSV file. */
+export function exportDashboardCsv(data: DashboardResponse, filters: FilterState, kind: CsvKind): void {
+  const table = buildTable(data, kind);
+  downloadCsv(`BD_${kind}_${rangeSuffix(filters)}.csv`, [table.headers, ...table.rows]);
+}
+
+/** Downloads call records (e.g. the filtered Call Logs list) as a CSV file. */
+export function exportCallLogsCsv(calls: CallRecord[], label = 'calls'): void {
+  const headers = ['Call Date', 'Call ID', 'From', 'To', 'Extension', 'Agent', 'Opener', 'Type', 'Outcome', 'Duration', 'Duration (sec)', 'Department', 'Notes'];
+  const rows = calls.map((c) => [c.callDate, c.callId, c.from, c.to, c.extension, c.agent, c.opener, c.type, c.outcome, c.duration, c.durationSec, c.department, c.notes]);
+  downloadCsv(`BD_call_logs_${label}.csv`, [headers, ...rows]);
+}
+
+/**
+ * Generates and downloads a complete multi-tab Excel analytics workbook.
+ */
+export function exportDashboardAnalyticsXlsx(
+  data: DashboardResponse,
+  filters: FilterState
+): void {
+  const wb = xlsx.utils.book_new();
+  const add = (table: ExportTable, name: string) => {
+    const ws = xlsx.utils.aoa_to_sheet([table.headers, ...table.rows]);
+    ws['!cols'] = autoFitColumns([table.headers, ...table.rows]);
+    xlsx.utils.book_append_sheet(wb, ws, name);
+  };
+
+  add(buildOverviewTable(data), 'Agent Overview');
+  if (data.meetings && data.meetings.length > 0) add(buildMeetingsTable(data), 'Meeting Pipeline');
+  if (data.dailyBreakdown && data.dailyBreakdown.length > 0) add(buildPeriodTable(data.dailyBreakdown, 'Date'), 'Daily Performance');
+  if (data.weeklyBreakdown && data.weeklyBreakdown.length > 0) add(buildPeriodTable(data.weeklyBreakdown, 'Week'), 'Weekly Performance');
+  if (data.monthlyBreakdown && data.monthlyBreakdown.length > 0) add(buildPeriodTable(data.monthlyBreakdown, 'Month'), 'Monthly Performance');
+
+  xlsx.writeFile(wb, `BD_Analytics_${rangeSuffix(filters)}.xlsx`);
 }

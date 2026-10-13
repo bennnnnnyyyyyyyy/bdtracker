@@ -5,7 +5,7 @@ import * as xlsx from 'xlsx';
 import { CONFIG } from '@/lib/config';
 import { invalidateDashboardCache } from '@/lib/sheets';
 import { requireUser } from '@/lib/api-auth';
-import { looksLikeCallExport, parseCallExportFile } from '@/lib/ultatelFile';
+import { looksLikeCallExport, parseCallExportFile, parseCsv } from '@/lib/ultatelFile';
 import { isImportConfigured, sendRowsToSheet } from '@/lib/importWebhook';
 
 export const runtime = 'nodejs';
@@ -42,8 +42,22 @@ export async function POST(request: NextRequest) {
         });
       }
       if (/\.csv$/i.test(upload.name)) {
-        const why = parseCallExportFile(buf, upload.name).error;
-        return NextResponse.json({ error: why || 'Unrecognized CSV. Upload an Ultatel Call Details export.' }, { status: 400 });
+        // A CSV that is not a Call Details export may be the Ultatel per-department summary: store it as the
+        // local workbook the app reads. Anything else is rejected with the reason.
+        const table = parseCsv(buf.toString('utf8'));
+        const isDeptSummary = table.some((row) => row.some((cell) => /out answered|total calls/i.test(cell)));
+        if (!isDeptSummary) {
+          const why = parseCallExportFile(buf, upload.name).error;
+          return NextResponse.json({ error: why || 'Unrecognized CSV. Upload an Ultatel Call Details export or the Ultatel per-department summary.' }, { status: 400 });
+        }
+        if (process.env.VERCEL) {
+          return NextResponse.json({ error: 'The department summary can only be imported in the local dashboard; call exports (Call Details) work everywhere.' }, { status: 501 });
+        }
+        const wb = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(table), 'Sheet1');
+        await writeFile(path.join(process.cwd(), CONFIG.LOCAL_ULTATEL_DEPT_FILE), xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+        invalidateDashboardCache();
+        return NextResponse.json({ success: true, fileType: 'ultatel', fileName: CONFIG.LOCAL_ULTATEL_DEPT_FILE, message: 'Updated Ultatel calls report from the CSV.' });
       }
     }
   } catch (error) {

@@ -3,6 +3,7 @@
 import React, { useMemo, useState, memo } from 'react';
 import { PhoneIncoming, PhoneOutgoing, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CallRecord } from '@/types/dashboard';
+import { exportCallLogsCsv } from '@/lib/exportXlsx';
 
 interface CallLogsViewProps {
   calls: CallRecord[];
@@ -49,6 +50,13 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => exportCallLogsCsv(filtered, new Date().toISOString().slice(0, 10))}
+            disabled={filtered.length === 0}
+            className="min-h-9 px-3 rounded-lg text-xs font-semibold border border-white/10 text-text-primary disabled:opacity-40"
+          >
+            Export CSV ({filtered.length})
+          </button>
           {/* Search */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-[#71717a] absolute left-3 top-1/2 -translate-y-1/2" />
