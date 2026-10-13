@@ -188,7 +188,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
       aria-labelledby="modal-title"
     >
       <div
-        className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+        className="w-full max-w-lg max-h-[92vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
         style={{ background: '#111113', border: '1px solid rgba(255,255,255,0.1)' }}
       >
         {/* Modal Header */}
@@ -212,7 +212,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 overflow-y-auto min-h-0">
           <p className="text-xs text-slate-400 leading-relaxed">
             Drag &amp; drop or select a file. The app recognizes what it is:
           </p>
@@ -293,8 +293,9 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
             </div>
           )}
           {details.length > 0 && (
-            <ul className="space-y-1 text-[11px] text-slate-300 list-disc pl-5">
-              {details.map((line) => <li key={line}>{line}</li>)}
+            <ul className="space-y-1 text-[11px] text-slate-300 list-disc pl-5 max-h-48 overflow-y-auto break-words">
+              {details.slice(0, 12).map((line, i) => <li key={i}>{line.length > 400 ? `${line.slice(0, 400)}…` : line}</li>)}
+              {details.length > 12 && <li>…and {details.length - 12} more line(s).</li>}
             </ul>
           )}
           {checkFailed && (
