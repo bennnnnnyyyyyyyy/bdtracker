@@ -493,6 +493,20 @@ function replacePlan_(minEpoch, maxEpoch) {
  * @param {string[][]} exportRows export rows (columns A-M as text) whose calls fall in this tab's period
  * @returns {number} rows removed
  */
+/**
+ * Copies a tab's data (values only, no empty grid, so it stays small) into a new hidden tab. Does nothing when the
+ * backup already exists (a second request of the same upload).
+ */
+function backupTab_(ss, sheet, backupName, numCols) {
+  if (ss.getSheetByName(backupName)) return;
+  const rows = sheet.getLastRow();
+  const data = sheet.getRange(1, 1, rows, numCols).getValues();
+  const backup = ss.insertSheet(backupName);
+  backup.getRange(1, 1, data.length, numCols).setValues(data);
+  SpreadsheetApp.flush();
+  try { backup.hideSheet(); } catch (err) { /* a visible backup is still a backup */ }
+}
+
 function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const known = [CONFIG.CALL_LOG_SHEET].concat(monthKeysForEpochRange_(minEpoch, maxEpoch).map(archiveTabName_));
@@ -528,11 +542,11 @@ function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId) {
   if (dropped === 0) return 0;
 
   const backupName = ('Backup ' + backupId + ' ' + tabName).slice(0, 99);
-  if (!ss.getSheetByName(backupName)) {
-    sheet.copyTo(ss).setName(backupName).hideSheet();
-    SpreadsheetApp.flush();
+  try {
+    backupTab_(ss, sheet, backupName, numCols);
+  } catch (err) {
+    throw new Error('backing up "' + tabName + '" failed (' + String(err && err.message ? err.message : err) + '); nothing was removed from it. If the spreadsheet is near its size limit, delete old "Backup ..." tabs first.');
   }
-  if (!ss.getSheetByName(backupName)) throw new Error('Could not back up "' + tabName + '"; nothing was removed from it.');
 
   range.clearContent();
   if (kept.length > 0) sheet.getRange(2, 1, kept.length, numCols).setValues(kept);
@@ -634,7 +648,7 @@ function replaceJobRun_() {
     job.current = '';
   } catch (err) {
     job.state = 'error';
-    job.error = String(err && err.message ? err.message : err);
+    job.error = (job.current ? 'In "' + job.current + '": ' : '') + String(err && err.message ? err.message : err);
   } finally {
     saveReplaceJob_(job);
     const js = ss.getSheetByName(REPLACE_JOB_SHEET_);
