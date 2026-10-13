@@ -14,6 +14,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [details, setDetails] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -33,11 +34,12 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
     setDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.name.endsWith('.xlsx') || droppedFile.name.endsWith('.xls')) {
+      if (/\.(csv|xlsx|xls)$/i.test(droppedFile.name)) {
         setFile(droppedFile);
         setStatusMessage(null);
+        setDetails([]);
       } else {
-        setStatusMessage({ type: 'error', text: 'Please upload an Excel workbook (.xlsx or .xls).' });
+        setStatusMessage({ type: 'error', text: 'Please upload an Ultatel export (.csv) or an Excel workbook (.xlsx or .xls).' });
       }
     }
   };
@@ -46,6 +48,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0]);
       setStatusMessage(null);
+      setDetails([]);
     }
   };
 
@@ -69,16 +72,27 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
       }
 
       setStatusMessage({
-        type: 'success',
+        type: json.checkOk === false ? 'error' : 'success',
         text: json.message || 'File uploaded successfully! Refreshing dashboard metrics...',
       });
+      // Extra lines for a call export: the sheet's per-agent check and agents that still need an Opener name.
+      const lines: string[] = [];
+      if (json.fileType === 'ultatel_calls') {
+        lines.push(json.checkOk === false
+          ? `Check failed: the sheet differs from the file for ${(json.checkProblems as string[]).join('; ')}. Run "Repair duplicate calls" in the sheet, then upload again.`
+          : 'Check passed: every agent in the file matches the sheet.');
+        if ((json.newAgents as string[] | undefined)?.length) {
+          lines.push(`New agent(s) added to Agent Mapping: ${(json.newAgents as string[]).join(', ')}. Fill in their Opener name in the sheet.`);
+        }
+      }
+      setDetails(lines);
       setFile(null);
 
-      // Trigger automatic dashboard refresh
+      // Trigger automatic dashboard refresh; stay open longer when there is something to read.
       setTimeout(() => {
         onSuccess();
-        onClose();
-      }, 1200);
+        if (lines.length === 0) onClose();
+      }, lines.length > 0 ? 400 : 1200);
     } catch (err: unknown) {
       setStatusMessage({
         type: 'error',
@@ -123,17 +137,23 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
         {/* Modal Body */}
         <div className="p-6 space-y-4">
           <p className="text-xs text-slate-400 leading-relaxed">
-            Drag &amp; drop or select an Excel file to update your local dataset. The app automatically recognizes both:
+            Drag &amp; drop or select a file. The app recognizes what it is:
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-1 gap-2 text-xs">
             <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
-              <span className="font-semibold text-[#e8c56a]">1. Attendance Workbook</span>
-              <span className="text-[11px] text-slate-400">e.g. <code>BD _ French Dashboard 2026.xlsx</code></span>
+              <span className="font-semibold text-[#4ade80]">Ultatel Call Details (CSV or Excel)</span>
+              <span className="text-[11px] text-slate-400">e.g. <code>Call Details - 10-12-2026.csv</code>. Added straight to the Call Logs sheet; calls already there are skipped, so uploading an overlapping file is safe.</span>
             </div>
-            <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
-              <span className="font-semibold text-[#38bdf8]">2. Ultatel Outbound</span>
-              <span className="text-[11px] text-slate-400">e.g. <code>OutBound Calls Per Department.xlsx</code></span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
+                <span className="font-semibold text-[#e8c56a]">Attendance Workbook</span>
+                <span className="text-[11px] text-slate-400">local use only</span>
+              </div>
+              <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
+                <span className="font-semibold text-[#38bdf8]">Ultatel Outbound summary</span>
+                <span className="text-[11px] text-slate-400">local use only</span>
+              </div>
             </div>
           </div>
 
@@ -153,7 +173,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
-              accept=".xlsx,.xls"
+              accept=".csv,.xlsx,.xls"
               className="hidden"
             />
             <Upload className={`w-6 h-6 ${dragOver ? 'text-[#e8c56a]' : 'text-slate-500'}`} />
@@ -161,10 +181,10 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
               {file ? (
                 <span className="text-[#e8c56a] font-semibold">{file.name} ({(file.size / 1024).toFixed(0)} KB)</span>
               ) : (
-                <span>Drop Excel file here or <span className="text-[#e8c56a] underline">browse</span></span>
+                <span>Drop the file here or <span className="text-[#e8c56a] underline">browse</span></span>
               )}
             </div>
-            <span className="text-[10px] text-slate-500 font-num">Supported: .xlsx, .xls</span>
+            <span className="text-[10px] text-slate-500 font-num">Supported: .csv, .xlsx, .xls</span>
           </div>
 
           {/* Status Message */}
@@ -183,6 +203,11 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
               )}
               <span>{statusMessage.text}</span>
             </div>
+          )}
+          {details.length > 0 && (
+            <ul className="space-y-1 text-[11px] text-slate-300 list-disc pl-5">
+              {details.map((line) => <li key={line}>{line}</li>)}
+            </ul>
           )}
         </div>
 
@@ -204,7 +229,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
             {uploading ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Uploading...</span>
+                <span>Importing...</span>
               </>
             ) : (
               <>

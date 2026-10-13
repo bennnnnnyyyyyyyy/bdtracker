@@ -94,6 +94,10 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 ### 16. Monthly archive
 - `Call Logs` had ~49,500 rows and kept growing. New menu item **Archive closed months** moves calls older than 45 days into `Call Logs YYYY-MM` tabs (backup first, rows removed only after the archive tabs are confirmed). Imports and reconciliation also look at the archive tabs of the months an export touches. The web app reads archive tabs only when the requested date range reaches them, caches them for an hour, and reports unreadable archives in the banner.
 
+### 17. Dashboard upload + automatic archiving
+- Call exports are uploaded from the dashboard (CSV or Excel): the server parses them, splits them so rows of one call stay together, and posts them to an Apps Script web app that imports under a script lock using the same rules as the Import Staging menu (duplicates skipped, repeated legs kept, archive-aware, per-agent check). Only admins and managers can upload.
+- Archiving runs weekly from a time-driven trigger (`Turn ON automatic archiving`), without prompts; imports, repairs and archiving now share a script lock so they cannot overwrite each other.
+
 ---
 
 ## Documentation Manifest in `data/`

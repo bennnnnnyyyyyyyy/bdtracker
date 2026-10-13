@@ -97,7 +97,10 @@ function onOpen() {
     .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
-    .addItem('Archive closed months', 'archiveClosedMonths')
+    .addItem('Archive closed months now', 'archiveClosedMonths')
+    .addItem('Turn ON automatic archiving (weekly)', 'enableAutoArchive')
+    .addItem('Turn OFF automatic archiving', 'disableAutoArchive')
+    .addItem('Automatic archiving status', 'autoArchiveStatus')
     .addItem('Preview duplicate-call repair', 'previewCallLogRepair')
     .addItem('Repair duplicate calls', 'repairCallLogs')
     .addItem('Fix call times (from Call ID)', 'convertAllCallLogDatesToCairo')
@@ -225,15 +228,17 @@ function collectLogRowsDisplay_(minEpoch, maxEpoch) {
 
 /**
  * Moves calls older than ARCHIVE_KEEP_DAYS out of 'Call Logs' into one tab per month ('Call Logs 2026-09').
- * The active tab stays small, so imports, repairs and the dashboard stay fast. A hidden backup is saved first.
+ * Rows are only removed from the active tab after every archived row is confirmed to be in its archive tab.
+ * @param {{interactive: boolean}} opts interactive = ask for confirmation and save a hidden backup first
+ * @returns {{moved: number, kept: number, months: string[], skipped?: string}}
  */
-function archiveClosedMonths() {
-  const ui = SpreadsheetApp.getUi();
+function runArchive_(opts) {
+  const ui = opts.interactive ? SpreadsheetApp.getUi() : null;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
   if (!callLog || callLog.getLastRow() < 2) {
-    ui.alert('Call Logs is empty.');
-    return;
+    if (ui) ui.alert('Call Logs is empty.');
+    return { moved: 0, kept: 0, months: [], skipped: 'Call Logs is empty' };
   }
 
   const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
@@ -268,21 +273,23 @@ function archiveClosedMonths() {
   let moving = 0;
   byMonth.forEach(rows => { moving += rows.length; });
   if (moving === 0) {
-    ui.alert(`Nothing to archive: every call is newer than ${CONFIG.ARCHIVE_KEEP_DAYS} days.`);
-    return;
+    if (ui) ui.alert(`Nothing to archive: every call is newer than ${CONFIG.ARCHIVE_KEEP_DAYS} days.`);
+    return { moved: 0, kept: keep.length, months: [], skipped: 'nothing older than the keep window' };
   }
 
   const months = Array.from(byMonth.keys()).sort();
-  const summary = months.map(k => `  ${archiveTabName_(k)}: ${byMonth.get(k).length} rows`).join('\n');
-  const answer = ui.alert(
-    'Archive closed months?',
-    `${moving} call rows older than ${CONFIG.ARCHIVE_KEEP_DAYS} days will move out of "${CONFIG.CALL_LOG_SHEET}":\n${summary}\n\n${keep.length} rows stay in the active tab. A hidden backup is saved first.`,
-    ui.ButtonSet.OK_CANCEL
-  );
-  if (answer !== ui.Button.OK) return;
+  if (ui) {
+    const summary = months.map(k => `  ${archiveTabName_(k)}: ${byMonth.get(k).length} rows`).join('\n');
+    const answer = ui.alert(
+      'Archive closed months?',
+      `${moving} call rows older than ${CONFIG.ARCHIVE_KEEP_DAYS} days will move out of "${CONFIG.CALL_LOG_SHEET}":\n${summary}\n\n${keep.length} rows stay in the active tab. A hidden backup is saved first.`,
+      ui.ButtonSet.OK_CANCEL
+    );
+    if (answer !== ui.Button.OK) return { moved: 0, kept: keep.length, months: [], skipped: 'cancelled' };
 
-  const stamp = Utilities.formatDate(new Date(), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HHmm');
-  callLog.copyTo(ss).setName(`Call Logs backup ${stamp}`).hideSheet();
+    const stamp = Utilities.formatDate(new Date(), CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HHmm');
+    callLog.copyTo(ss).setName(`Call Logs backup ${stamp}`).hideSheet();
+  }
 
   const header = callLog.getRange(1, 1, 1, numCols).getValues();
   const written = new Map();
@@ -308,24 +315,93 @@ function archiveClosedMonths() {
     if (!tab || tab.getLastRow() < w.startRow + w.count - 1) problems.push(k);
   });
   if (problems.length > 0) {
-    ui.alert(`Archive stopped before changing "${CONFIG.CALL_LOG_SHEET}": could not confirm rows in ${problems.join(', ')}. Nothing was removed. Check the archive tabs and try again.`);
-    return;
+    const msg = `Archive stopped before changing "${CONFIG.CALL_LOG_SHEET}": could not confirm rows in ${problems.join(', ')}. Nothing was removed.`;
+    if (ui) ui.alert(msg + ' Check the archive tabs and try again.');
+    throw new Error(msg);
   }
 
   callLog.getRange(2, 1, callLog.getLastRow() - 1, numCols).clearContent();
   if (keep.length > 0) callLog.getRange(2, 1, keep.length, numCols).setValues(keep);
 
-  ui.alert(`Archived ${moving} rows into ${months.length} monthly tab(s). "${CONFIG.CALL_LOG_SHEET}" now has ${keep.length} rows.\n\nThe dashboard reads archive tabs automatically when you choose a date range that reaches back to those months.`);
+  if (ui) {
+    ui.alert(`Archived ${moving} rows into ${months.length} monthly tab(s). "${CONFIG.CALL_LOG_SHEET}" now has ${keep.length} rows.\n\nThe dashboard reads archive tabs automatically when you choose a date range that reaches those months.`);
+  }
+  return { moved: moving, kept: keep.length, months };
+}
+
+/** Menu item: archive now, with a confirmation and a hidden backup. */
+function archiveClosedMonths() {
+  withLock_(() => runArchive_({ interactive: true }));
+}
+
+/**
+ * Runs from the weekly trigger (no UI, no backup copy: rows are removed only after the archive tabs are
+ * verified). Skips quietly when an import or repair is running; the next run catches up. The result is
+ * stored so "Automatic archiving status" can show it.
+ */
+function archiveClosedMonthsAuto() {
+  const props = PropertiesService.getScriptProperties();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    props.setProperty('ARCHIVE_LAST_RUN', JSON.stringify({ at: new Date().toISOString(), ok: true, note: 'skipped: sheet busy, will retry next run' }));
+    return;
+  }
+  try {
+    const r = runArchive_({ interactive: false });
+    props.setProperty('ARCHIVE_LAST_RUN', JSON.stringify({ at: new Date().toISOString(), ok: true, moved: r.moved, kept: r.kept, months: r.months, note: r.skipped || '' }));
+  } catch (err) {
+    props.setProperty('ARCHIVE_LAST_RUN', JSON.stringify({ at: new Date().toISOString(), ok: false, error: String(err && err.message ? err.message : err) }));
+    throw err; // shows up in the Apps Script "Executions" list and failure notification emails
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Menu item: schedule automatic archiving every Sunday at 03:00 (sheet time zone). Safe to run repeatedly. */
+function enableAutoArchive() {
+  disableAutoArchive_();
+  ScriptApp.newTrigger('archiveClosedMonthsAuto').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
+  SpreadsheetApp.getUi().alert(`Automatic archiving is ON: every Sunday around 03:00, calls older than ${CONFIG.ARCHIVE_KEEP_DAYS} days move into monthly "Call Logs YYYY-MM" tabs.\n\nUse "Automatic archiving status" to see the last result.`);
+}
+
+function disableAutoArchive_() {
+  let removed = 0;
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'archiveClosedMonthsAuto') {
+      ScriptApp.deleteTrigger(t);
+      removed++;
+    }
+  });
+  return removed;
+}
+
+/** Menu item: stop automatic archiving. */
+function disableAutoArchive() {
+  const removed = disableAutoArchive_();
+  SpreadsheetApp.getUi().alert(removed > 0 ? 'Automatic archiving is OFF.' : 'Automatic archiving was not on.');
+}
+
+/** Menu item: whether automatic archiving is on and what the last run did. */
+function autoArchiveStatus() {
+  const on = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'archiveClosedMonthsAuto');
+  const raw = PropertiesService.getScriptProperties().getProperty('ARCHIVE_LAST_RUN');
+  let last = 'No automatic run yet.';
+  if (raw) {
+    const r = JSON.parse(raw);
+    last = r.ok
+      ? `Last run ${r.at}: ${r.moved ? `${r.moved} rows moved into ${r.months.join(', ')}; ${r.kept} stay active.` : (r.note || 'nothing to move.')}`
+      : `Last run ${r.at} FAILED: ${r.error}`;
+  }
+  SpreadsheetApp.getUi().alert(`Automatic archiving is ${on ? 'ON (every Sunday ~03:00)' : 'OFF'}.\n\n${last}`);
 }
 
 /**
  * After an import: compares, per agent, how many rows the export had with how many rows Call Logs now holds
  * for the same period (by Call ID timestamp), so any mismatch is visible straight away.
- * @param {unknown[][]} stagedRows the export rows that were in Import Staging
- * @returns {string} lines for the completion message
+ * @param {unknown[][]} stagedRows the export rows that were imported
+ * @returns {{ok: boolean, problems: string[]}}
  */
-function reconcileImport_(stagedRows) {
-  const callLog = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.CALL_LOG_SHEET);
+function reconcileImportData_(stagedRows) {
   const expected = new Map();
   let minEpoch = Infinity;
   let maxEpoch = -Infinity;
@@ -337,7 +413,7 @@ function reconcileImport_(stagedRows) {
     const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
     expected.set(agent, (expected.get(agent) ?? 0) + 1);
   });
-  if (expected.size === 0 || !callLog) return '';
+  if (expected.size === 0) return { ok: true, problems: [] };
 
   SpreadsheetApp.flush();
   const actual = new Map();
@@ -353,9 +429,14 @@ function reconcileImport_(stagedRows) {
     const got = actual.get(agent) ?? 0;
     if (got !== n) problems.push(`${agent}: export ${n}, Call Logs ${got} (${got - n > 0 ? '+' : ''}${got - n})`);
   });
-  return problems.length === 0
+  return { ok: problems.length === 0, problems };
+}
+
+/** Message lines for the result of reconcileImportData_. */
+function formatReconcile_(check) {
+  return check.ok
     ? '\n• Check: every agent matches the export exactly.'
-    : '\n• CHECK FAILED - Call Logs differs from the export for this period:\n   ' + problems.join('\n   ') +
+    : '\n• CHECK FAILED - Call Logs differs from the export for this period:\n   ' + check.problems.join('\n   ') +
       '\n   (extra rows usually mean old duplicates: run "Repair duplicate calls")';
 }
 
@@ -369,17 +450,15 @@ function reconcileImport_(stagedRows) {
 function processStagingImport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const staging = ss.getSheetByName(CONFIG.STAGING_SHEET);
-  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
-  const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
 
-  if (!callLog || !mapping) {
+  if (!ss.getSheetByName(CONFIG.CALL_LOG_SHEET) || !ss.getSheetByName(CONFIG.MAPPING_SHEET)) {
     SpreadsheetApp.getUi().alert('Required tabs missing. Please run "1. Setup / Reset Tabs" first.');
     return;
   }
 
   if (!staging) {
     SpreadsheetApp.getUi().alert(
-      `"${CONFIG.STAGING_SHEET}" tab not found.\n\nClick "BD Call Dashboard > 1. Create / Open Staging Tab" to prepare an import tab.`
+      `"${CONFIG.STAGING_SHEET}" tab not found.\n\nClick "BD Call Dashboard > 1. Create / Open Staging Tab" to prepare an import tab.\n\n(Normally exports are uploaded from the web dashboard instead.)`
     );
     return;
   }
@@ -394,12 +473,118 @@ function processStagingImport() {
   const rawRows = stagingRange.getValues();
   const stagingDisp = stagingRange.getDisplayValues(); // text as shown (e.g. "0:37"), used for comparing
 
+  const result = withLock_(() => importCallRows_(rawRows, stagingDisp));
+
+  // Delete the staging tab completely after finishing
+  try {
+    ss.deleteSheet(staging);
+  } catch (err) {
+    console.warn('Could not delete staging sheet, clearing content instead:', err);
+    staging.clear();
+  }
+
+  let message = `✅ Import Complete:\n• ${result.imported} new call(s) imported into Call Logs.`;
+  if (result.duplicates > 0) {
+    message += `\n• ${result.duplicates} duplicate call(s) detected and skipped.`;
+  }
+  if (result.newAgents.length > 0) {
+    message += `\n• ${result.newAgents.length} new agent(s) added to Agent Mapping. Please assign their Opener names.`;
+  }
+  message += `\n• Staging tab removed.`;
+  message += formatReconcile_(result.check);
+
+  SpreadsheetApp.getUi().alert(message);
+
+  refreshDashboard();
+}
+
+// ==========================================
+// WEB APP: call-export upload from the dashboard
+// ==========================================
+
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function safeEqual_(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * Receives call-export rows from the web dashboard and adds them to Call Logs with exactly the same rules as
+ * the Import Staging menu (duplicates skipped, repeated legs kept, archive-aware, per-agent check).
+ *
+ * Setup (once): Project Settings > Script properties > add IMPORT_SECRET (a long random string), then
+ * Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone). Put the web app URL and the same
+ * secret in the dashboard's IMPORT_WEBHOOK_URL / IMPORT_WEBHOOK_SECRET settings. The secret is what protects it.
+ *
+ * Request body (JSON): { secret, action: 'ping' } or { secret, action: 'import', rows: string[13][] }
+ */
+function doPost(e) {
+  try {
+    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    const expected = PropertiesService.getScriptProperties().getProperty('IMPORT_SECRET') || '';
+    if (!expected || !safeEqual_(String(body.secret || ''), expected)) {
+      return jsonOut_({ ok: false, error: 'Unauthorized' });
+    }
+    if (body.action === 'ping') return jsonOut_({ ok: true, pong: true });
+    if (body.action !== 'import' || !Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
+    if (body.rows.length > 12000) return jsonOut_({ ok: false, error: 'Too many rows in one request (max 12000)' });
+
+    const width = CONFIG.RAW_HEADERS.length;
+    const rows = body.rows.map(r => {
+      const row = [];
+      for (let i = 0; i < width; i++) row.push(r && r[i] !== undefined && r[i] !== null ? String(r[i]) : '');
+      return row;
+    });
+    const display = rows.map(r => r.slice());
+    const result = withLock_(() => importCallRows_(rows, display), 50000);
+    return jsonOut_({ ok: true, ...result });
+  } catch (err) {
+    return jsonOut_({ ok: false, error: String(err && err.message ? err.message : err) });
+  }
+}
+
+/**
+ * Runs fn while holding the script lock, so an import, an archive run and a repair can never edit Call Logs at
+ * the same time (which could lose rows).
+ * @template T
+ * @param {() => T} fn
+ * @param {number} [waitMs]
+ * @returns {T}
+ */
+function withLock_(fn, waitMs) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(waitMs ?? 120000);
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Adds call rows (13 export columns) to Call Logs, skipping rows the sheet already holds. Used by both the
+ * Import Staging menu and the web dashboard upload (doPost). Does no UI work.
+ * @param {unknown[][]} rawRows rows as values (mutated: the Call Date becomes Cairo time)
+ * @param {string[][]} dispRows the same rows as text, used for comparing (e.g. "0:37")
+ * @returns {{imported: number, duplicates: number, newAgents: string[], check: {ok: boolean, problems: string[]}}}
+ */
+function importCallRows_(rawRows, dispRows) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
+  const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
+  if (!callLog || !mapping) throw new Error('Call Logs / Agent Mapping tab is missing.');
+
   // How many rows of each call (see callRowKey_) are already stored: the active Call Logs plus the archive tabs of
   // the months this export touches (so re-importing old data never duplicates archived calls).
   const existingCount = new Map();
   let stagedMin = Infinity;
   let stagedMax = -Infinity;
-  stagingDisp.forEach(d => {
+  dispRows.forEach(d => {
     const e = callEpoch_(d[1]);
     if (e !== null) { stagedMin = Math.min(stagedMin, e); stagedMax = Math.max(stagedMax, e); }
   });
@@ -422,7 +607,7 @@ function processStagingImport() {
   let duplicateCount = 0;
 
   rawRows.forEach((r, rowIdx) => {
-    const disp = stagingDisp[rowIdx];
+    const disp = dispRows[rowIdx];
     const rawText = disp[0] || dateText_(r[0]);
     const callId = String(r[1] ?? '').trim();
     const fromNum = String(r[2] ?? '').trim();
@@ -455,8 +640,6 @@ function processStagingImport() {
     }
 
     toAppend.push([...r, agent, durationSec]);
-
-
   });
 
   // Batch insert new call rows
@@ -470,27 +653,12 @@ function processStagingImport() {
     mapping.getRange(mapping.getLastRow() + 1, 1, newMappingRows.length, 2).setValues(newMappingRows);
   }
 
-  // Delete the staging tab completely after finishing
-  try {
-    ss.deleteSheet(staging);
-  } catch (err) {
-    console.warn('Could not delete staging sheet, clearing content instead:', err);
-    staging.clear();
-  }
-
-  let message = `✅ Import Complete:\n• ${toAppend.length} new call(s) imported into Call Logs.`;
-  if (duplicateCount > 0) {
-    message += `\n• ${duplicateCount} duplicate call(s) detected and skipped.`;
-  }
-  if (newAgents.size > 0) {
-    message += `\n• ${newAgents.size} new agent(s) added to Agent Mapping. Please assign their Opener names.`;
-  }
-  message += `\n• Staging tab removed.`;
-  message += reconcileImport_(rawRows);
-
-  SpreadsheetApp.getUi().alert(message);
-
-  refreshDashboard();
+  return {
+    imported: toAppend.length,
+    duplicates: duplicateCount,
+    newAgents: Array.from(newAgents),
+    check: reconcileImportData_(rawRows)
+  };
 }
 
 /**
@@ -852,6 +1020,10 @@ function previewCallLogRepair() {
  * ("Call Logs backup ...") so everything can be restored.
  */
 function repairCallLogs() {
+  withLock_(repairCallLogsLocked_);
+}
+
+function repairCallLogsLocked_() {
   const ui = SpreadsheetApp.getUi();
   const plan = buildRepairedCallLog_();
   if (!plan) {

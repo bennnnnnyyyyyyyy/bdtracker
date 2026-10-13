@@ -72,7 +72,8 @@ Per-user accounts (`app_users` in Supabase; scrypt-hashed passwords; roles admin
 | `/api/admin/users`, `/api/admin/users/[id]` | GET, POST, PATCH | Admin only: list, create, edit role / disable / reset password. |
 | `/api/confirmations` | POST | Admin/manager: confirm or undo shows (validated against current tracker data). |
 | `/api/confirmations/bulk` | POST | Admin: one-time confirmation of existing show-stage meetings. |
-| `/api/upload` | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
+| `/api/upload` | POST | Admin/manager. An Ultatel Call Details file (CSV or Excel) is sent to the call-log sheet's Apps Script web app (`IMPORT_WEBHOOK_URL`). Attendance / department workbooks are local-only files. |
+| (same route) other workbooks | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
 
 ---
 

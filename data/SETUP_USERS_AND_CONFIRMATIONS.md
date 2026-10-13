@@ -15,6 +15,7 @@
    | `AUTH_SECRET` | Random string, 32+ characters. Signs the session cookies. In production the site returns 503 without it. Generate one with `openssl rand -base64 48`. Changing it signs everyone out. |
    | `SUPABASE_SERVICE_ROLE_KEY` | Required for accounts and confirmations (the anon key cannot access these tables). |
    | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase URL (already defaulted in code). |
+   | `IMPORT_WEBHOOK_URL` / `IMPORT_WEBHOOK_SECRET` | Needed to upload Ultatel exports from the dashboard (see "Uploading call exports" below). |
    | `CRON_SECRET` | Protects `/api/sync` (unchanged). |
    | `CALL_DAY_TIMEZONE` | Optional. Which clock decides a call's day. Default `Etc/GMT+6` (Ultatel's clock, matches Ultatel reports). Use `Africa/Cairo` to count days from Cairo midnight. |
    | `DASHBOARD_CACHE_TTL_SECONDS` | Optional. How long server-side sheet reads are reused (default 30). |
@@ -33,6 +34,18 @@ The tracker has no ID column, so each row gets a key made of **opener | date add
 ## What is not live
 Phone-call numbers can only be as fresh as the last import into the `Call Logs` sheet (calls arrive by pasting the Ultatel export). Meetings and attendance update as soon as the sheet is edited (within about 30–60 seconds on screen). Making calls live too would need an Ultatel API/automatic export, which does not exist in this project today.
 
-## Keeping the call log fast: monthly archive
-`Call Logs` grows every day and the import, the repair tools and every dashboard refresh read all of it. Once a month, in the sheet, run **BD Call Dashboard > Archive closed months**. It moves calls older than 45 days into tabs named `Call Logs YYYY-MM` (a hidden backup of the active log is saved first). Nothing else changes: imports still go through `Import Staging`, and the dashboard reads archive tabs automatically when you pick a date range that reaches them. Do not rename the archive tabs, and keep the `Call Logs ` prefix.
-Run **Repair duplicate calls** *before* the first archive, so duplicates are not archived.
+## Uploading call exports from the dashboard
+Management does not paste anything into the sheet any more. In the dashboard open **Actions > Import Excel**, drop the Ultatel *Call Details* file (CSV or Excel) and press **Upload & Sync**. The file is read on the server and handed to the Call Logs sheet's Apps Script, which adds it with the same rules as the old Import Staging menu: calls already in the sheet are skipped (so overlapping or repeated uploads are safe), repeated rows of one Call ID all count, archived months are checked too, and a per-agent check compares the file with the sheet. The dialog shows the result, plus any new agent that needs an Opener name in `Agent Mapping`. Only admins and managers can upload.
+
+One-time setup (about 5 minutes):
+1. In the call-log sheet open **Extensions > Apps Script**, paste the latest `apps-script/Code.js` and `appsscript.json` (or `clasp push`).
+2. **Project Settings (gear) > Script properties > Add script property**: name `IMPORT_SECRET`, value = a long random string (for example `openssl rand -base64 32`).
+3. **Deploy > New deployment > Web app**: *Execute as: Me*, *Who has access: Anyone*. Authorise when asked, then copy the **Web app URL** (ends in `/exec`). Anyone can reach the URL, but without the secret it only answers "Unauthorized".
+4. In Vercel (and `.env.local`) set `IMPORT_WEBHOOK_URL` = that URL and `IMPORT_WEBHOOK_SECRET` = the same secret. Redeploy.
+5. Test: upload a Call Details file. If you see "did not answer with data", the deployment access is not "Anyone"; if you see "Unauthorized", the two secrets differ.
+After changing `Code.js` later, use **Deploy > Manage deployments > Edit > New version** so the web app runs the new code.
+The old `Import Staging` menu still works as a fallback.
+
+## Keeping the call log fast: automatic monthly archive
+`Call Logs` grows every day and the import, the repair tools and every dashboard refresh read all of it. In the sheet run **BD Call Dashboard > Turn ON automatic archiving (weekly)** once. Every Sunday around 03:00 it moves calls older than 45 days into tabs named `Call Logs YYYY-MM`, confirming each row is in its archive tab before removing it from the active log (no manual step, no backup copy; use **Archive closed months now** if you want a hidden backup). **Automatic archiving status** shows whether it is on and what the last run did. A lock keeps it from running while an upload or repair is editing the log; it just tries again next week.
+The dashboard reads archive tabs automatically when you pick a date range that reaches them. Do not rename the archive tabs; keep the `Call Logs ` prefix. Run **Repair duplicate calls** *before* the first archive, so duplicates are not archived.
