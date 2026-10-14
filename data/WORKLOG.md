@@ -199,3 +199,8 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 43. Attendance tab access message
 - The sheet's script runs as the Google account that deploys/clicks it (not as the dashboard service account), so that account needs access to the attendance workbook. The error now names the account to share it with.
+
+## 44. Shows and no-shows count on the day the meeting happened
+- Read the real meetings workbook: the BD tracker keeps a booking date (Date Added) but a meeting happens days later, when its row moves out of New Meetings; the tracker's own `_Activity_Log` records every move ("New Meetings → Follow Ups | Company: X" with a timestamp). The dashboard dated shows and no-shows by Date Added, so a week's shows did not match the meetings held that week.
+- Now: `Booked`, the stage columns, Med B / PPO and Onboarded still use Date Added. Shows (confirmed and awaiting) and no-shows use `eventDate`: for No-Show the latest move into No-Show; for a show stage the latest move out of New Meetings into a show stage (so Follow Ups → Invoice Sent never re-dates a meeting); no log entry (older rows) falls back to Date Added. Daily/weekly/monthly tables do the same. Lists (Confirm shows, Meetings export) include meetings booked or held in the range and show a "Moved" column.
+- Not changed: the show rule (management confirms), Dead Leads / No-Show never shows, tabs read (DISQUALIFIED, CANCELLED, Georges Callbacks and Real Estate are not read).

@@ -10,6 +10,7 @@ import {
 } from '../types/dashboard';
 import { AttendanceDataset, calculateAgentPresentDays } from './attendance';
 import { isAwaitingConfirmation, isConfirmedShow } from './meetings';
+import { LIKELY_SHOW_STAGES } from './stages';
 
 /**
  * Extracts agent name from Ultatel extension cell.
@@ -372,18 +373,24 @@ export function computeDashboardMetrics(
     filteredMeetings.push({ ...m, opener });
   });
 
+  // Shows and no-shows count on the day the meeting happened (the day its row moved into its tab), not on the
+  // day it was booked; meetings booked in the range still drive "booked" and the stage columns.
+  const inRange = (iso: string | null): boolean => {
+    if (!iso) return false;
+    if (startISO && iso < startISO) return false;
+    if (endISO && iso > endISO) return false;
+    return true;
+  };
+  const happenedStages = new Set<string>(['No-Show', ...LIKELY_SHOW_STAGES]);
+  let eventMeetings = filteredMeetings.filter(m => happenedStages.has(m.stage) || m.showConfirmed);
   if (isDateFiltered) {
-    filteredMeetings = filteredMeetings.filter(m => {
-      const meetingISO = parseDateToISO(m.dateAdded);
-      if (!meetingISO) return false;
-      if (startISO && meetingISO < startISO) return false;
-      if (endISO && meetingISO > endISO) return false;
-      return true;
-    });
+    eventMeetings = eventMeetings.filter(m => inRange(parseDateToISO(m.eventDate) ?? parseDateToISO(m.dateAdded)));
+    filteredMeetings = filteredMeetings.filter(m => inRange(parseDateToISO(m.dateAdded)));
   }
 
   if (selectedCanonicalOpener) {
     filteredMeetings = filteredMeetings.filter(m => m.opener === selectedCanonicalOpener);
+    eventMeetings = eventMeetings.filter(m => m.opener === selectedCanonicalOpener);
   }
 
   // Calculate normalized tracker counts per canonical opener
@@ -493,11 +500,16 @@ export function computeDashboardMetrics(
   const openerPPOCounts: Record<string, number> = {};
   const openerShows: Record<string, number> = {};
   const openerAwaiting: Record<string, number> = {};
-  filteredMeetings.forEach(m => {
+  const openerNoShows: Record<string, number> = {};
+  eventMeetings.forEach(m => {
     if (!m.opener) return;
     // A show exists only once management confirmed it; stages alone never create one.
     if (isConfirmedShow(m)) openerShows[m.opener] = (openerShows[m.opener] || 0) + 1;
     if (isAwaitingConfirmation(m)) openerAwaiting[m.opener] = (openerAwaiting[m.opener] || 0) + 1;
+    if (m.stage === 'No-Show') openerNoShows[m.opener] = (openerNoShows[m.opener] || 0) + 1;
+  });
+  filteredMeetings.forEach(m => {
+    if (!m.opener) return;
     if (m.medB) {
       openerMedBCounts[m.opener] = (openerMedBCounts[m.opener] || 0) + 1;
     }
@@ -522,7 +534,7 @@ export function computeDashboardMetrics(
       booked += count;
     });
 
-    const noShow = tc['No-Show'] || 0;
+    const noShow = openerNoShows[op] || 0;
     const attended = openerShows[op] || 0;
     const awaitingConfirmation = openerAwaiting[op] || 0;
     const showRate = attended + noShow > 0 ? attended / (attended + noShow) : 0;
@@ -681,6 +693,7 @@ export function computeDashboardMetrics(
   const dailyBreakdown = buildPeriodicBreakdown(
     filteredCalls,
     filteredMeetings,
+    eventMeetings,
     Array.from(allOpeners),
     (dateStr) => {
       const iso = parseDateToISO(dateStr);
@@ -693,6 +706,7 @@ export function computeDashboardMetrics(
   const weeklyBreakdown = buildPeriodicBreakdown(
     filteredCalls,
     filteredMeetings,
+    eventMeetings,
     Array.from(allOpeners),
     (dateStr) => {
       const iso = parseDateToISO(dateStr);
@@ -705,6 +719,7 @@ export function computeDashboardMetrics(
   const monthlyBreakdown = buildPeriodicBreakdown(
     filteredCalls,
     filteredMeetings,
+    eventMeetings,
     Array.from(allOpeners),
     (dateStr) => {
       const iso = parseDateToISO(dateStr);
@@ -714,11 +729,15 @@ export function computeDashboardMetrics(
     agentMappings
   );
 
+  // Meetings shown in lists: booked in the range plus those that happened in it.
+  const seen = new Set(filteredMeetings);
+  const listedMeetings = filteredMeetings.concat(eventMeetings.filter(m => !seen.has(m)));
+
   return {
     openers,
     totals,
     filteredCalls,
-    filteredMeetings,
+    filteredMeetings: listedMeetings,
     dailyBreakdown,
     weeklyBreakdown,
     monthlyBreakdown
@@ -731,6 +750,7 @@ export function computeDashboardMetrics(
 function buildPeriodicBreakdown(
   calls: CallRecord[],
   meetings: MeetingRecord[],
+  eventMeetings: MeetingRecord[],
   allOpeners: string[],
   getKeyAndLabel: (dateStr: string) => { key: string; label: string; startISO?: string; endISO?: string } | null,
   attendance?: AttendanceDataset,
@@ -805,9 +825,26 @@ function buildPeriodicBreakdown(
     }
     const a = p.agentStats[opener];
     a.meetings++;
+    if (m.stage === 'Onboarded') a.onboarded++;
+  });
+
+  // 2b. Shows and no-shows land in the period of the day they happened.
+  eventMeetings.forEach(m => {
+    const when = m.eventDate || m.dateAdded;
+    if (!when) return;
+    const period = getKeyAndLabel(when);
+    if (!period) return;
+    if (!periodMap.has(period.key)) {
+      periodMap.set(period.key, { key: period.key, label: period.label, startISO: period.startISO, endISO: period.endISO, agentStats: {} });
+    }
+    const p = periodMap.get(period.key)!;
+    const opener = m.opener || 'Unmapped';
+    if (!p.agentStats[opener]) {
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0 };
+    }
+    const a = p.agentStats[opener];
     if (m.stage === 'No-Show') a.noShow++;
     if (isConfirmedShow(m)) a.attended++;
-    if (m.stage === 'Onboarded') a.onboarded++;
   });
 
   // Convert to sorted array of PeriodicGroupSummary
