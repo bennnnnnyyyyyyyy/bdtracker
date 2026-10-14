@@ -6,15 +6,16 @@ import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
 import { CallLogsView } from '@/components/CallLogsView';
 import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
+import { DashboardCharts } from '@/components/DashboardCharts';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
 import { SheetToolsModal } from '@/components/SheetToolsModal';
 import { ConfirmationsView } from '@/components/ConfirmationsView';
 import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse, CallRecord } from '@/types/dashboard';
-import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2, PieChart } from 'lucide-react';
 
-type ActiveTab = 'agents' | 'periods' | 'table' | 'confirm' | 'calls';
+type ActiveTab = 'overview' | 'agents' | 'periods' | 'table' | 'confirm' | 'calls';
 
 // Live updates: the open dashboard re-reads the server every 30 s (the server caches sheet reads for ~30 s).
 const LIVE_POLL_MS = 30_000;
@@ -28,7 +29,15 @@ type DashboardUiCache = {
   savedAt: number;
 };
 
+type PeriodView = 'daily' | 'weekly' | 'monthly';
+const PERIOD_VIEWS: { id: PeriodView; label: string; title: string }[] = [
+  { id: 'daily', label: 'Daily', title: 'Daily performance' },
+  { id: 'weekly', label: 'Weekly', title: 'Weekly performance' },
+  { id: 'monthly', label: 'Monthly', title: 'Monthly performance' },
+];
+
 const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'overview', label: 'Overview', icon: <PieChart className="w-4 h-4" /> },
   { id: 'agents', label: 'Team', icon: <LayoutGrid className="w-4 h-4" /> },
   { id: 'periods', label: 'Trends', icon: <BarChart3 className="w-4 h-4" /> },
   { id: 'table', label: 'Details', icon: <TableIcon className="w-4 h-4" /> },
@@ -115,7 +124,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('agents');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [periodView, setPeriodView] = useState<PeriodView>('daily');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [sheetToolsOpen, setSheetToolsOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -273,6 +283,7 @@ export default function DashboardPage() {
         onRefresh={() => fetchData(true)}
         onOpenImportModal={() => setImportModalOpen(true)}
         onOpenSheetTools={data?.viewer && (data.viewer.role === 'admin' || data.viewer.role === 'manager') ? () => setSheetToolsOpen(true) : undefined}
+        onPrint={() => window.print()}
         onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
         onExportCsv={data ? (kind) => exportDashboardCsv(data, filters, kind) : undefined}
         loading={loading}
@@ -296,7 +307,7 @@ export default function DashboardPage() {
         onSuccess={() => fetchData(true)}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {error && (
           <div
             className="rounded-xl p-4 flex items-center justify-between text-sm"
@@ -308,8 +319,7 @@ export default function DashboardPage() {
             </div>
             <button
               onClick={() => fetchData(true)}
-              className="font-num text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-              style={{ background: 'rgba(248,113,113,0.12)', color: '#fca5a5' }}
+              className="btn btn-danger"
             >
               Retry
             </button>
@@ -363,7 +373,7 @@ export default function DashboardPage() {
                   role="tab"
                   aria-selected={activeTab === tab.id}
                   onClick={() => handleTabChange(tab.id)}
-                  className="pb-3 pt-1 px-4 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap"
+                  className="pb-3 pt-1 px-5 flex items-center gap-2 cursor-pointer transition-colors border-b-2 whitespace-nowrap hover:text-text-primary"
                   style={
                     activeTab === tab.id
                       ? { borderColor: '#c9a84c', color: '#e8c56a', fontWeight: 600 }
@@ -381,6 +391,7 @@ export default function DashboardPage() {
               ))}
             </div>
 
+            {activeTab === 'overview' && <DashboardCharts openers={data.openers} daily={data.dailyBreakdown} />}
             {activeTab === 'agents' && (
               <AgentDashboardView
                 openers={data.openers}
@@ -388,20 +399,25 @@ export default function DashboardPage() {
               />
             )}
             {activeTab === 'periods' && (
-              <div className="space-y-6">
-                <section>
-                  <div className="sec-tag mb-2">Daily performance</div>
-                  <PeriodicBreakdownTable data={data.dailyBreakdown} emptyLabel="No daily activity in this period" />
-                </section>
-                <section>
-                  <div className="sec-tag mb-2">Weekly performance</div>
-                  <PeriodicBreakdownTable data={data.weeklyBreakdown} emptyLabel="No weekly activity in this period" />
-                </section>
-                <section>
-                  <div className="sec-tag mb-2">Monthly performance</div>
-                  <PeriodicBreakdownTable data={data.monthlyBreakdown} emptyLabel="No monthly activity in this period" />
-                </section>
-              </div>
+              <section className="space-y-4" aria-labelledby="trends-heading">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="sec-tag mb-1">Trends</p>
+                    <h2 id="trends-heading" className="font-serif text-xl font-bold text-white">{PERIOD_VIEWS.find(v => v.id === periodView)?.title}</h2>
+                    <p className="text-xs text-text-dim mt-1">Click a row to expand the per-agent breakdown</p>
+                  </div>
+                  <div className="seg" role="group" aria-label="Period granularity">
+                    {PERIOD_VIEWS.map(v => (
+                      <button key={v.id} type="button" className="seg-item" aria-pressed={periodView === v.id} onClick={() => setPeriodView(v.id)}>{v.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <PeriodicBreakdownTable
+                  key={periodView}
+                  data={periodView === 'daily' ? data.dailyBreakdown : periodView === 'weekly' ? data.weeklyBreakdown : data.monthlyBreakdown}
+                  emptyLabel={`No ${periodView} activity in this period`}
+                />
+              </section>
             )}
             {activeTab === 'table' && (
               <OpenerTable openers={data.openers} totals={data.totals} />
@@ -431,7 +447,7 @@ export default function DashboardPage() {
         className="py-4 text-center label-caps"
         style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
       >
-        BD Call &amp; Pipeline Dashboard · Google Sheets API v4
+        BD Call &amp; Pipeline Dashboard
       </footer>
     </div>
   );

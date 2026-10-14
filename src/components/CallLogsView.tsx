@@ -9,6 +9,12 @@ interface CallLogsViewProps {
   calls: CallRecord[];
 }
 
+function formatDuration(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
@@ -33,10 +39,13 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
     });
   }, [calls, outcomeFilter, search, typeFilter]);
 
+  const answeredCount = useMemo(() => filtered.filter(c => c.outcome === 'ANSWERED').length, [filtered]);
+  const talkSec = useMemo(() => filtered.reduce((n, c) => n + (c.durationSec || 0), 0), [filtered]);
   const totalPages = useMemo(() => Math.ceil(filtered.length / pageSize) || 1, [filtered.length]);
+  const page = Math.min(currentPage, totalPages);
   const paginated = useMemo(
-    () => filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-    [currentPage, filtered]
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [page, filtered]
   );
 
   return (
@@ -44,9 +53,9 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
       {/* Header & Filters */}
       <div className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div>
-          <div className="sec-tag mb-0.5">Call Activity</div>
-          <h3 className="font-serif text-base font-bold text-white">Call Log Drill-Down</h3>
-          <p className="label-caps mt-0.5">{filtered.length} calls logged</p>
+          <div className="sec-tag mb-1">Call activity</div>
+          <h3 className="font-serif text-lg font-bold text-white">Call log drill-down</h3>
+          <p className="text-xs text-text-dim mt-1">{filtered.length.toLocaleString()} calls · {answeredCount.toLocaleString()} answered ({filtered.length ? Math.round(answeredCount / filtered.length * 100) : 0}%) · {formatDuration(talkSec)} talk time</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -58,25 +67,23 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
             Export CSV ({filtered.length})
           </button>
           {/* Search */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-[#71717a] absolute left-3 top-1/2 -translate-y-1/2" />
+          <label className="field">
+            <Search className="w-3.5 h-3.5 text-text-dim" aria-hidden="true" />
             <input
               type="text"
               aria-label="Search calls by agent, number, or ID"
-               placeholder="Search call / agent..."
+              placeholder="Search call / agent…"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-              className="rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#f4f4f5] placeholder-[#52525b] focus:outline-none w-44 font-num"
-              style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.08)' }}
+              className="w-44"
             />
-          </div>
+          </label>
 
           {/* Type Filter */}
           <select
             value={typeFilter}
             onChange={(e) => { setTypeFilter(e.target.value); setCurrentPage(1); }}
-            className="rounded-lg px-2.5 py-1.5 text-xs text-[#a1a1aa] focus:outline-none font-num"
-            style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.08)' }}
+            className="field"
           >
             <option value="ALL">All Types</option>
             <option value="OUT-Bound">Outbound</option>
@@ -87,8 +94,7 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
           <select
             value={outcomeFilter}
             onChange={(e) => { setOutcomeFilter(e.target.value); setCurrentPage(1); }}
-            className="rounded-lg px-2.5 py-1.5 text-xs text-[#a1a1aa] focus:outline-none font-num"
-            style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.08)' }}
+            className="field"
           >
             <option value="ALL">All Outcomes</option>
             <option value="ANSWERED">Answered</option>
@@ -99,50 +105,50 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs whitespace-nowrap font-num">
-          <thead className="bg-[#111113] text-[#71717a] border-b border-[rgba(255,255,255,0.07)] font-medium">
+        <table className="w-full text-left text-[13px] whitespace-nowrap font-num">
+          <thead className="bg-surface text-text-dim text-[11px] uppercase tracking-wider border-b border-white/7 font-medium sticky top-0">
             <tr>
-              <th className="py-2.5 px-4">Date</th>
-              <th className="py-2.5 px-3">Call ID</th>
-              <th className="py-2.5 px-3">Agent</th>
-              <th className="py-2.5 px-3">Mapped Opener</th>
-              <th className="py-2.5 px-3">Type</th>
-              <th className="py-2.5 px-3">Outcome</th>
-              <th className="py-2.5 px-3 text-right">Duration</th>
-              <th className="py-2.5 px-3">From</th>
-              <th className="py-2.5 px-3">To</th>
+              <th className="py-3 px-4">Date</th>
+              <th className="py-3 px-3">Call ID</th>
+              <th className="py-3 px-3">Extension agent</th>
+              <th className="py-3 px-3">Agent (mapped)</th>
+              <th className="py-3 px-3">Type</th>
+              <th className="py-3 px-3">Outcome</th>
+              <th className="py-3 px-3 text-right">Duration</th>
+              <th className="py-3 px-3">From</th>
+              <th className="py-3 px-3">To</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[rgba(255,255,255,0.05)] text-[#d4d4d8]">
             {paginated.map((c, idx) => (
               <tr key={`${c.callId}-${idx}`} className="hover:bg-[rgba(255,255,255,0.03)] transition-colors">
-                <td className="py-2.5 px-4 text-[#71717a] text-[11px]">{c.callDate}</td>
-                <td className="py-2.5 px-3 text-[#a1a1aa]">{c.callId}</td>
-                <td className="py-2.5 px-3 font-medium text-white">{c.agent || '—'}</td>
-                <td className="py-2.5 px-3 text-[#a1a1aa]">{c.opener}</td>
-                <td className="py-2.5 px-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                <td className="py-3 px-4 text-text-dim text-xs">{c.callDate}</td>
+                <td className="py-3 px-3 text-[#a1a1aa]">{c.callId}</td>
+                <td className="py-3 px-3 font-medium text-white">{c.agent || '—'}</td>
+                <td className="py-3 px-3 text-[#a1a1aa]">{c.opener}</td>
+                <td className="py-3 px-3">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
                     c.type === 'OUT-Bound' ? 'pill-warn' : 'pill-success'
                   }`}>
                     {c.type === 'OUT-Bound' ? <PhoneOutgoing className="w-2.5 h-2.5 mr-1" /> : <PhoneIncoming className="w-2.5 h-2.5 mr-1" />}
                     {c.type}
                   </span>
                 </td>
-                <td className="py-2.5 px-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                <td className="py-3 px-3">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
                     c.outcome === 'ANSWERED' ? 'pill-success' : 'pill-danger'
                   }`}>
                     {c.outcome}
                   </span>
                 </td>
-                <td className="py-2.5 px-3 text-right text-[#f4f4f5]">{c.duration}</td>
-                <td className="py-2.5 px-3 text-[#71717a]">{c.from}</td>
-                <td className="py-2.5 px-3 text-[#71717a]">{c.to}</td>
+                <td className="py-3 px-3 text-right text-[#f4f4f5]">{c.duration}</td>
+                <td className="py-3 px-3 text-[#71717a]">{c.from}</td>
+                <td className="py-3 px-3 text-[#71717a]">{c.to}</td>
               </tr>
             ))}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-[#52525b] text-sm">
+                <td colSpan={9} className="py-12 text-center text-text-dim text-sm">
                   No call logs match the selected filters.
                 </td>
               </tr>
@@ -153,21 +159,22 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
 
       {/* Pagination Footer */}
       <div className="p-3 border-t border-[rgba(255,255,255,0.07)] flex items-center justify-between text-xs text-[#71717a] font-num">
-        <span>Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} entries</span>
-        <div className="flex items-center space-x-2">
+        <span>Showing {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1} to {Math.min(page * pageSize, filtered.length)} of {filtered.length} entries</span>
+        <div className="flex items-center gap-2">
+          <span>Page {page} of {totalPages}</span>
           <button
             aria-label="Previous page"
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="p-1 rounded-lg bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] disabled:opacity-30 text-[#f4f4f5] cursor-pointer"
+            onClick={() => setCurrentPage(Math.max(1, page - 1))}
+            disabled={page === 1}
+            className="p-1.5 rounded-lg bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] disabled:opacity-30 text-[#f4f4f5] cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
             aria-label="Next page"
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="p-1 rounded-lg bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] disabled:opacity-30 text-[#f4f4f5] cursor-pointer"
+            onClick={() => setCurrentPage(Math.min(totalPages, page + 1))}
+            disabled={page === totalPages}
+            className="p-1.5 rounded-lg bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] disabled:opacity-30 text-[#f4f4f5] cursor-pointer"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

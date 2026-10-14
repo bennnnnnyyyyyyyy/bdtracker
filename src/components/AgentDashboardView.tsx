@@ -1,13 +1,22 @@
 'use client';
 
-import React, { memo, useMemo } from 'react';
-import { Award, Calendar, Phone, TrendingUp } from 'lucide-react';
+import React, { memo, useMemo, useState } from 'react';
+import { Award, Phone } from 'lucide-react';
 import { FilterState, OpenerStats } from '@/types/dashboard';
 
 interface AgentDashboardViewProps {
   openers: OpenerStats[];
   filters: FilterState;
 }
+
+type SortKey = 'calls' | 'booked' | 'showRate' | 'closeRate';
+
+const SORTS: { id: SortKey; label: string }[] = [
+  { id: 'calls', label: 'Calls' },
+  { id: 'booked', label: 'Booked' },
+  { id: 'showRate', label: 'Show rate' },
+  { id: 'closeRate', label: 'Close rate' },
+];
 
 function formatLocalDateYMD(date: Date): string {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
@@ -19,92 +28,120 @@ function formatRate(rate: number): string {
 
 function getPeriodTitle(filters: FilterState): string {
   if (filters.preset === 'today') return `Today · ${filters.startDate || formatLocalDateYMD(new Date())}`;
-  if (filters.preset === 'this_week') return 'This Week';
-  if (filters.preset === 'this_month') return 'This Month';
-  if (filters.preset === 'last_30_days') return 'Last 30 Days';
+  if (filters.preset === 'this_week') return 'This week';
+  if (filters.preset === 'this_month') return 'This month';
+  if (filters.preset === 'last_30_days') return 'Last 30 days';
   if (filters.startDate && filters.endDate) return `${filters.startDate} → ${filters.endDate}`;
   return 'Current period';
 }
 
 function coachingStatus(agent: OpenerStats): { label: string; className: string } {
-  // Only judge show rate once at least one meeting has a result (attended or no-show).
-  if (agent.attended + agent.noShow > 0 && agent.showRate < 0.4) return { label: 'Show rate needs attention', className: 'pill-danger' };
-  if (agent.presentDays > 0 && agent.callsPerPresentDay < 10) return { label: 'Activity needs attention', className: 'pill-warn' };
+  if (agent.attended + agent.noShow > 0 && agent.showRate < 0.4) return { label: 'Low show rate', className: 'pill-danger' };
+  if (agent.presentDays > 0 && agent.callsPerPresentDay < 10) return { label: 'Low activity', className: 'pill-warn' };
   return { label: 'On track', className: 'pill-success' };
 }
 
-const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked }: {
+type Tone = 'neutral' | 'gold' | 'success' | 'danger';
+const TONE_TEXT: Record<Tone, string> = { neutral: 'text-white', gold: 'text-gold-light', success: 'text-success', danger: 'text-danger' };
+const TONE_BAR: Record<Tone, string> = { neutral: 'bar-fill-white', gold: 'bar-fill-gold', success: 'bar-fill-success', danger: 'bar-fill-danger' };
+
+function Metric({ label, value, ratio, tone = 'neutral', hint }: { label: string; value: string; ratio?: number; tone?: Tone; hint?: string }) {
+  return (
+    <div className="bg-card px-4 py-3">
+      <div className="label-caps">{label}</div>
+      <div className={`font-num text-2xl font-bold mt-1 ${TONE_TEXT[tone]}`}>{value}</div>
+      {ratio !== undefined
+        ? <div className="bar-track mt-2" aria-hidden="true"><div className={`bar-fill ${TONE_BAR[tone]}`} style={{ width: `${Math.min(100, Math.max(0, ratio * 100))}%` }} /></div>
+        : hint && <div className="text-[11px] text-text-dim mt-1.5">{hint}</div>}
+    </div>
+  );
+}
+
+const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, teamShowRate }: {
   agent: OpenerStats;
   rank: number;
   maxCalls: number;
   maxBooked: number;
+  teamShowRate: number;
 }) {
   const isTop = rank === 1;
   const status = coachingStatus(agent);
   const productivity = agent.presentDays > 0
-    ? `${agent.callsPerPresentDay}/day · ${agent.presentDays} present days`
-    : `${agent.callsPerCalendarDay ?? 0}/calendar day`;
+    ? `${agent.callsPerPresentDay} calls/day · ${agent.presentDays} present days`
+    : `${agent.callsPerCalendarDay ?? 0} calls/calendar day`;
+  const showDelta = agent.booked > 0 && teamShowRate > 0 ? Math.round((agent.showRate - teamShowRate) * 100) : null;
 
   return (
     <article className={`card ${isTop ? 'card-gold' : ''} overflow-hidden`}>
-      <header className="flex items-start justify-between gap-3 px-4 py-3.5 border-b border-white/6">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
+      <header className="flex items-start justify-between gap-3 px-4 py-4 border-b border-white/6">
+        <div className="flex items-start gap-3 min-w-0">
+          <span className={`font-num text-xs font-bold h-7 w-7 shrink-0 rounded-full flex items-center justify-center ${isTop ? 'bg-gold text-black' : 'bg-white/8 text-text-muted'}`} aria-label={`Rank ${rank}`}>
+            {isTop ? <Award className="w-3.5 h-3.5" aria-hidden="true" /> : rank}
+          </span>
+          <div className="min-w-0">
             <h3 className="font-serif text-base font-bold text-white truncate">{agent.opener}</h3>
-            {isTop && <Award className="w-4 h-4 shrink-0 text-gold-light" aria-label="Top performer" />}
+            <p className="text-xs text-text-dim mt-0.5">{productivity}{agent.awaitingConfirmation > 0 ? ` · ${agent.awaitingConfirmation} awaiting confirmation` : ''}</p>
           </div>
-          <p className="label-caps mt-1">#{rank} · {productivity}{agent.awaitingConfirmation > 0 ? ` · ${agent.awaitingConfirmation} awaiting confirmation` : ''}</p>
         </div>
         <span className={`pill ${status.className} shrink-0`}>{status.label}</span>
       </header>
 
       <div className="grid grid-cols-2 gap-px bg-white/5">
-        <Metric label="Calls" value={agent.calls.toLocaleString()} ratio={agent.calls / maxCalls} tone="neutral" icon={<Phone className="w-3 h-3" />} />
-        <Metric label="Booked" value={agent.booked.toLocaleString()} ratio={agent.booked / maxBooked} tone="gold" icon={<Calendar className="w-3 h-3" />} />
-        <Metric label="Show rate" value={formatRate(agent.showRate)} tone={agent.showRate >= 0.6 ? 'success' : agent.showRate >= 0.4 ? 'gold' : 'danger'} icon={<TrendingUp className="w-3 h-3" />} />
-        <Metric label="Close rate" value={formatRate(agent.closeRate)} tone={agent.closeRate >= 0.2 ? 'success' : 'neutral'} />
+        <Metric label="Calls" value={agent.calls.toLocaleString()} ratio={agent.calls / maxCalls} />
+        <Metric label="Booked" value={agent.booked.toLocaleString()} ratio={agent.booked / maxBooked} tone="gold" />
+        <Metric label="Show rate" value={formatRate(agent.showRate)} tone={agent.showRate >= 0.6 ? 'success' : agent.showRate >= 0.4 ? 'gold' : 'danger'}
+          hint={showDelta === null ? `${agent.attended} attended · ${agent.noShow} no-show` : `${showDelta >= 0 ? '+' : ''}${showDelta} pts vs team · ${agent.attended}/${agent.attended + agent.noShow}`} />
+        <Metric label="Close rate" value={formatRate(agent.closeRate)} tone={agent.closeRate >= 0.2 ? 'success' : 'neutral'} hint={`${agent.onboarded} onboarded`} />
       </div>
+
+      <footer className="flex items-center justify-between px-4 py-2.5 text-xs text-text-dim border-t border-white/6">
+        <span>Answer rate <span className="font-num text-text-muted">{formatRate(agent.answerRate)}</span></span>
+        <span>Calls / meeting <span className="font-num text-text-muted">{agent.callsPerMeeting || '—'}</span></span>
+      </footer>
     </article>
   );
 });
 
-function Metric({ label, value, ratio, tone = 'neutral', icon }: { label: string; value: string; ratio?: number; tone?: 'neutral' | 'gold' | 'success' | 'danger'; icon?: React.ReactNode }) {
-  const toneClass = tone === 'success' ? 'text-success' : tone === 'danger' ? 'text-danger' : tone === 'gold' ? 'text-gold-light' : 'text-white';
-  const barClass = tone === 'success' ? 'bar-fill-success' : tone === 'danger' ? 'bar-fill-danger' : tone === 'gold' ? 'bar-fill-gold' : 'bar-fill-white';
-  return (
-    <div className="bg-card px-4 py-3">
-      <div className="flex items-center gap-1.5 label-caps">{icon}{label}</div>
-      <div className={`font-num text-xl font-bold mt-1 ${toneClass}`}>{value}</div>
-      {ratio !== undefined && <div className="bar-track mt-2"><div className={`bar-fill ${barClass}`} style={{ width: `${Math.min(100, Math.max(0, ratio * 100))}%` }} /></div>}
-    </div>
-  );
-}
-
 export function AgentDashboardView({ openers, filters }: AgentDashboardViewProps) {
+  const [sortKey, setSortKey] = useState<SortKey>('calls');
+
   const activeOpeners = useMemo(() => openers
     .filter((opener) => opener.opener && opener.opener !== 'undefined')
-    .sort((a, b) => b.calls - a.calls || b.booked - a.booked), [openers]);
+    .sort((a, b) => (b[sortKey] - a[sortKey]) || b.calls - a.calls || b.booked - a.booked), [openers, sortKey]);
   const maxCalls = useMemo(() => Math.max(1, ...activeOpeners.map((agent) => agent.calls)), [activeOpeners]);
   const maxBooked = useMemo(() => Math.max(1, ...activeOpeners.map((agent) => agent.booked)), [activeOpeners]);
+  const teamShowRate = useMemo(() => {
+    const attended = activeOpeners.reduce((n, a) => n + a.attended, 0);
+    const noShow = activeOpeners.reduce((n, a) => n + a.noShow, 0);
+    return attended + noShow > 0 ? attended / (attended + noShow) : 0;
+  }, [activeOpeners]);
 
   return (
     <section aria-labelledby="team-performance-heading" className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="sec-tag mb-1">Team performance</p>
           <h2 id="team-performance-heading" className="font-serif text-xl font-bold text-white">{getPeriodTitle(filters)}</h2>
+          <p className="text-xs text-text-dim mt-1">{activeOpeners.length} active agents</p>
         </div>
-        <p className="label-caps">{activeOpeners.length} active agents</p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-dim">Rank by</span>
+          <div className="seg" role="group" aria-label="Rank agents by">
+            {SORTS.map(s => (
+              <button key={s.id} type="button" className="seg-item" aria-pressed={sortKey === s.id} onClick={() => setSortKey(s.id)}>{s.label}</button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {activeOpeners.length === 0 ? (
         <div className="card flex flex-col items-center justify-center py-20">
           <Phone className="w-8 h-8 mb-3 text-text-faint" />
-          <p className="label-caps">No agent activity found in this period</p>
+          <p className="text-sm text-text-dim">No agent activity found in this period</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} />)}
+          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} teamShowRate={teamShowRate} />)}
         </div>
       )}
     </section>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Upload, X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface FileImportModalProps {
@@ -30,6 +30,13 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   const [openers, setOpeners] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !uploading) onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, uploading, onClose]);
 
   if (!isOpen) return null;
 
@@ -100,19 +107,19 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   const dateInput = 'bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <div className="w-full max-w-lg max-h-[92vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col" style={{ background: '#111113', border: '1px solid rgba(255,255,255,0.1)' }}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.08)]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget && !uploading) onClose(); }} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div className="w-full max-w-lg max-h-[92vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col bg-surface border border-white/12">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-white/8">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg" style={{ background: 'rgba(201,168,76,0.12)' }}>
-              <FileSpreadsheet className="w-4 h-4 text-[#e8c56a]" />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gold-dim border border-gold-border">
+              <FileSpreadsheet className="w-4 h-4 text-gold-light" />
             </div>
             <div>
-              <h2 id="modal-title" className="font-serif text-base font-bold text-white">Upload Ultatel report</h2>
-              <p className="label-caps mt-0.5 text-slate-400">Total Calls Per Extension (CSV or Excel)</p>
+              <h2 id="modal-title" className="font-serif text-lg font-bold text-white">Upload Ultatel report</h2>
+              <p className="text-xs text-text-dim mt-0.5">Total Calls Per Extension (CSV or Excel)</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer" aria-label="Close modal">
+          <button onClick={onClose} className="btn btn-icon border-transparent bg-transparent text-text-dim hover:text-white" aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -124,7 +131,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
             onDrop={(e) => { e.preventDefault(); setDragOver(false); selectFiles(Array.from(e.dataTransfer.files)); }}
             onClick={() => fileInputRef.current?.click()}
             className={`cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-all flex flex-col items-center justify-center gap-2 ${
-              dragOver ? 'border-[#e8c56a] bg-[#1a1608]/50' : 'border-white/10 hover:border-white/20 bg-white/2'
+              dragOver ? 'border-gold bg-gold-dim' : 'border-white/15 hover:border-white/30 bg-white/2'
             }`}
           >
             <input
@@ -187,15 +194,14 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 px-6 py-4 bg-white/2 border-t border-white/6">
-          <button onClick={onClose} disabled={uploading} className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
+        <div className="flex items-center justify-end gap-2.5 px-6 py-4 bg-white/2 border-t border-white/8">
+          <button onClick={onClose} disabled={uploading} className="btn">
             Close
           </button>
           <button
             onClick={() => void upload()}
             disabled={files.length === 0 || uploading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 transition-all"
-            style={{ background: '#1a1608', border: '1px solid rgba(201,168,76,0.35)', color: '#e8c56a' }}
+            className="btn btn-primary"
           >
             {uploading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Uploading…</span></> : <><Upload className="w-3.5 h-3.5" /><span>Upload</span></>}
           </button>

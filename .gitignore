@@ -51,3 +51,5 @@ google2.json
 
 # Supabase CLI state
 supabase/.temp/
+
+*.xlsx
