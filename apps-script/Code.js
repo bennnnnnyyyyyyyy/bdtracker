@@ -97,6 +97,7 @@ function onOpen() {
     .createMenu('BD Call Dashboard')
     .addItem('Refresh BD Dashboard', 'refreshDashboard')
     .addItem('Rebuild Totals + format tabs', 'rebuildTotalsMenu')
+    .addItem('Update Attendance tab', 'updateAttendanceMenu')
     .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
@@ -439,6 +440,7 @@ function importDays_(days, source, opts) {
     } catch (err) {
       console.error('Formatting/Totals/Dashboard refresh failed:', err); // the upload itself succeeded
     }
+    try { writeAttendanceTab_(); } catch (err) { console.error('Attendance tab failed:', err); }
   }
   return { days: days.length, rows: added.length, replaced: existing.length - kept.length, protectedRows, resolved, newAgents };
 }
@@ -487,13 +489,17 @@ function relayoutDailyTotals_() {
   formatDailyTotalsSheet_(sheet);
 }
 
+let ATTENDANCE_CACHE_ = null; // one read of the attendance workbook per script run
+
 /**
  * Reads the BD French attendance workbook: blocks that start with a row whose first cell is "Date" (dates in the
- * cells to its right), followed by one row per person with a code per day. Codes: P, L1, L2 = 1 day, Q = 0.75,
- * H = 0.5, anything else = 0. The same date in two blocks keeps the larger mark.
- * @returns {Object<string, Object<string, number>>} person (lower case) -> yyyy-MM-dd -> weight
+ * cells to its right), followed by one row per person with a code per day. The same date in two blocks keeps the
+ * code with the larger weight.
+ * @returns {{sourceId: string, order: string[], names: Object<string, string>, codes: Object<string, Object<string, string>>}}
+ *   person key (lower case) -> yyyy-MM-dd -> code ("P", "H", "Off", "-", ...)
  */
-function readAttendance_() {
+function parseAttendanceBook_() {
+  if (ATTENDANCE_CACHE_) return ATTENDANCE_CACHE_;
   const id = PropertiesService.getScriptProperties().getProperty('ATTENDANCE_SHEET_ID') || CONFIG.ATTENDANCE_SHEET_ID;
   const book = SpreadsheetApp.openById(id);
   const sheet = book.getSheetByName(CONFIG.ATTENDANCE_SHEET_NAME);
@@ -501,30 +507,49 @@ function readAttendance_() {
   const tz = book.getSpreadsheetTimeZone();
   const lastRow = sheet.getLastRow();
   const lastCol = Math.min(sheet.getLastColumn(), 46);
-  if (lastRow < 1 || lastCol < 2) return {};
+  const result = { sourceId: id, order: [], names: {}, codes: {} };
+  if (lastRow < 1 || lastCol < 2) return (ATTENDANCE_CACHE_ = result);
   const values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-  const weights = { P: 1, L1: 1, L2: 1, Q: 0.75, H: 0.5 };
-  const byPerson = {};
   let dates = null;
   values.forEach(row => {
     const first = String(row[0] == null ? '' : row[0]).trim();
     const low = first.toLowerCase();
     if (low === 'date') {
-      dates = row.map((c, i) => (i > 0 && c instanceof Date ? Utilities.formatDate(c, tz, 'yyyy-MM-dd') : null));
+      dates = row.map((c, i) => (i > 0 && Object.prototype.toString.call(c) === '[object Date]' ? Utilities.formatDate(c, tz, 'yyyy-MM-dd') : null));
       return;
     }
     if (!first) { dates = null; return; }
     if (!dates || low === 'month' || low === 'day') return;
-    const key = first.replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const name = first.replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim();
+    const key = name.toLowerCase();
     if (!key) return;
-    if (!byPerson[key]) byPerson[key] = {};
+    if (!result.codes[key]) { result.codes[key] = {}; result.names[key] = name; result.order.push(key); }
     for (let i = 1; i < row.length; i++) {
       if (!dates[i]) continue;
-      const w = weights[String(row[i] == null ? '' : row[i]).trim().toUpperCase()] || 0;
-      if (w > (byPerson[key][dates[i]] || 0) || byPerson[key][dates[i]] === undefined) byPerson[key][dates[i]] = w;
+      const code = String(row[i] == null ? '' : row[i]).trim().toUpperCase().replace(/^OFF$/, 'Off');
+      const old = result.codes[key][dates[i]];
+      if (old === undefined || attendanceWeight_(code) > attendanceWeight_(old) || (old === '' && code !== '')) result.codes[key][dates[i]] = code;
     }
   });
-  return byPerson;
+  return (ATTENDANCE_CACHE_ = result);
+}
+
+/** Days counted for an attendance code: P, L1, L2 = 1; Q = 0.75; H = 0.5; anything else 0. */
+function attendanceWeight_(code) {
+  return { P: 1, L1: 1, L2: 1, Q: 0.75, H: 0.5 }[String(code || '').toUpperCase()] || 0;
+}
+
+/**
+ * @returns {Object<string, Object<string, number>>} person (lower case) -> yyyy-MM-dd -> weight
+ */
+function readAttendance_() {
+  const book = parseAttendanceBook_();
+  const out = {};
+  book.order.forEach(key => {
+    out[key] = {};
+    Object.keys(book.codes[key]).forEach(d => { out[key][d] = attendanceWeight_(book.codes[key][d]); });
+  });
+  return out;
 }
 
 /** Present days of one or more people (lower-case names) between two yyyy-MM-dd dates, inclusive. */
@@ -538,14 +563,166 @@ function presentDays_(attendance, names, from, to) {
   return total;
 }
 
+/**
+ * Writes the "Attendance" tab of this spreadsheet from the BD French attendance workbook: one block per calendar month
+ * (newest first) with a month banner, day numbers and weekdays, one row per person with a coloured code per day and
+ * present / absent / off totals. The tab is rewritten each time; do not type in it.
+ */
+function writeAttendanceTab_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const book = parseAttendanceBook_();
+  if (book.sourceId === ss.getId()) throw new Error('ATTENDANCE_SHEET_ID points at this same spreadsheet; the Attendance tab would overwrite its own source');
+
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const NAVY = '#1a365d';
+  const COLORS = {
+    P: ['#c6f6d5', '#22543d'], L1: ['#bee3f8', '#2a4365'], L2: ['#bee3f8', '#2a4365'],
+    Q: ['#fefcbf', '#744210'], H: ['#feebc8', '#7b341e'], A: ['#fed7d7', '#9b2c2c'], Off: ['#e2e8f0', '#718096'],
+    D: ['#e9d8fd', '#44337a'], N: ['#feb2b2', '#742a2a'], T: ['#b2f5ea', '#234e52']
+  };
+  const W = 35; // name + 31 days + 3 totals
+  const today = Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd');
+  const isMarked = c => c !== undefined && c !== '' && c !== '-';
+  const isWorked = c => isMarked(c) && c !== 'Off'; // someone with only days off in a month is not listed for it
+
+  // Months that have at least one real mark, up to the current month.
+  const months = new Set();
+  book.order.forEach(key => Object.keys(book.codes[key]).forEach(d => {
+    if (isWorked(book.codes[key][d]) && d.slice(0, 7) <= today.slice(0, 7)) months.add(d.slice(0, 7));
+  }));
+  const monthList = Array.from(months).sort().reverse();
+
+  const values = [];
+  const bg = [];
+  const fc = [];
+  const fw = [];
+  const blocks = []; // {start, end} 1-based sheet rows of each month's people rows, plus its banner row
+  const push = (vals, back, front, weight) => { values.push(vals); bg.push(back); fc.push(front); fw.push(weight); };
+  const fill = (v) => new Array(W).fill(v);
+
+  // Title and legend (sheet rows 1-2).
+  push(['Attendance'].concat(new Array(W - 1).fill('')), fill(NAVY), fill('#ffffff'), fill('bold'));
+  const legendCodes = ['P', 'L1', 'L2', 'Q', 'H', 'A', 'Off', 'D', 'N', 'T'];
+  const legend = ['Legend'].concat(legendCodes);
+  const legendRow = legend.concat(['P present  |  L1, L2 late (full day)  |  Q 0.75 day  |  H 0.5 day  |  A absent  |  Off day off  |  D double paid  |  N no show no call  |  T training  |  - not employed yet'], new Array(W - legend.length - 1).fill(''));
+  const legendBg = fill('#edf2f7');
+  const legendFc = fill('#4a5568');
+  legendCodes.forEach((c, i) => { legendBg[i + 1] = COLORS[c][0]; legendFc[i + 1] = COLORS[c][1]; });
+  push(legendRow, legendBg, legendFc, fill('bold'));
+
+  monthList.forEach(m => {
+    const y = Number(m.slice(0, 4));
+    const mo = Number(m.slice(5, 7));
+    const dim = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const people = book.order.filter(key => {
+      for (let d = 1; d <= dim; d++) {
+        const code = book.codes[key][m + '-' + String(d).padStart(2, '0')];
+        if (isWorked(code)) return true;
+      }
+      return false;
+    });
+    if (people.length === 0) return;
+
+    const startRow = values.length + 1;
+    push(new Array(W).fill('').map((_, i) => (i === 0 ? MONTH_NAMES[mo - 1] + ' ' + y : '')), fill('#2c5282'), fill('#ffffff'), fill('bold'));
+    const head = ['Person'];
+    const dow = [''];
+    const headBg = ['#1a365d'];
+    for (let d = 1; d <= 31; d++) {
+      head.push(d <= dim ? d : '');
+      const wd = d <= dim ? new Date(Date.UTC(y, mo - 1, d)).getUTCDay() : -1;
+      dow.push(d <= dim ? DOW[wd] : '');
+      headBg.push(d <= dim && (wd === 0 || wd === 6) ? '#4a5568' : NAVY);
+    }
+    head.push('Present days', 'Absent', 'Days off');
+    dow.push('', '', '');
+    headBg.push('#0f766e', '#0f766e', '#0f766e');
+    push(head, headBg, fill('#ffffff'), fill('bold'));
+    push(dow, headBg.slice(), fill('#cbd5e0'), fill('normal'));
+
+    const firstPerson = values.length + 1;
+    people.forEach(key => {
+      const row = [book.names[key]];
+      const back = ['#ffffff'];
+      const front = ['#1a202c'];
+      let present = 0;
+      let absent = 0;
+      let off = 0;
+      for (let d = 1; d <= 31; d++) {
+        if (d > dim) { row.push(''); back.push('#f7fafc'); front.push('#1a202c'); continue; }
+        const date = m + '-' + String(d).padStart(2, '0');
+        const code = book.codes[key][date];
+        const wd = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+        const shown = isMarked(code) ? code : '';
+        if (shown !== '' && COLORS[shown]) { back.push(COLORS[shown][0]); front.push(COLORS[shown][1]); }
+        else { back.push(wd === 0 || wd === 6 ? '#edf2f7' : '#ffffff'); front.push('#1a202c'); }
+        row.push(shown);
+        present += attendanceWeight_(shown);
+        if (shown === 'A') absent++;
+        if (shown === 'Off') off++;
+      }
+      row.push(present, absent, off);
+      back.push('#e6fffa', '#e6fffa', '#e6fffa');
+      front.push('#1a202c', '#9b2c2c', '#718096');
+      push(row, back, front, [].concat(['bold'], new Array(31).fill('normal'), ['bold', 'normal', 'normal']));
+    });
+    blocks.push({ start: startRow, headRow: startRow + 1, first: firstPerson, last: values.length });
+    push(fill(''), fill('#ffffff'), fill('#ffffff'), fill('normal')); // spacer
+  });
+
+  if (monthList.length === 0 || blocks.length === 0) return;
+
+  let sheet = ss.getSheetByName(CONFIG.ATTENDANCE_SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(CONFIG.ATTENDANCE_SHEET_NAME);
+  sheet.clear();
+  sheet.setConditionalFormatRules([]);
+  const n = values.length;
+  sheet.getRange(1, 1, n, 1).setNumberFormat('@');
+  sheet.getRange(1, 1, n, W).setValues(values).setBackgrounds(bg).setFontColors(fc).setFontWeights(fw);
+  sheet.getRange(1, 1, n, W).setHorizontalAlignment('center').setVerticalAlignment('middle').setFontSize(10);
+  sheet.getRange(1, 1, n, 1).setHorizontalAlignment('left');
+  sheet.getRange(1, 1).setFontSize(15);
+  sheet.getRange(2, 12, 1, 1).setHorizontalAlignment('left').setFontSize(9).setFontWeight('normal');
+  sheet.setHiddenGridlines(true);
+  sheet.setFrozenRows(2);
+  sheet.setFrozenColumns(1);
+  sheet.setRowHeight(1, 34);
+  sheet.setColumnWidth(1, 170);
+  sheet.setColumnWidths(2, 31, 34);
+  sheet.setColumnWidths(33, 3, 84);
+
+  blocks.forEach(bk => {
+    const rows = bk.last - bk.headRow + 1;
+    sheet.getRange(bk.start, 1, 1, W).setFontSize(12).setHorizontalAlignment('left');
+    sheet.getRange(bk.headRow, 1, rows, W).setBorder(true, true, true, true, true, true, '#cbd5e0', SpreadsheetApp.BorderStyle.SOLID);
+    sheet.getRange(bk.start, 1, rows + 1, W).setBorder(true, true, true, true, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    sheet.getRange(bk.headRow, 33, rows, 1).setBorder(null, true, null, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    sheet.getRange(bk.headRow, 2, rows, 1).setBorder(null, true, null, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    sheet.getRange(bk.first, 33, bk.last - bk.first + 1, 3).setNumberFormat('0.0#');
+    sheet.getRange(bk.first, 34, bk.last - bk.first + 1, 1).setFontWeight('bold');
+  });
+}
+
+/** Menu item: rewrite the Attendance tab now. */
+function updateAttendanceMenu() {
+  try {
+    writeAttendanceTab_();
+    SpreadsheetApp.getUi().alert('The Attendance tab was updated from the BD French attendance workbook.');
+  } catch (err) {
+    SpreadsheetApp.getUi().alert('The Attendance tab could not be updated: ' + String(err && err.message ? err.message : err));
+  }
+}
+
 /** Menu item: rebuild the Totals tab now. */
 function rebuildTotalsMenu() {
   withLock_(() => {
     relayoutDailyTotals_();
     rebuildTotalsSummary_();
     refreshDashboard();
+    writeAttendanceTab_();
   }, 50000);
-  SpreadsheetApp.getUi().alert('Daily Totals, Totals and the BD Dashboard tab were rebuilt.');
+  SpreadsheetApp.getUi().alert('Daily Totals, Totals, the BD Dashboard and Attendance tabs were rebuilt.');
 }
 
 /**
@@ -916,6 +1093,7 @@ function runSheetAction_(body) {
         relayoutDailyTotals_();
         rebuildTotalsSummary_();
         refreshDashboard();
+        writeAttendanceTab_();
         return {};
       }, 50000);
     case 'autoArchiveOn':
