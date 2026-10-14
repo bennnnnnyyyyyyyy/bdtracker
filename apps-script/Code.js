@@ -29,7 +29,9 @@ const CONFIG = {
     'Onboarded',
     'No-Show',
     'Dead Leads',
-    'Temporary Inactive'
+    'Temporary Inactive',
+    'DISQUALIFIED',
+    'CANCELLED'
   ],
 
   // NOTE: this in-sheet mirror estimates shows from the pipeline stage only. The web dashboard counts
@@ -1607,7 +1609,9 @@ function getBDCounts_() {
       ? SpreadsheetApp.openById(CONFIG.BD_TRACKER_ID)
       : SpreadsheetApp.getActiveSpreadsheet();
   } catch (err) {
-    console.error('Failed to open BD tracker spreadsheet:', err);
+    let who = '';
+    try { who = Session.getEffectiveUser().getEmail(); } catch (e) { /* not available in every context */ }
+    console.error('Failed to open BD tracker spreadsheet. Share it (Viewer is enough) with ' + (who || 'the Google account that owns this script deployment') + ':', err);
     return {};
   }
 
