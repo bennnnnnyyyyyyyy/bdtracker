@@ -225,8 +225,7 @@ export default function DashboardPage() {
             </div>
             <button
               onClick={() => fetchData(true)}
-              className="font-num text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-              style={{ background: 'rgba(248,113,113,0.12)', color: '#fca5a5' }}
+              className="btn btn-danger"
             >
               Retry
             </button>
@@ -249,7 +248,7 @@ export default function DashboardPage() {
                   role="tab"
                   aria-selected={activeTab === tab.id}
                   onClick={() => handleTabChange(tab.id)}
-                  className="pb-3 pt-1 px-5 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap"
+                  className="pb-3 pt-1 px-5 flex items-center gap-2 cursor-pointer transition-colors border-b-2 whitespace-nowrap hover:text-text-primary"
                   style={
                     activeTab === tab.id
                       ? { borderColor: '#c9a84c', color: '#e8c56a', fontWeight: 600 }

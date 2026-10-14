@@ -209,14 +209,14 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div role="group" aria-label="Column groups" className="flex gap-0.5 p-1 rounded-lg bg-white/4 border border-white/7">
+          <div role="group" aria-label="Column groups" className="seg">
             {GROUPS.map(g => (
               <button
                 key={g.id}
                 type="button"
                 aria-pressed={visibleGroups.has(g.id)}
                 onClick={() => toggleGroup(g.id)}
-                className={`min-h-8 px-3 rounded-md text-xs font-semibold cursor-pointer transition-colors ${visibleGroups.has(g.id) ? 'bg-white text-black' : 'text-text-dim hover:text-text-primary'}`}
+                className="seg-item"
               >
                 {g.label}
               </button>
@@ -235,7 +235,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
           </div>
           <button
             onClick={exportCSV}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 min-h-9 rounded-lg cursor-pointer bg-gold-dim border border-gold-border text-gold-light"
+            className="btn btn-primary"
           >
             <Download className="w-3.5 h-3.5" />
             Export CSV

@@ -67,8 +67,7 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
                placeholder="Search call / agent..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-              className="rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#f4f4f5] placeholder-text-dim focus:outline-none w-48 font-num min-h-9"
-              style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.08)' }}
+              className="field pl-8 w-52"
             />
           </div>
 
@@ -76,8 +75,7 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
           <select
             value={typeFilter}
             onChange={(e) => { setTypeFilter(e.target.value); setCurrentPage(1); }}
-            className="rounded-lg px-2.5 min-h-9 text-xs text-text-muted focus:outline-none font-num"
-            style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.08)' }}
+            className="field"
           >
             <option value="ALL">All Types</option>
             <option value="OUT-Bound">Outbound</option>
@@ -88,8 +86,7 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
           <select
             value={outcomeFilter}
             onChange={(e) => { setOutcomeFilter(e.target.value); setCurrentPage(1); }}
-            className="rounded-lg px-2.5 min-h-9 text-xs text-text-muted focus:outline-none font-num"
-            style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.08)' }}
+            className="field"
           >
             <option value="ALL">All Outcomes</option>
             <option value="ANSWERED">Answered</option>
