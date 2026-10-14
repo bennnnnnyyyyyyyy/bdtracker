@@ -90,4 +90,14 @@ describe('Total Calls Per Extension report', () => {
     expect(p.days.map((d) => d.date)).toEqual(['2026-07-21', '2026-07-22']);
     expect(p.days[0].row).toMatchObject({ extension: '103', outAnswered: 93, totalCalls: 151 });
   });
+
+  it('counts calls that are in Total Calls but in none of the four columns', () => {
+    const rows = [{ extension: '103 (MMS-Rick Nelson)', agent: 'Rick Nelson', department: 'Business Development Team', outAnswered: 100, outUnanswered: 30, inAnswered: 5, inUnanswered: 5, totalCalls: 141, durationSec: 600, acd: 1 }];
+    const calls = dailyRowsToCalls('2026-10-12', rows);
+    expect(calls.reduce((t, c) => t + (c.weight ?? 1), 0)).toBe(141);
+    const res = computeDashboardMetrics(calls, [], {}, [{ agent: 'Rick Nelson', opener: 'Rick' }], { startDate: '2026-10-12', endDate: '2026-10-12' });
+    expect(res.openers.find((o) => o.opener === 'Rick')!.calls).toBe(141);
+    const spread = spreadOverDays(rows, ['2026-10-12', '2026-10-13']);
+    expect(spread.reduce((t, d) => t + d.rows[0].totalCalls, 0)).toBe(141);
+  });
 });

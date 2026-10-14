@@ -171,3 +171,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Removed the call-by-call upload path: Apps Script `importCallRows_`, `processStagingImport`, the Import Staging tab/menu, the import check (`reconcileImportData_`), replace mode and its background job/backups, `collectLogRowsDisplay_`, `effectiveCounts_`, `toCairoDate_`; web `sendRowsToSheet`, `startReplace`, `chunkRowsByCall`, the call-export file reader and its API branch. The upload window now only takes Total Calls Per Extension reports (with optional dates) and keeps the Opener-name entry for new agents.
 - Kept: reading `Call Logs` (and archives) as a fallback, its repair/archive/fix-times tools, local attendance/department workbook uploads, the upload reminder, the `ignore` Opener.
 - Tabs to delete by hand in the spreadsheet: `Import Staging`, hidden `Backup …` tabs, `Replace Job`.
+
+## 36. Calls outside the four columns
+- A report's Total Calls can exceed Out/In Answered + Unanswered (other outcomes such as busy/failed). The dashboard now counts the difference as calls (type/outcome `OTHER`: in Calls and Calls per day, not in answered, unanswered, out or in), so its Calls figure equals Ultatel's Total Calls. The Totals tab already used the Total Calls column. Period spreads keep the difference too.

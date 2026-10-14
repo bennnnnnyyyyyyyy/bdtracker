@@ -185,6 +185,10 @@ export function dailyRowsToCalls(date: string, rows: DailyTotalRow[], mappedOpen
       ['IN-Bound', 'ANSWERED', r.inAnswered, answered > 0 ? r.durationSec * (r.inAnswered / answered) : 0],
       ['IN-Bound', 'NO ANSWER', r.inUnanswered, 0],
     ];
+    // Ultatel's Total Calls can be higher than the four columns added up (calls that were neither answered nor
+    // unanswered, e.g. busy or failed). They still count as calls.
+    const other = r.totalCalls - (r.outAnswered + r.outUnanswered + r.inAnswered + r.inUnanswered);
+    kinds.push(['OTHER', 'OTHER', other, 0]);
     kinds.forEach(([type, outcome, count, sec]) => {
       if (count <= 0) return;
       out.push({
@@ -234,9 +238,10 @@ export function spreadOverDays(rows: DailyTotalRow[], days: string[]): { date: s
     const ou = splitInt(r.outUnanswered, n, ri);
     const ia = splitInt(r.inAnswered, n, ri);
     const iu = splitInt(r.inUnanswered, n, ri);
+    const other = splitInt(Math.max(0, r.totalCalls - (r.outAnswered + r.outUnanswered + r.inAnswered + r.inUnanswered)), n, ri);
     const dur = splitInt(r.durationSec, n, ri);
     for (let d = 0; d < n; d++) {
-      const total = oa[d] + ou[d] + ia[d] + iu[d];
+      const total = oa[d] + ou[d] + ia[d] + iu[d] + other[d];
       if (total === 0 && dur[d] === 0) continue;
       perDay[d].push({ ...r, outAnswered: oa[d], outUnanswered: ou[d], inAnswered: ia[d], inUnanswered: iu[d], totalCalls: total, durationSec: dur[d] });
     }
