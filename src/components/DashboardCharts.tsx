@@ -11,7 +11,8 @@ import {
   Legend,
   ResponsiveContainer,
   LineChart,
-  Line
+  Line,
+  LabelList
 } from 'recharts';
 import { OpenerStats, PeriodicGroupSummary } from '@/types/dashboard';
 import { CONFIG } from '@/lib/config';
@@ -22,14 +23,14 @@ interface DashboardChartsProps {
 }
 
 const STAGE_COLORS: Record<string, string> = {
-  'New Meetings': '#71717a', // Blue
-  'Follow Ups': '#a1a1aa', // Indigo
+  'New Meetings': '#a1a1aa', // Blue
+  'Follow Ups': '#71717a', // Indigo
   'Contract Sent': '#c9a84c', // Purple
   'Invoice Sent': '#e8c56a', // Pink
   'Onboarded': '#35e58a', // Emerald
   'No-Show': '#fb923c', // Amber
   'Dead Leads': '#ff6675', // Red
-  'Temporary Inactive': '#3f3f46' // Slate
+  'Temporary Inactive': '#52525b' // Slate
 };
 
 export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily = [] }) => {
@@ -70,7 +71,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily
     'Calls per Meeting': o.callsPerMeeting || 0
   }));
 
-  const trendData = [...daily].reverse().map(d => ({
+  const trendData = [...daily].sort((a, b) => a.periodKey.localeCompare(b.periodKey)).map(d => ({
     period: d.periodLabel,
     Calls: d.totals.calls,
     Meetings: d.totals.meetings
@@ -107,21 +108,22 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily
         <div className="card p-5">
           <div className="mb-4">
             <h3 className="font-serif text-base font-bold text-white">Calls Made vs Meetings Booked</h3>
-            <p className="text-xs text-text-dim mt-0.5">Comparing call volume against resulting booked meetings by opener</p>
+            <p className="text-xs text-text-dim mt-0.5">Call volume (left axis) against meetings booked (right axis) by agent</p>
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={callsVsBookedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+              <BarChart data={callsVsBookedData} margin={{ top: 10, right: 0, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" vertical={false} />
-                <XAxis dataKey="opener" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11}  />
-                <YAxis stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} />
+                <XAxis dataKey="opener" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} />
+                <YAxis yAxisId="calls" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} />
+                <YAxis yAxisId="mtg" orientation="right" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1e1e23', borderColor: 'rgba(255,255,255,0.12)', borderRadius: '8px', color: '#f4f4f5' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   itemStyle={{ fontSize: '12px' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Bar dataKey="Calls Made" fill="#c9a84c" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Meetings Booked" fill="#35e58a" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="calls" dataKey="Calls Made" fill="#71717a" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="mtg" dataKey="Meetings Booked" fill="#c9a84c" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -145,7 +147,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily
                   itemStyle={{ fontSize: '12px' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Bar dataKey="Show Rate (%)" fill="#e8c56a" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Show Rate (%)" fill="#c9a84c" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Close Rate (%)" fill="#35e58a" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -202,7 +204,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily
                   itemStyle={{ fontSize: '12px' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Bar dataKey="Calls per Meeting" fill="#c9a84c" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Calls per Meeting" fill="#c9a84c" radius={[4, 4, 0, 0]}><LabelList dataKey="Calls per Meeting" position="top" fill="#f4f4f5" fontSize={11} /></Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

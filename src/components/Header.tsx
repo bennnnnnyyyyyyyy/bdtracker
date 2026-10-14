@@ -54,13 +54,13 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
   const itemClass = 'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left text-xs font-medium hover:bg-white/6 cursor-pointer';
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/7 bg-base/95 backdrop-blur-md">
+    <header className="sm:sticky sm:top-0 z-30 border-b border-white/7 bg-base/95 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-gold-dim border border-gold-border"><PhoneCall className="w-4 h-4 text-gold" /></div>
             <div className="min-w-0">
-              <h1 className="font-serif text-lg font-bold text-white truncate">BD Manager Dashboard</h1>
+              <h1 className="font-serif text-base sm:text-lg font-bold text-white leading-tight">BD Manager Dashboard</h1>
               <p className="flex items-center gap-2 text-xs text-text-dim mt-0.5">
                 <span className={`inline-block h-1.5 w-1.5 rounded-full ${isMockData ? 'bg-warn' : 'bg-success'}`} aria-hidden="true" />
                 {sourceLabel}{updatedAt ? ` · Updated ${updatedAt}` : ''}

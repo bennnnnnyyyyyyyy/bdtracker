@@ -24,6 +24,13 @@ type DashboardUiCache = {
   savedAt: number;
 };
 
+type PeriodView = 'daily' | 'weekly' | 'monthly';
+const PERIOD_VIEWS: { id: PeriodView; label: string; title: string }[] = [
+  { id: 'daily', label: 'Daily', title: 'Daily performance' },
+  { id: 'weekly', label: 'Weekly', title: 'Weekly performance' },
+  { id: 'monthly', label: 'Monthly', title: 'Monthly performance' },
+];
+
 const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Overview', icon: <PieChart className="w-4 h-4" /> },
   { id: 'agents', label: 'Team', icon: <LayoutGrid className="w-4 h-4" /> },
@@ -112,6 +119,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [periodView, setPeriodView] = useState<PeriodView>('daily');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
 
@@ -269,20 +277,25 @@ export default function DashboardPage() {
               />
             )}
             {activeTab === 'periods' && (
-              <div className="space-y-6">
-                <section>
-                  <div className="sec-tag mb-2">Daily performance</div>
-                  <PeriodicBreakdownTable data={data.dailyBreakdown} emptyLabel="No daily activity in this period" />
-                </section>
-                <section>
-                  <div className="sec-tag mb-2">Weekly performance</div>
-                  <PeriodicBreakdownTable data={data.weeklyBreakdown} emptyLabel="No weekly activity in this period" />
-                </section>
-                <section>
-                  <div className="sec-tag mb-2">Monthly performance</div>
-                  <PeriodicBreakdownTable data={data.monthlyBreakdown} emptyLabel="No monthly activity in this period" />
-                </section>
-              </div>
+              <section className="space-y-4" aria-labelledby="trends-heading">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="sec-tag mb-1">Trends</p>
+                    <h2 id="trends-heading" className="font-serif text-xl font-bold text-white">{PERIOD_VIEWS.find(v => v.id === periodView)?.title}</h2>
+                    <p className="text-xs text-text-dim mt-1">Click a row to expand the per-agent breakdown</p>
+                  </div>
+                  <div className="seg" role="group" aria-label="Period granularity">
+                    {PERIOD_VIEWS.map(v => (
+                      <button key={v.id} type="button" className="seg-item" aria-pressed={periodView === v.id} onClick={() => setPeriodView(v.id)}>{v.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <PeriodicBreakdownTable
+                  key={periodView}
+                  data={periodView === 'daily' ? data.dailyBreakdown : periodView === 'weekly' ? data.weeklyBreakdown : data.monthlyBreakdown}
+                  emptyLabel={`No ${periodView} activity in this period`}
+                />
+              </section>
             )}
             {activeTab === 'table' && (
               <OpenerTable openers={data.openers} totals={data.totals} />

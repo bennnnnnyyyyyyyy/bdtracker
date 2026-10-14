@@ -59,17 +59,17 @@ export const CallLogsView: React.FC<CallLogsViewProps> = memo(({ calls }) => {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Search */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-[#71717a] absolute left-3 top-1/2 -translate-y-1/2" />
+          <label className="field">
+            <Search className="w-3.5 h-3.5 text-text-dim" aria-hidden="true" />
             <input
               type="text"
               aria-label="Search calls by agent, number, or ID"
-               placeholder="Search call / agent..."
+              placeholder="Search call / agent…"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-              className="field pl-8 w-52"
+              className="w-44"
             />
-          </div>
+          </label>
 
           {/* Type Filter */}
           <select

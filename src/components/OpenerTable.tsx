@@ -222,17 +222,17 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
               </button>
             ))}
           </div>
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-text-dim absolute left-3 top-1/2 -translate-y-1/2" />
+          <label className="field">
+            <Search className="w-3.5 h-3.5 text-text-dim" aria-hidden="true" />
             <input
               type="text"
               placeholder="Search agent…"
               aria-label="Search agent"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="rounded-lg pl-8 pr-3 min-h-9 text-xs text-text-primary placeholder-text-dim focus:outline-none w-40 bg-base border border-white/10"
+              className="w-36"
             />
-          </div>
+          </label>
           <button
             onClick={exportCSV}
             className="btn btn-primary"
