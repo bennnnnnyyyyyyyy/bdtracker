@@ -18,3 +18,14 @@ export const CONFIRMATION_START_DATE = '2026-10-12';
 
 /** New meetings waiting to be confirmed are the ones that reached this tab. */
 export const CONFIRMATION_QUEUE_STAGE = 'Follow Ups';
+
+/**
+ * Old meetings (Date Added before the start date) count as shows in these tabs without any confirmation:
+ * the show tabs plus Dead Leads (a lead that was met and then dropped). New Meetings and No-Show never do.
+ */
+export const LEGACY_SHOW_STAGES: readonly string[] = [...LIKELY_SHOW_STAGES, 'Dead Leads'];
+
+/** Furthest-along first: when the same meeting sits in two tabs, the row in the higher-ranked tab is kept. */
+export const STAGE_RANK: Record<string, number> = {
+  'Onboarded': 7, 'Invoice Sent': 6, 'Contract Sent': 5, 'Follow Ups': 4, 'Temporary Inactive': 3, 'Dead Leads': 2, 'No-Show': 1, 'New Meetings': 0,
+};

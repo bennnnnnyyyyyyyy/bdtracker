@@ -1,6 +1,7 @@
 import { fetchAttendanceData, getDashboardRawData, RawDashboardDataset } from './sheets';
 import { getRawDataFromSupabase } from './supabase';
-import { annotateMeetings } from './meetings';
+import { annotateMeetings, isRescheduledStatus } from './meetings';
+import { loadRescheduledKeys, rememberRescheduled } from './reschedules';
 import { loadConfirmations } from './confirmations';
 import { AttendanceDataset } from './attendance';
 import { DataSourceInfo } from '../types/dashboard';
@@ -82,7 +83,13 @@ export async function loadDashboardInputs(
         .filter(Boolean).join(' '),
     };
   }
-  const meetings = annotateMeetings(rawData.meetings, confirmations ?? new Map());
+  let meetings = annotateMeetings(rawData.meetings, confirmations ?? new Map());
+
+  // Remember meetings seen as Rescheduled; they follow the confirmation rules once held (see reschedules.ts).
+  const remembered = await loadRescheduledKeys();
+  const waiting = meetings.filter((m) => isRescheduledStatus(m.status));
+  if (waiting.length > 0) void rememberRescheduled(waiting).catch((e) => console.warn('[Reschedules]', e));
+  meetings = meetings.map((m) => (m.rescheduled || isRescheduledStatus(m.status) || remembered?.has(m.meetingKey as string) ? { ...m, rescheduled: true } : m));
 
   return {
     rawData: { ...rawData, meetings },

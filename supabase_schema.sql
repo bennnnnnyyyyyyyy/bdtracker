@@ -126,13 +126,26 @@ CREATE TABLE IF NOT EXISTS public.show_confirmation_events (
 );
 CREATE INDEX IF NOT EXISTS idx_show_events_key ON public.show_confirmation_events (meeting_key);
 
+-- Meetings the dashboard has seen with the status "Rescheduled": once held, they need a show confirmation
+-- even if they were booked before the confirmation start date.
+CREATE TABLE IF NOT EXISTS public.rescheduled_meetings (
+  meeting_key TEXT PRIMARY KEY,
+  opener TEXT,
+  company_name TEXT,
+  date_added TEXT,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 ALTER TABLE public.app_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.show_confirmations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.show_confirmation_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rescheduled_meetings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Service role only" ON public.app_users;
 DROP POLICY IF EXISTS "Service role only" ON public.show_confirmations;
 DROP POLICY IF EXISTS "Service role only" ON public.show_confirmation_events;
+DROP POLICY IF EXISTS "Service role only" ON public.rescheduled_meetings;
 CREATE POLICY "Service role only" ON public.app_users FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role only" ON public.show_confirmations FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role only" ON public.show_confirmation_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role only" ON public.rescheduled_meetings FOR ALL TO service_role USING (true) WITH CHECK (true);

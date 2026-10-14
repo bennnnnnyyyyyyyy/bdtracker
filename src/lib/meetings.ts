@@ -1,4 +1,4 @@
-import { CONFIRMATION_QUEUE_STAGE, CONFIRMATION_START_DATE, LIKELY_SHOW_STAGES } from './stages';
+import { CONFIRMATION_START_DATE, LEGACY_SHOW_STAGES, LIKELY_SHOW_STAGES, STAGE_RANK } from './stages';
 import { MeetingRecord } from '../types/dashboard';
 
 export interface ConfirmationInfo {
@@ -48,35 +48,58 @@ export function isRescheduledStatus(status: unknown): boolean {
   return /^rescheduled/i.test(String(status ?? '').trim());
 }
 
-/** Added before the confirmation start date (or undated old rows): counted by the tab it sits in. */
+/**
+ * Counted by the tab it sits in, without confirmation: added before the confirmation start date (or undated old
+ * rows), and not a meeting that was rescheduled (those follow the confirmation rules).
+ */
 export function isLegacyMeeting(m: MeetingRecord): boolean {
+  if (m.rescheduled) return false;
   return !m.dateAdded || m.dateAdded < CONFIRMATION_START_DATE;
 }
 
 /**
  * A show is:
- * - an old meeting (Date Added before the start date) in a show tab (Follow Ups, Contract Sent, Invoice Sent,
- *   Onboarded, Temporary Inactive), no confirmation needed; or
- * - a newer meeting that management confirmed in the dashboard (wherever its row sits now, except No-Show).
+ * - an old meeting in a show tab (Follow Ups, Contract Sent, Invoice Sent, Onboarded, Temporary Inactive) or Dead
+ *   Leads, no confirmation needed; or
+ * - any other meeting (added from the start date, or rescheduled) once management confirmed it, wherever its row
+ *   sits now except No-Show.
  * No-Show never counts, and neither does an unconfirmed new meeting, whatever tab it moves to.
  */
 export function isConfirmedShow(m: MeetingRecord): boolean {
   if (m.stage === 'No-Show') return false;
-  if (isLegacyMeeting(m)) return LIKELY_SHOW_STAGES.includes(m.stage);
+  if (isLegacyMeeting(m)) return LEGACY_SHOW_STAGES.includes(m.stage);
   return m.showConfirmed === true;
 }
 
-/** A new meeting that reached Follow Ups and is waiting for management to confirm it. */
+/** The confirmation queue: a new meeting that reached Follow Ups, or skipped it for a later show tab, not confirmed yet. */
 export function isAwaitingConfirmation(m: MeetingRecord): boolean {
-  return !isLegacyMeeting(m) && m.showConfirmed !== true && m.stage === CONFIRMATION_QUEUE_STAGE;
+  return !isLegacyMeeting(m) && m.showConfirmed !== true && LIKELY_SHOW_STAGES.includes(m.stage);
 }
 
-/** A new meeting that skipped Follow Ups (moved straight to a later show tab) and was never confirmed. */
-export function isSkippedConfirmation(m: MeetingRecord): boolean {
-  return !isLegacyMeeting(m) && m.showConfirmed !== true && m.stage !== CONFIRMATION_QUEUE_STAGE && LIKELY_SHOW_STAGES.includes(m.stage);
-}
-
-/** May management confirm this row? Only new meetings in a show tab (Follow Ups, or later tabs they skipped to). */
+/** May management confirm this row? New meetings in a show tab or Dead Leads (a confirmed one stays a show). */
 export function canBeConfirmed(m: MeetingRecord): boolean {
-  return !isLegacyMeeting(m) && LIKELY_SHOW_STAGES.includes(m.stage);
+  return !isLegacyMeeting(m) && (LIKELY_SHOW_STAGES.includes(m.stage) || m.stage === 'Dead Leads');
+}
+
+/** Confirmed as a show, but the row is back in New Meetings: management should decide if it became a no-show. */
+export function needsReview(m: MeetingRecord): boolean {
+  return m.showConfirmed === true && (m.stage === 'New Meetings' || isRescheduledStatus(m.status));
+}
+
+/**
+ * Drops repeated rows of the same meeting. Rows are the same meeting only when opener, Date Added, company and
+ * contact all match (a different date is a different meeting). Rows without a date or company are never merged.
+ * When the same meeting sits in two tabs the furthest-along tab is kept.
+ */
+export function dedupeMeetings(meetings: MeetingRecord[]): MeetingRecord[] {
+  const best = new Map<string, MeetingRecord>();
+  const out: (MeetingRecord | string)[] = [];
+  meetings.forEach((m) => {
+    if (!m.dateAdded || !part(m.companyName)) { out.push(m); return; }
+    const key = [part(m.opener), part(m.dateAdded), part(m.companyName), part(m.authorizedPerson)].join('|');
+    const kept = best.get(key);
+    if (!kept) { best.set(key, m); out.push(key); return; }
+    if ((STAGE_RANK[m.stage] ?? -1) > (STAGE_RANK[kept.stage] ?? -1)) best.set(key, m);
+  });
+  return out.map((x) => (typeof x === 'string' ? (best.get(x) as MeetingRecord) : x));
 }

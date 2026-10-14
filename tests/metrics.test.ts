@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeDashboardMetrics, resolveOpener } from '../src/lib/analytics';
-import { annotateMeetings, canBeConfirmed, isConfirmedShow, isSkippedConfirmation } from '../src/lib/meetings';
+import { annotateMeetings, canBeConfirmed, dedupeMeetings, isAwaitingConfirmation, isConfirmedShow, needsReview } from '../src/lib/meetings';
 import { calculateAgentPresentDays, getAttendanceWeight, parseAttendanceRows } from '../src/lib/attendance';
 import type { AgentMapping, CallRecord, MeetingRecord } from '../src/types/dashboard';
 
@@ -117,10 +117,10 @@ describe('computeDashboardMetrics', () => {
   it('computes meeting funnel metrics', () => {
     const ben = run().openers.find(o => o.opener === 'Ben')!;
     expect(ben.booked).toBe(7);
-    expect(ben.attended).toBe(4);        // old meetings (before 10/12) count by tab: B, C, F, J; E in Dead Leads never counts
+    expect(ben.attended).toBe(5);        // old meetings (before 10/12) count by tab: B, C, F, J and E in Dead Leads
     expect(ben.awaitingConfirmation).toBe(0); // nothing before 10/12 needs confirming
     expect(ben.noShow).toBe(1);
-    expect(ben.showRate).toBeCloseTo(4 / 5);   // attended / (attended + no-show)
+    expect(ben.showRate).toBeCloseTo(5 / 6);   // attended / (attended + no-show)
     expect(ben.onboarded).toBe(1);
     expect(ben.closeRate).toBeCloseTo(1 / 7);
     expect(ben.medBCount).toBe(1);
@@ -140,9 +140,9 @@ describe('computeDashboardMetrics', () => {
     const { openers, totals } = run();
     expect(totals.calls).toBe(openers.reduce((n, o) => n + o.calls, 0));
     expect(totals.booked).toBe(8); // Ben 7 + Jane 1
-    expect(totals.attended).toBe(5);
+    expect(totals.attended).toBe(6);
     expect(totals.noShow).toBe(1);
-    expect(totals.showRate).toBeCloseTo(5 / 6);
+    expect(totals.showRate).toBeCloseTo(6 / 7);
   });
 
   it('groups periods consistently', () => {
@@ -167,11 +167,11 @@ describe('shows after the confirmation start date require management confirmatio
   const range = { startDate: '2026-10-12', endDate: '2026-10-18' };
   const run = (meetings = annotateMeetings(raw, new Map())) => computeDashboardMetrics([], meetings, {}, mappings, range);
 
-  it('counts nothing as a show until it is confirmed; only Follow Ups is awaiting', () => {
+  it('counts nothing as a show until it is confirmed; Follow Ups and skipped Follow Ups are awaiting', () => {
     const { openers, totals } = run();
     expect(openers[0].booked).toBe(4);                // A, B, C, D (the rescheduled row is not a meeting)
     expect(openers[0].attended).toBe(0);
-    expect(openers[0].awaitingConfirmation).toBe(1);  // A only
+    expect(openers[0].awaitingConfirmation).toBe(2);  // A, and B who skipped Follow Ups
     expect(openers[0].noShow).toBe(1);
     expect(totals.showRate).toBe(0);
   });
@@ -184,7 +184,7 @@ describe('shows after the confirmation start date require management confirmatio
     expect(annotated[0].meetingKey).toBe(key);
     const { openers } = run(annotated);
     expect(openers[0].attended).toBe(1);
-    expect(openers[0].awaitingConfirmation).toBe(0);
+    expect(openers[0].awaitingConfirmation).toBe(1);  // B still queued
   });
 
   it('never counts No-Show as a show, even if it was confirmed', () => {
@@ -197,7 +197,38 @@ describe('shows after the confirmation start date require management confirmatio
     const m = annotateMeetings([...raw, meeting('Follow Ups', 'Ben', '2026-10-01', { companyName: 'OLD' })], new Map());
     expect(m.map((x) => canBeConfirmed(x))).toEqual([true, true, false, false, false, false]);
     expect(isConfirmedShow(m[5])).toBe(true);      // old meeting in Follow Ups
-    expect(isSkippedConfirmation(m[1])).toBe(true);
+    expect(isAwaitingConfirmation(m[1])).toBe(true); // skipped Follow Ups, after 10/12: queued
+  });
+
+  it('old Dead Leads meetings are shows; new Dead Leads are not until confirmed', () => {
+    const [oldDead, newDead] = annotateMeetings([meeting('Dead Leads', 'Ben', '2026-10-01', { companyName: 'D1' }), meeting('Dead Leads', 'Ben', '2026-10-13', { companyName: 'D2' })], new Map());
+    expect(isConfirmedShow(oldDead)).toBe(true);
+    expect(isConfirmedShow(newDead)).toBe(false);
+    expect(isAwaitingConfirmation(newDead)).toBe(false);
+  });
+
+  it('a pre-10/12 meeting flagged as rescheduled needs confirmation first', () => {
+    const [m] = annotateMeetings([meeting('Follow Ups', 'Ben', '2026-10-01', { companyName: 'R', rescheduled: true })], new Map());
+    expect(isConfirmedShow(m)).toBe(false);
+    expect(isAwaitingConfirmation(m)).toBe(true);
+    expect(canBeConfirmed(m)).toBe(true);
+  });
+
+  it('a confirmed meeting back in New Meetings needs review', () => {
+    const [m] = annotateMeetings([meeting('New Meetings', 'Ben', '2026-10-13', { companyName: 'N' })], new Map());
+    expect(needsReview(m)).toBe(false);
+    expect(needsReview({ ...m, showConfirmed: true })).toBe(true);
+  });
+
+  it('rows with different dates are not duplicates; identical rows count once', () => {
+    const rows = [
+      meeting('Follow Ups', 'Ben', '2026-10-13', { companyName: 'X', authorizedPerson: 'P' }),
+      meeting('New Meetings', 'Ben', '2026-10-13', { companyName: 'X', authorizedPerson: 'P' }),
+      meeting('New Meetings', 'Ben', '2026-10-14', { companyName: 'X', authorizedPerson: 'P' }),
+    ];
+    const out = dedupeMeetings(rows);
+    expect(out).toHaveLength(2);
+    expect(out.find((x) => x.dateAdded === '2026-10-13')?.stage).toBe('Follow Ups');
   });
 
   it('gives identical rows distinct keys', () => {

@@ -25,6 +25,8 @@ export interface MeetingRecord {
   stage: string;
   opener: string;
   dateAdded: string; // ISO YYYY-MM-DD or parsed date
+  /** True when this meeting was rescheduled: it follows the confirmation rules whatever its Date Added. */
+  rescheduled?: boolean;
   /** The tracker's Status column (e.g. "Rescheduled", "Follow Up"). */
   status?: string;
   companyName?: string;

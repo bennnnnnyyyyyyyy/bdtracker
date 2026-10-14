@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       success: true,
       changed,
       skipped: wanted.length - changed,
-      message: blocked.length > 0 ? `${blocked.length} meeting(s) cannot be confirmed: only meetings added since 10/12 that sit in Follow Ups (or a later show tab) can be.` : undefined,
+      message: blocked.length > 0 ? `${blocked.length} meeting(s) cannot be confirmed: only meetings added since 10/12 (or rescheduled ones) that sit in Follow Ups, a later show tab or Dead Leads can be.` : undefined,
     });
   } catch (error) {
     console.error('Confirmation failed:', error);

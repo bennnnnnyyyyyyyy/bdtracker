@@ -8,7 +8,7 @@
 - **Live numbers.** An open dashboard re-reads the server every 30 seconds (only while the browser tab is visible, plus immediately when you return to it). The header shows "● Live" and the time the data was actually read from the sheets.
 
 ## One-time setup
-1. **Run the schema.** Open `supabase_schema.sql` in the Supabase SQL editor and run the whole file (it is safe to re-run). It adds the `app_users`, `show_confirmations` and `show_confirmation_events` tables, locked to the service role.
+1. **Run the schema.** Open `supabase_schema.sql` in the Supabase SQL editor and run the whole file (it is safe to re-run). It adds the `rescheduled_meetings` table (remembers rescheduled meetings) and the `app_users`, `show_confirmations` and `show_confirmation_events` tables, locked to the service role.
 2. **Environment variables** (Vercel project settings, and `.env.local` for local use):
    | Variable | Purpose |
    | :--- | :--- |

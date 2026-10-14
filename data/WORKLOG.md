@@ -204,3 +204,11 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Reverted the activity-log event dating: meetings, shows and no-shows use only Date Added.
 - Meetings added before 2026-10-12 count by tab: every tab counts as a meeting; Follow Ups, Contract Sent, Invoice Sent, Onboarded and Temporary Inactive count as shows without confirmation; No-Show is a no-show; Dead Leads / New Meetings are meetings but not shows. Meetings added from 2026-10-12: a meeting is booked on Date Added unless its Status is Rescheduled; it is a show only when management confirmed it in the dashboard (candidates are the rows in Follow Ups; rows that jumped straight to a later show tab are listed as "Skipped Follow Ups" and can be confirmed too); a confirmed meeting stays a show when its row later moves (except into No-Show).
 - Removed the one-time bulk confirmation (button, route, helper): old meetings no longer need it. `CONFIRMATION_START_DATE` in `src/lib/stages.ts`.
+
+## 46. Show rules refinements
+- Old (pre-10/12) meetings in Dead Leads now count as shows.
+- Meetings added from 10/12 that skipped Follow Ups are queued for confirmation (the separate "Skipped Follow Ups" list is gone).
+- Pre-10/12 meetings that were rescheduled (Status "Rescheduled" now, remembered in the new Supabase table `rescheduled_meetings`, or moved back into New Meetings per `_Activity_Log`) need confirmation before counting as shows.
+- A confirmed meeting that is back in New Meetings appears under "Needs review" in Confirm shows, so management can Undo it if it became a No-Show.
+- Duplicate rows (same opener, Date Added, company, contact) count once; different dates are separate meetings.
+- Run the latest `supabase_schema.sql` (adds `rescheduled_meetings`).

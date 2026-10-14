@@ -3,7 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
 import * as xlsx from 'xlsx';
-import { isRescheduledStatus } from './meetings';
+import { dedupeMeetings, isRescheduledStatus } from './meetings';
+import { CONFIRMATION_START_DATE } from './stages';
 import { CONFIG, isExcludedAgent } from './config';
 import { CallRecord, AgentMapping, MeetingRecord, DataSourceInfo } from '../types/dashboard';
 import { parseAgentName, durationToSeconds, parseDateToISO } from './analytics';
@@ -213,6 +214,27 @@ export async function fetchDailyTotals(agentMappings: AgentMapping[]): Promise<{
 }
 
 /**
+ * Companies whose row moved back into New Meetings on or after the confirmation start date, according to the tracker's
+ * own `_Activity_Log` ("No-Show → New Meetings | Company: X"). Used only to spot rescheduled meetings; never for dates.
+ */
+async function fetchReturnedToNewMeetings(sheets: NonNullable<ReturnType<typeof getSheetsClient>>): Promise<Set<string>> {
+  const out = new Set<string>();
+  try {
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: CONFIG.BD_TRACKER_SHEET_ID, range: `'${CONFIG.ACTIVITY_LOG_SHEET}'!A2:D` });
+    for (const row of res.data.values || []) {
+      if (!/row moved|stuck row fixed/i.test(String(row?.[2] ?? ''))) continue;
+      const m = String(row?.[3] ?? '').match(/^(.+?)\s*→\s*(.+?)\s*\|\s*Company:\s*(.*)$/);
+      if (!m || m[2].trim().toLowerCase() !== 'new meetings') continue;
+      const day = parseDateToISO(row[0]);
+      if (day && day >= CONFIRMATION_START_DATE) out.add(m[3].trim().toLowerCase());
+    }
+  } catch (err) {
+    console.warn('[Tracker] _Activity_Log not read; rescheduled meetings are spotted by status only:', (err as Error).message);
+  }
+  return out;
+}
+
+/**
  * Fetches pipeline meetings and stage counts from BD Tracker Google Sheet.
  */
 export async function fetchBDTrackerData(): Promise<{
@@ -232,6 +254,7 @@ export async function fetchBDTrackerData(): Promise<{
   });
 
   const valueRanges = batchRes.data.valueRanges || [];
+  const returned = await fetchReturnedToNewMeetings(sheets);
 
   CONFIG.BD_TABS.forEach((tabName, idx) => {
     const rawRows = valueRanges[idx]?.values || [];
@@ -273,11 +296,6 @@ export async function fetchBDTrackerData(): Promise<{
       if (!opener || isExcludedAgent(opener)) continue;
 
       const status = statusIdx !== -1 ? String(row[statusIdx] || '').trim() : '';
-      // A rescheduled meeting is not a new meeting: it is counted when it is finally held (its status changes).
-      if (!isRescheduledStatus(status)) {
-        if (!counts[opener]) counts[opener] = {};
-        counts[opener][tabName] = (counts[opener][tabName] || 0) + 1;
-      }
 
       let dateAdded: string | null = null;
       if (dateIdx !== -1 && row[dateIdx] !== undefined) {
@@ -308,7 +326,20 @@ export async function fetchBDTrackerData(): Promise<{
     }
   });
 
-  return { meetings, trackerCounts: counts };
+  // The same meeting entered twice (same opener, Date Added, company and contact) counts once; a different date is a
+  // different meeting. Stage counts are rebuilt from what is left. A rescheduled meeting is not counted as a new
+  // meeting; it is counted when it is held and its status changes.
+  const unique = dedupeMeetings(meetings);
+  unique.forEach((m) => {
+    if (isRescheduledStatus(m.status)) return;
+    if (!counts[m.opener]) counts[m.opener] = {};
+    counts[m.opener][m.stage] = (counts[m.opener][m.stage] || 0) + 1;
+  });
+  // A meeting booked before the start date whose row went back to New Meetings since then was rescheduled.
+  unique.forEach((m) => {
+    if (m.dateAdded && m.dateAdded < CONFIRMATION_START_DATE && m.companyName && returned.has(m.companyName.trim().toLowerCase())) m.rescheduled = true;
+  });
+  return { meetings: unique, trackerCounts: counts };
 }
 
 /**

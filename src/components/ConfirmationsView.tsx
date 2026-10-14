@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { CheckCircle2, ChevronLeft, ChevronRight, Search, Undo2 } from 'lucide-react';
 import { MeetingRecord, ViewerInfo } from '@/types/dashboard';
 import { CONFIRMATION_START_DATE } from '@/lib/stages';
-import { canBeConfirmed, isAwaitingConfirmation, isSkippedConfirmation } from '@/lib/meetings';
+import { canBeConfirmed, isAwaitingConfirmation, needsReview } from '@/lib/meetings';
 
 interface Props {
   meetings: MeetingRecord[];
@@ -13,7 +13,7 @@ interface Props {
   onChanged: () => void;
 }
 
-type StatusFilter = 'awaiting' | 'skipped' | 'confirmed' | 'all';
+type StatusFilter = 'awaiting' | 'review' | 'confirmed' | 'all';
 const PAGE_SIZE = 20;
 
 async function post(url: string, body: unknown): Promise<{ ok: boolean; json: { error?: string; changed?: number; message?: string; count?: number } }> {
@@ -37,13 +37,13 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return reviewable
-      .filter((m) => (status === 'all' ? true : status === 'confirmed' ? m.showConfirmed : status === 'skipped' ? isSkippedConfirmation(m) : isAwaitingConfirmation(m)))
+      .filter((m) => (status === 'all' ? true : status === 'confirmed' ? m.showConfirmed : status === 'review' ? needsReview(m) : isAwaitingConfirmation(m)))
       .filter((m) => !q || [m.opener, m.companyName, m.authorizedPerson, m.stage].some((v) => (v || '').toLowerCase().includes(q)))
       .sort((a, b) => (b.dateAdded || '').localeCompare(a.dateAdded || ''));
   }, [reviewable, status, search]);
 
   const awaitingCount = reviewable.filter(isAwaitingConfirmation).length;
-  const skippedCount = reviewable.filter(isSkippedConfirmation).length;
+  const reviewCount = reviewable.filter(needsReview).length;
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const pageRows = rows.slice((Math.min(page, totalPages) - 1) * PAGE_SIZE, Math.min(page, totalPages) * PAGE_SIZE);
 
@@ -79,7 +79,7 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
           <div className="sec-tag mb-0.5">Management review</div>
           <h3 className="font-serif text-base font-bold text-white">Confirm shows</h3>
           <p className="label-caps mt-0.5">
-            Meetings added since {CONFIRMATION_START_DATE} only count as shows once confirmed here · {awaitingCount} in Follow Ups awaiting confirmation{skippedCount > 0 ? ` · ${skippedCount} skipped Follow Ups and were never confirmed` : ''} (current date range)
+            Meetings added since {CONFIRMATION_START_DATE} only count as shows once confirmed here · {awaitingCount} awaiting confirmation{reviewCount > 0 ? ` · ${reviewCount} confirmed but moved back to New Meetings (check if they became No-Shows)` : ''} (current date range)
           </p>
         </div>
 
@@ -93,9 +93,9 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-lg bg-white/4 border border-white/7 p-0.5 text-xs font-semibold">
-            {(['awaiting', 'skipped', 'confirmed', 'all'] as StatusFilter[]).map((s) => (
+            {(['awaiting', 'review', 'confirmed', 'all'] as StatusFilter[]).map((s) => (
               <button key={s} onClick={() => { setStatus(s); setPage(1); }} className={`px-3 min-h-8 rounded-md ${status === s ? 'bg-white text-black' : 'text-text-dim'}`}>
-                {s === 'awaiting' ? 'Awaiting' : s === 'skipped' ? 'Skipped Follow Ups' : s === 'confirmed' ? 'Confirmed' : 'All'}
+                {s === 'awaiting' ? 'Awaiting' : s === 'review' ? 'Needs review' : s === 'confirmed' ? 'Confirmed' : 'All'}
               </button>
             ))}
           </div>
@@ -141,8 +141,8 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
                   <td className="p-3 whitespace-nowrap">{m.stage}</td>
                   <td className="p-3 whitespace-nowrap">
                     {m.showConfirmed
-                      ? <span className="inline-flex items-center gap-1 text-[#4ade80]"><CheckCircle2 className="w-3.5 h-3.5" />Confirmed by {m.confirmedBy}{m.confirmedAt ? ` · ${new Date(m.confirmedAt).toLocaleDateString()}` : ''}</span>
-                      : <span className={isAwaitingConfirmation(m) || isSkippedConfirmation(m) ? 'text-[#e8c56a]' : 'text-[#71717a]'}>{isAwaitingConfirmation(m) ? 'Awaiting confirmation' : isSkippedConfirmation(m) ? 'Skipped Follow Ups, not confirmed' : 'Not confirmed'}</span>}
+                      ? <span className="inline-flex items-center gap-1 text-[#4ade80]"><CheckCircle2 className="w-3.5 h-3.5" />Confirmed by {m.confirmedBy}{m.confirmedAt ? ` · ${new Date(m.confirmedAt).toLocaleDateString()}` : ''}{needsReview(m) ? <span className="ml-2 text-[#e8c56a]">· Back in New Meetings: Undo if it is now a No-Show</span> : null}</span>
+                      : <span className={isAwaitingConfirmation(m) ? 'text-[#e8c56a]' : 'text-[#71717a]'}>{isAwaitingConfirmation(m) ? 'Awaiting confirmation' : 'Not confirmed'}</span>}
                   </td>
                   {canConfirm && (
                     <td className="p-3 text-right">
