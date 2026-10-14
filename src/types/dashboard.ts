@@ -24,9 +24,7 @@ export interface CallRecord {
 export interface MeetingRecord {
   stage: string;
   opener: string;
-  dateAdded: string; // ISO YYYY-MM-DD or parsed date (when the meeting was booked)
-  /** Day the row last moved into its current tab, from the tracker's _Activity_Log. Shows and no-shows count on this day. */
-  eventDate?: string;
+  dateAdded: string; // ISO YYYY-MM-DD or parsed date
   companyName?: string;
   authorizedPerson?: string;
   medB?: boolean;

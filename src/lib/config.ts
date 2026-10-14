@@ -32,7 +32,6 @@ export const CONFIG = {
   LIKELY_SHOW_STAGES,
 
   DAILY_TOTALS_SHEET: 'Daily Totals',
-  ACTIVITY_LOG_SHEET: '_Activity_Log',
   CALL_LOG_SHEET: 'Call Logs',
   MAPPING_SHEET: 'Agent Mapping',
 

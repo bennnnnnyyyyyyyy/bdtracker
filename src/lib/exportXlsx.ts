@@ -148,10 +148,9 @@ export function buildOverviewTable(data: DashboardResponse): ExportTable {
 
 /** Meetings in the selected range, with whether management confirmed the show. */
 export function buildMeetingsTable(data: DashboardResponse): ExportTable {
-  const headers = ['Date Added', 'Moved To Stage On', 'Opener', 'Stage', 'Company Name', 'Authorized Person', 'Med B', 'PPO', 'Show Confirmed', 'Confirmed By', 'Confirmed At'];
+  const headers = ['Date Added', 'Opener', 'Stage', 'Company Name', 'Authorized Person', 'Med B', 'PPO', 'Show Confirmed', 'Confirmed By', 'Confirmed At'];
   const rows = (data.meetings || []).map((m) => [
     m.dateAdded || '',
-    m.eventDate || '',
     m.opener || '',
     m.stage || '',
     m.companyName || '',

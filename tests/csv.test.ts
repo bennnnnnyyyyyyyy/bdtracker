@@ -38,9 +38,9 @@ describe('dashboard tables', () => {
 
   it('meetings include the show confirmation and survive CSV round-trip', () => {
     const t = buildMeetingsTable(data);
-    const acme = t.rows.find((r) => r[4] === 'Acme, Inc')!;
-    expect(acme.slice(8)).toEqual(['Yes', 'Boss', '2026-08-12T10:00:00Z']);
-    expect(parseCsv(toCsv([t.headers, ...t.rows]))[1][4]).toBe('Acme, Inc');
+    const acme = t.rows.find((r) => r[3] === 'Acme, Inc')!;
+    expect(acme.slice(7)).toEqual(['Yes', 'Boss', '2026-08-12T10:00:00Z']);
+    expect(parseCsv(toCsv([t.headers, ...t.rows]))[1][3]).toBe('Acme, Inc');
   });
 
   it('overview has a team totals row and the new confirmation columns', () => {

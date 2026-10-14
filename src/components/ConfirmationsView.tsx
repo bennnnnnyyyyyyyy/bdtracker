@@ -153,7 +153,7 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
           <thead className="text-left text-[#a1a1aa]">
             <tr>
               {canConfirm && <th className="p-3 w-8"><input aria-label="Select all on page" type="checkbox" checked={allOnPage} onChange={() => setSelected((prev) => { const next = new Set(prev); pageKeys.forEach((k) => (allOnPage ? next.delete(k) : next.add(k))); return next; })} /></th>}
-              <th className="p-3">Added</th><th className="p-3">Moved</th><th className="p-3">Opener</th><th className="p-3">Company</th><th className="p-3">Contact</th><th className="p-3">Stage</th><th className="p-3">Status</th>
+              <th className="p-3">Added</th><th className="p-3">Opener</th><th className="p-3">Company</th><th className="p-3">Contact</th><th className="p-3">Stage</th><th className="p-3">Status</th>
               {canConfirm && <th className="p-3" />}
             </tr>
           </thead>
@@ -164,7 +164,6 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
                 <tr key={key} className="border-t border-white/7">
                   {canConfirm && <td className="p-3"><input aria-label={`Select ${m.companyName || m.opener}`} type="checkbox" checked={selected.has(key)} onChange={() => toggle(key)} /></td>}
                   <td className="p-3 font-num whitespace-nowrap">{m.dateAdded || '—'}</td>
-                  <td className="p-3 font-num whitespace-nowrap">{m.eventDate || '—'}</td>
                   <td className="p-3">{m.opener}</td>
                   <td className="p-3">{m.companyName || '—'}</td>
                   <td className="p-3">{m.authorizedPerson || '—'}</td>
@@ -185,7 +184,7 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
                 </tr>
               );
             })}
-            {pageRows.length === 0 && <tr><td className="p-6 text-center text-[#71717a]" colSpan={9}>{status === 'awaiting' ? 'Nothing is waiting for confirmation in this date range.' : 'No meetings match.'}</td></tr>}
+            {pageRows.length === 0 && <tr><td className="p-6 text-center text-[#71717a]" colSpan={8}>{status === 'awaiting' ? 'Nothing is waiting for confirmation in this date range.' : 'No meetings match.'}</td></tr>}
           </tbody>
         </table>
       </div>

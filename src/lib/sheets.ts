@@ -1,4 +1,3 @@
-import { LIKELY_SHOW_STAGES } from './stages';
 import { agentOfExtension, dailyRowsToCalls, DailyTotalRow } from './dailyTotals';
 import fs from 'fs';
 import path from 'path';
@@ -212,56 +211,6 @@ export async function fetchDailyTotals(agentMappings: AgentMapping[]): Promise<{
   return { calls, days: Array.from(byDay.keys()).sort() };
 }
 
-interface StageMove { src: string; dst: string; day: string }
-
-/**
- * The tracker's own `_Activity_Log` records every move of a row between tabs ("New Meetings → Follow Ups | Company: X").
- * Returns the moves per company. A meeting is booked on its Date Added but happens on the day it leaves New Meetings,
- * so shows and no-shows are counted on that day (see eventDateFor). A missing log tab just means no move dates (the
- * booking date is used instead).
- */
-async function fetchStageMoves(sheets: NonNullable<ReturnType<typeof getSheetsClient>>): Promise<Map<string, StageMove[]>> {
-  const out = new Map<string, StageMove[]>();
-  try {
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId: CONFIG.BD_TRACKER_SHEET_ID, range: `'${CONFIG.ACTIVITY_LOG_SHEET}'!A2:D` });
-    for (const row of res.data.values || []) {
-      const action = String(row?.[2] ?? '');
-      if (!/row moved|stuck row fixed/i.test(action)) continue;
-      const m = String(row?.[3] ?? '').match(/^(.+?)\s*→\s*(.+?)\s*\|\s*Company:\s*(.*)$/);
-      if (!m) continue;
-      const day = parseDateToISO(row[0]);
-      if (!day) continue;
-      const key = m[3].trim().toLowerCase();
-      const list = out.get(key);
-      const move = { src: m[1].trim().toLowerCase(), dst: m[2].trim().toLowerCase(), day };
-      if (list) list.push(move); else out.set(key, [move]);
-    }
-  } catch (err) {
-    console.warn('[Tracker] _Activity_Log not read; shows use the booking date:', (err as Error).message);
-  }
-  return out;
-}
-
-/**
- * The day a meeting happened, from its row's moves:
- * - now in No-Show: the latest move into No-Show;
- * - now in a show stage: the latest move out of New Meetings into a show stage (so a later step such as
- *   Follow Ups → Invoice Sent never re-dates the meeting); else the latest move into the current tab;
- * - anything else (or no log entry): undefined, the booking date is used.
- */
-export function eventDateFor(moves: StageMove[] | undefined, stage: string): string | undefined {
-  if (!moves || moves.length === 0) return undefined;
-  const tab = stage.toLowerCase();
-  const latest = (list: StageMove[]) => list.reduce<string | undefined>((best, m) => (!best || m.day > best ? m.day : best), undefined);
-  if (stage === 'No-Show') return latest(moves.filter((m) => m.dst === tab));
-  if (LIKELY_SHOW_STAGES.includes(stage)) {
-    const shows = LIKELY_SHOW_STAGES.map((t) => t.toLowerCase());
-    return latest(moves.filter((m) => m.src === 'new meetings' && shows.includes(m.dst)))
-      ?? latest(moves.filter((m) => m.dst === tab));
-  }
-  return undefined;
-}
-
 /**
  * Fetches pipeline meetings and stage counts from BD Tracker Google Sheet.
  */
@@ -282,7 +231,6 @@ export async function fetchBDTrackerData(): Promise<{
   });
 
   const valueRanges = batchRes.data.valueRanges || [];
-  const moves = await fetchStageMoves(sheets);
 
   CONFIG.BD_TABS.forEach((tabName, idx) => {
     const rawRows = valueRanges[idx]?.values || [];
@@ -348,8 +296,7 @@ export async function fetchBDTrackerData(): Promise<{
         companyName: companyIdx !== -1 ? String(row[companyIdx] || '') : '',
         authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : '',
         medB: medbIdx !== -1 ? isChecked(row[medbIdx]) : false,
-        ppo: ppoIdx !== -1 ? isChecked(row[ppoIdx]) : false,
-        eventDate: companyIdx !== -1 ? eventDateFor(moves.get(String(row[companyIdx] || '').trim().toLowerCase()), tabName) : undefined
+        ppo: ppoIdx !== -1 ? isChecked(row[ppoIdx]) : false
       });
     }
   });
