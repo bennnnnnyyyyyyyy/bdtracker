@@ -33,6 +33,7 @@ const CONFIG = {
   ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
 
   DAILY_TOTALS_SHEET: 'Daily Totals',
+  TOTALS_SHEET: 'Totals',
   CALL_LOG_SHEET: 'Call Logs',
 
   // Closed months move out of 'Call Logs' into tabs named 'Call Logs YYYY-MM' to keep the active log small and fast.
@@ -651,7 +652,81 @@ function importDays_(days, source) {
     });
     if (newAgents.length > 0) mapping.getRange(mapping.getLastRow() + 1, 1, newAgents.length, 2).setValues(newAgents.map(a => [a, '']));
   }
+  try {
+    rebuildTotalsSummary_();
+  } catch (err) {
+    console.error('Totals summary failed:', err); // the upload itself succeeded
+  }
   return { days: days.length, rows: added.length, replaced: existing.length - kept.length, protectedRows, resolved, newAgents };
+}
+
+/**
+ * Rebuilds the easy-to-read "Totals" tab from "Daily Totals": one line per agent with calls per month and overall
+ * figures, and an ALL AGENTS line right under the headings. Plain values (not formulas), rewritten after every upload.
+ */
+function rebuildTotalsSummary_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const src = ss.getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
+  if (!src || src.getLastRow() < 2) return;
+  const rows = src.getRange(2, 1, src.getLastRow() - 1, 13).getValues();
+  const dayOf = v => (v instanceof Date ? Utilities.formatDate(v, ssTz_(), 'yyyy-MM-dd') : String(v == null ? '' : v).slice(0, 10));
+  const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  const monthSet = new Set();
+  const agents = new Map();
+  const all = { months: {}, oa: 0, ou: 0, ia: 0, iu: 0, total: 0, sec: 0, days: new Set() };
+  let first = '9999';
+  let last = '0000';
+  const add = (t, month, r) => {
+    t.months[month] = (t.months[month] || 0) + num(r[8]);
+    t.oa += num(r[4]); t.ou += num(r[5]); t.ia += num(r[6]); t.iu += num(r[7]);
+    t.total += num(r[8]); t.sec += num(r[9]);
+  };
+  rows.forEach(r => {
+    const day = dayOf(r[0]);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    const month = day.slice(0, 7);
+    monthSet.add(month);
+    if (day < first) first = day;
+    if (day > last) last = day;
+    const name = String(r[2] || r[1] || '').trim();
+    if (!name) return;
+    if (!agents.has(name)) agents.set(name, { name, dept: String(r[3] || ''), months: {}, oa: 0, ou: 0, ia: 0, iu: 0, total: 0, sec: 0, days: new Set() });
+    const a = agents.get(name);
+    if (!a.dept) a.dept = String(r[3] || '');
+    add(a, month, r);
+    a.days.add(day);
+    add(all, month, r);
+    all.days.add(day);
+  });
+  const months = Array.from(monthSet).sort();
+  const monthLabel = m => MONTHS[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(0, 4);
+  const header = ['Agent', 'Department'].concat(months.map(monthLabel), ['Total calls', 'Out answered', 'Out unanswered', 'In answered', 'In unanswered', 'Connection %', 'Talk time (hours)', 'Days with data']);
+  const line = (label, dept, t) => [label, dept].concat(
+    months.map(m => t.months[m] || 0),
+    [t.total, t.oa, t.ou, t.ia, t.iu, t.total > 0 ? (t.oa + t.ia) / t.total : 0, Math.round(t.sec / 36) / 100, t.days.size]
+  );
+  const list = Array.from(agents.values()).sort((a, b) => b.total - a.total);
+  const body = [line('ALL AGENTS', '', all)].concat(list.map(a => line(a.name, a.dept, a)));
+
+  let sheet = ss.getSheetByName(CONFIG.TOTALS_SHEET);
+  if (!sheet) sheet = ss.insertSheet(CONFIG.TOTALS_SHEET);
+  sheet.clear();
+  const width = header.length;
+  sheet.getRange(1, 1).setValue('Call totals by agent').setFontWeight('bold').setFontSize(14);
+  sheet.getRange(2, 1).setValue('From the "Daily Totals" tab (Ultatel Total Calls Per Extension reports), ' + first + ' to ' + last + ', ' + all.days.size + ' day(s). Rebuilt after every upload; do not type here. Calls per month are Total Calls (outgoing + incoming).');
+  sheet.getRange(4, 1, 1, width).setValues([header]).setFontWeight('bold').setBackground('#e8e8e8');
+  sheet.getRange(5, 1, body.length, width).setValues(body);
+  sheet.getRange(5, 1, 1, width).setFontWeight('bold').setBackground('#fff2cc');
+  const monthCols = months.length;
+  sheet.getRange(5, 3, body.length, monthCols + 5).setNumberFormat('#,##0');
+  sheet.getRange(5, 3 + monthCols + 5, body.length, 1).setNumberFormat('0.0%');
+  sheet.getRange(5, 3 + monthCols + 6, body.length, 1).setNumberFormat('0.0');
+  sheet.setFrozenRows(5);
+  sheet.setFrozenColumns(1);
+  sheet.setColumnWidth(1, 170);
+  sheet.setColumnWidth(2, 190);
 }
 
 // ---- Replace mode runs in the background (a time-driven trigger), because cleaning big tabs takes longer than a web request may ----
@@ -923,6 +998,8 @@ function runSheetAction_(body) {
         range.offset(0, 0, out.length, 1).setValues(out);
         return { changed };
       }, 50000);
+    case 'rebuildTotals':
+      return withLock_(() => { rebuildTotalsSummary_(); return {}; }, 50000);
     case 'replaceStatus':
       return { job: replaceJobStatus_() };
     case 'autoArchiveOn':

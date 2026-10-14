@@ -78,7 +78,7 @@ function describeBadReply(text: string): string {
   return `The Apps Script web app did not answer with data. It said: "${plain || 'nothing'}". Check that the web app is deployed with access "Anyone", that IMPORT_WEBHOOK_URL is its current /exec URL (a new deployment creates a new URL; use Manage deployments > edit > New version to keep the old one), and that the script did not run out of time.`;
 }
 
-export type SheetAction = 'status' | 'check' | 'repair' | 'archive' | 'fixTimes' | 'autoArchiveOn' | 'autoArchiveOff' | 'setMapping' | 'replaceStatus';
+export type SheetAction = 'status' | 'check' | 'repair' | 'archive' | 'fixTimes' | 'autoArchiveOn' | 'autoArchiveOff' | 'setMapping' | 'replaceStatus' | 'rebuildTotals';
 
 /** A maintenance action on the call-log sheet (see runSheetAction_ in the Apps Script). */
 export async function runSheetAction(action: SheetAction, extra: Record<string, unknown> = {}, fetchFn: Fetch = fetch): Promise<Record<string, unknown>> {

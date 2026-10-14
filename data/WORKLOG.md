@@ -163,3 +163,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 33. One-extension Date Distribution reports
 - "Total Calls Per Extension ( 103 ) - Date Distribution" (one extension, a row per real day, extension number in the title) is read too. The sheet resolves "103" to the full "103 (MMS-Name)" from Daily Totals or the Call Logs extension column; an unknown number asks for an all-extensions report first. Rows are now replaced per day AND extension (previously per day), and a period spread never overwrites a real daily row (reported as "kept").
+
+## 34. Totals tab
+- New sheet tab `Totals` (rebuilt after every daily-totals upload, also via the `rebuildTotals` action): one line per agent with calls per month, total calls, out/in answered/unanswered, connection %, talk time and days with data, and an ALL AGENTS line right under the headings. Plain values, not formulas. `Daily Totals` holds the data (one row per day and extension); `Call Logs` and its month archives stay untouched as the fallback for days that have no daily totals.
