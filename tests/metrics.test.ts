@@ -207,6 +207,12 @@ describe('shows after the confirmation start date require management confirmatio
     expect(isAwaitingConfirmation(newDead)).toBe(false);
   });
 
+  it('DISQUALIFIED and CANCELLED: old ones are shows, new ones need confirmation', () => {
+    const m = annotateMeetings(['DISQUALIFIED', 'CANCELLED'].flatMap((st) => [meeting(st, 'Ben', '2026-10-01', { companyName: st + 'o' }), meeting(st, 'Ben', '2026-10-13', { companyName: st + 'n' })]), new Map());
+    expect(m.map((x) => isConfirmedShow(x))).toEqual([true, false, true, false]);
+    expect(m.map((x) => isAwaitingConfirmation(x))).toEqual([false, true, false, true]);
+  });
+
   it('a pre-10/12 meeting flagged as rescheduled needs confirmation first', () => {
     const [m] = annotateMeetings([meeting('Follow Ups', 'Ben', '2026-10-01', { companyName: 'R', rescheduled: true })], new Map());
     expect(isConfirmedShow(m)).toBe(false);

@@ -212,3 +212,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - A confirmed meeting that is back in New Meetings appears under "Needs review" in Confirm shows, so management can Undo it if it became a No-Show.
 - Duplicate rows (same opener, Date Added, company, contact) count once; different dates are separate meetings.
 - Run the latest `supabase_schema.sql` (adds `rescheduled_meetings`).
+
+## 47. DISQUALIFIED and CANCELLED tabs
+- Both tabs are now read as meeting stages (`CONFIG.BD_TABS`). Same rules as the show tabs: before 10/12 they count as meetings and shows; from 10/12 they count as meetings and wait in the confirmation queue.

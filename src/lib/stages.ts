@@ -7,7 +7,7 @@ export const NEVER_SHOW_STAGES: readonly string[] = ['No-Show', 'Dead Leads'];
  * Stages where a meeting most likely happened. Unconfirmed meetings here are reported as
  * "awaiting confirmation" so management can follow up. Any other stage can still be confirmed.
  */
-export const LIKELY_SHOW_STAGES: readonly string[] = ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'];
+export const LIKELY_SHOW_STAGES: readonly string[] = ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive', 'DISQUALIFIED', 'CANCELLED'];
 
 /**
  * Meetings added before this day (Date Added) are counted by the tab they sit in: every tab except No-Show (and
@@ -27,5 +27,5 @@ export const LEGACY_SHOW_STAGES: readonly string[] = [...LIKELY_SHOW_STAGES, 'De
 
 /** Furthest-along first: when the same meeting sits in two tabs, the row in the higher-ranked tab is kept. */
 export const STAGE_RANK: Record<string, number> = {
-  'Onboarded': 7, 'Invoice Sent': 6, 'Contract Sent': 5, 'Follow Ups': 4, 'Temporary Inactive': 3, 'Dead Leads': 2, 'No-Show': 1, 'New Meetings': 0,
+  'Onboarded': 7, 'Invoice Sent': 6, 'Contract Sent': 5, 'Follow Ups': 4, 'Temporary Inactive': 3, 'Dead Leads': 2, 'DISQUALIFIED': 1.6, 'CANCELLED': 1.5, 'No-Show': 1, 'New Meetings': 0,
 };

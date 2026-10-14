@@ -23,7 +23,9 @@ export const CONFIG = {
     'Onboarded',
     'No-Show',
     'Dead Leads',
-    'Temporary Inactive'
+    'Temporary Inactive',
+    'DISQUALIFIED',
+    'CANCELLED'
   ],
 
   // A meeting counts as a show only after management confirms it in the dashboard.

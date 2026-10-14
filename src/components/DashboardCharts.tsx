@@ -26,7 +26,9 @@ const STAGE_COLORS: Record<string, string> = {
   'Onboarded': '#10B981', // Emerald
   'No-Show': '#F59E0B', // Amber
   'Dead Leads': '#EF4444', // Red
-  'Temporary Inactive': '#64748B' // Slate
+  'Temporary Inactive': '#64748B', // Slate
+  'DISQUALIFIED': '#A855F7', // Violet
+  'CANCELLED': '#94A3B8' // Gray
 };
 
 export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers }) => {
