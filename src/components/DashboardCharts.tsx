@@ -9,13 +9,16 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  LineChart,
+  Line
 } from 'recharts';
-import { OpenerStats } from '@/types/dashboard';
+import { OpenerStats, PeriodicGroupSummary } from '@/types/dashboard';
 import { CONFIG } from '@/lib/config';
 
 interface DashboardChartsProps {
   openers: OpenerStats[];
+  daily?: PeriodicGroupSummary[];
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -29,7 +32,7 @@ const STAGE_COLORS: Record<string, string> = {
   'Temporary Inactive': '#3f3f46' // Slate
 };
 
-export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers }) => {
+export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily = [] }) => {
   if (!openers || openers.length === 0) {
     return (
       <div className="card p-8 text-center text-text-dim">
@@ -67,8 +70,37 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers }) => 
     'Calls per Meeting': o.callsPerMeeting || 0
   }));
 
+  const trendData = [...daily].reverse().map(d => ({
+    period: d.periodLabel,
+    Calls: d.totals.calls,
+    Meetings: d.totals.meetings
+  }));
+
   return (
     <div className="space-y-6">
+      {trendData.length > 1 && (
+        <div className="card p-5">
+          <div className="mb-4">
+            <h3 className="font-serif text-base font-bold text-white">Daily trend</h3>
+            <p className="text-xs text-text-dim mt-0.5">Calls and meetings booked per day across the selected period</p>
+          </div>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" vertical={false} />
+                <XAxis dataKey="period" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} />
+                <YAxis yAxisId="calls" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} />
+                <YAxis yAxisId="mtg" orientation="right" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} allowDecimals={false} />
+                <Tooltip contentStyle={{ backgroundColor: '#1e1e23', borderColor: 'rgba(255,255,255,0.12)', borderRadius: '8px', color: '#f4f4f5' }} />
+                <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                <Line yAxisId="calls" type="monotone" dataKey="Calls" stroke="#c9a84c" strokeWidth={2} dot={false} />
+                <Line yAxisId="mtg" type="monotone" dataKey="Meetings" stroke="#35e58a" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       {/* Top Row: Calls vs Booked & Rates */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 1. Calls Made vs Meetings Booked */}

@@ -184,3 +184,12 @@ input[type="date"] {
 }
 
 summary::-webkit-details-marker { display: none; }
+
+/* ── Print / PDF export ──────────────────────────────── */
+@media print {
+  body { background: #fff !important; color: #111 !important; }
+  header, footer, [role="tablist"], details, button { display: none !important; }
+  .card { background: #fff !important; border-color: #ddd !important; box-shadow: none !important; break-inside: avoid; }
+  .card * { color: #111 !important; }
+  @page { margin: 12mm; }
+}

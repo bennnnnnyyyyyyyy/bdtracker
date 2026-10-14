@@ -199,6 +199,7 @@ export default function DashboardPage() {
         openers={data?.openers || []}
         onRefresh={() => fetchData(true)}
         onOpenImportModal={() => setImportModalOpen(true)}
+        onPrint={() => window.print()}
         onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
         loading={loading}
         lastUpdated={data?.lastUpdated || ''}
@@ -261,7 +262,7 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {activeTab === 'overview' && <DashboardCharts openers={data.openers} />}
+            {activeTab === 'overview' && <DashboardCharts openers={data.openers} daily={data.dailyBreakdown} />}
             {activeTab === 'agents' && (
               <AgentDashboardView
                 openers={data.openers}
@@ -298,7 +299,7 @@ export default function DashboardPage() {
         className="py-4 text-center label-caps"
         style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
       >
-        BD Call &amp; Pipeline Dashboard · Google Sheets API v4
+        BD Call &amp; Pipeline Dashboard
       </footer>
     </div>
   );

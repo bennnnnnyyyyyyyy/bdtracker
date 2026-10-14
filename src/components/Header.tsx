@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Calendar, ChevronDown, FileSpreadsheet, PhoneCall, RefreshCw, Upload, User, X } from 'lucide-react';
+import { Calendar, ChevronDown, FileSpreadsheet, PhoneCall, Printer, RefreshCw, Upload, User, X } from 'lucide-react';
 import { DataSourceInfo, FilterState, OpenerStats } from '@/types/dashboard';
 
 interface HeaderProps {
@@ -11,6 +11,7 @@ interface HeaderProps {
   onRefresh: () => void;
   onOpenImportModal?: () => void;
   onExportXlsx?: () => void;
+  onPrint?: () => void;
   loading: boolean;
   lastUpdated: string;
   isMockData?: boolean;
@@ -31,7 +32,7 @@ const PRESETS: PresetOption[] = [
   { label: 'Last 30 days', value: 'last_30_days', getRange: () => { const end = new Date(); const start = new Date(end); start.setDate(end.getDate() - 29); return { startDate: formatLocalDateYMD(start), endDate: formatLocalDateYMD(end) }; } },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, loading, lastUpdated, isMockData, dataSourceInfo }) => {
+export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, onPrint, loading, lastUpdated, isMockData, dataSourceInfo }) => {
   const updatedAt = lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   const sourceLabel = isMockData ? 'Demo data' : dataSourceInfo?.source === 'supabase' ? 'Cached data' : 'Live data';
   const clearFilters = () => onFilterChange({ selectedOpener: 'ALL', preset: 'this_week' });
@@ -49,11 +50,12 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {(onExportXlsx || onOpenImportModal) && (
+            {(onExportXlsx || onOpenImportModal || onPrint) && (
               <details className="relative">
                 <summary className="list-none flex items-center gap-1.5 min-h-9 px-3 rounded-lg text-xs font-semibold cursor-pointer border border-white/10 text-text-primary"><ChevronDown className="w-3.5 h-3.5" />Actions</summary>
-                <div className="absolute right-0 top-11 z-40 w-44 rounded-lg bg-card border border-white/10 shadow-xl p-1.5">
+                <div className="absolute right-0 top-11 z-40 w-48 rounded-lg bg-card border border-white/10 shadow-xl p-1.5">
                   {onExportXlsx && <button onClick={onExportXlsx} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><FileSpreadsheet className="w-3.5 h-3.5 text-success" />Export XLSX</button>}
+                  {onPrint && <button onClick={onPrint} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><Printer className="w-3.5 h-3.5 text-text-muted" />Print / Save PDF</button>}
                   {onOpenImportModal && <button onClick={onOpenImportModal} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs hover:bg-white/5"><Upload className="w-3.5 h-3.5 text-gold-light" />Import Excel</button>}
                 </div>
               </details>
