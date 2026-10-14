@@ -62,6 +62,7 @@ export interface OpenerStats {
   totalTalkSec: number;
   avgCallSec: number;
   booked: number; // Current pipeline records (all stages)
+  ratedMeetings: number; // booked minus CANCELLED / DISQUALIFIED: the base for close, Med B, PPO rates and calls per meeting
   medBCount: number;
   medBRate: number; // Med B percentage: medBCount / booked
   ppoCount: number;
@@ -146,6 +147,7 @@ export interface OrgTotals {
   totalTalkSec: number;
   avgCallSec: number;
   booked: number;
+  ratedMeetings: number;
   medBCount: number;
   medBRate: number;
   ppoCount: number;

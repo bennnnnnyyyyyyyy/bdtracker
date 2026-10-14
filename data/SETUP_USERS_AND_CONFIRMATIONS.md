@@ -56,3 +56,6 @@ Everything you would otherwise do from the sheet's **BD Call Dashboard** menu is
 - **Actions > Call log maintenance** (admins and managers): shows how many rows the active log has and which archive tabs exist; **Check now**, **Repair duplicates** and **Fix call times** (admin); **Archive old months now**, **Turn on / off automatic archiving** (admin); and a form to type the **Opener name** for any new agent (admins and managers).
 - **After an upload** whose check fails, admins see a **Repair duplicates and check again** button that repairs the sheet and re-checks the same file in one click. When a file brings new agents, the dialog asks for their Opener names right there.
 Repair keeps one hidden backup sheet (`Call Logs backup (web repair)`) that is replaced each time, so backups do not pile up.
+
+## BD Dashboard sheet mirror
+In the Apps Script editor open Project Settings > Script properties and add `DASHBOARD_URL` = the dashboard address (for example `https://your-app.vercel.app`, no trailing slash). The mirror then pulls official meeting numbers from `/api/mirror`, authenticated with `IMPORT_SECRET` (which must equal `IMPORT_WEBHOOK_SECRET` in Vercel). Run any function once from the editor to approve the new "connect to an external service" permission, then deploy a new version.

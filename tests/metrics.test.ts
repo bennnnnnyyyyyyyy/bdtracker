@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeDashboardMetrics, resolveOpener } from '../src/lib/analytics';
-import { annotateMeetings, canBeConfirmed, dedupeMeetings, isAwaitingConfirmation, isConfirmedShow, needsReview } from '../src/lib/meetings';
+import { annotateMeetings, canBeConfirmed, buildMeetingKeys, dedupeMeetings, effectiveStage, findEditedKeys, isAwaitingConfirmation, isConfirmedShow, needsReview } from '../src/lib/meetings';
 import { calculateAgentPresentDays, getAttendanceWeight, parseAttendanceRows } from '../src/lib/attendance';
 import type { AgentMapping, CallRecord, MeetingRecord } from '../src/types/dashboard';
 
@@ -266,5 +266,48 @@ describe('attendance headers without a year', () => {
     const a = parseAttendanceRows(real, { year: 2026 });
     const b = parseAttendanceRows(text.slice(0, 2), { year: 2026 });
     expect(a.agentDaily).toEqual(b.agentDaily);
+  });
+});
+
+describe('rates leave out cancelled and disqualified meetings', () => {
+  const rows = [
+    meeting('Onboarded', 'Ben', '2026-08-10', { companyName: 'A', medB: true }),
+    meeting('Follow Ups', 'Ben', '2026-08-10', { companyName: 'B' }),
+    meeting('CANCELLED', 'Ben', '2026-08-10', { companyName: 'C', medB: true }),
+    meeting('DISQUALIFIED', 'Ben', '2026-08-11', { companyName: 'D' }),
+  ];
+  it('keeps them as booked but not in close, Med B or calls per meeting', () => {
+    const res = computeDashboardMetrics([call({}), call({}), call({}), call({})], annotateMeetings(rows, new Map()), {}, mappings, { startDate: '2026-08-10', endDate: '2026-08-14' });
+    const ben = res.openers.find((o) => o.opener === 'Ben')!;
+    expect(ben.booked).toBe(4);
+    expect(ben.ratedMeetings).toBe(2);
+    expect(ben.closeRate).toBeCloseTo(1 / 2);
+    expect(ben.medBCount).toBe(1);
+    expect(ben.medBRate).toBe(50);
+    expect(ben.callsPerMeeting).toBe(2);
+    expect(res.totals.closeRate).toBeCloseTo(1 / 2);
+  });
+});
+
+describe('row status and edits', () => {
+  it('a row in Onboarded with Status No Show is a no-show', () => {
+    expect(effectiveStage('Onboarded', 'No Show')).toBe('No-Show');
+    expect(effectiveStage('Onboarded', 'no-show')).toBe('No-Show');
+    expect(effectiveStage('Onboarded', 'Signed')).toBe('Onboarded');
+  });
+
+  it('a confirmation follows a row whose company, contact, date or opener was edited', () => {
+    const before = buildMeetingKeys([meeting('Follow Ups', 'Ben', '2026-10-01', { companyName: 'Acme', authorizedPerson: 'Sam' })])[0];
+    const after = (over: object) => buildMeetingKeys([meeting('Follow Ups', 'Ben', '2026-10-01', { companyName: 'Acme', authorizedPerson: 'Sam', ...over })])[0];
+    for (const over of [{ companyName: 'Acme Inc' }, { authorizedPerson: 'Samuel' }, { dateAdded: '2026-10-02' }, { opener: 'Jane' }]) {
+      expect(findEditedKeys([after(over)], [before]).get(after(over))).toBe(before);
+    }
+  });
+
+  it('does not guess when two things changed, when blank fields would match, or when the row still exists', () => {
+    const stored = 'ben|2026-10-01|acme|sam';
+    expect(findEditedKeys(['jane|2026-10-02|acme|sam'], [stored]).size).toBe(0);
+    expect(findEditedKeys(['ben|2026-10-01|other|'], ['ben|2026-10-01|acme|']).size).toBe(0);
+    expect(findEditedKeys([stored, 'ben|2026-10-01|acme|sam2'], [stored]).size).toBe(0);
   });
 });

@@ -34,9 +34,11 @@ const CONFIG = {
     'CANCELLED'
   ],
 
-  // NOTE: this in-sheet mirror estimates shows from the pipeline stage only. The web dashboard counts
-  // a show only after management confirms it there, so use the dashboard for official show numbers.
+  // The mirror takes its meeting numbers from the web dashboard (script property DASHBOARD_URL, e.g.
+  // https://your-app.vercel.app) so it follows the same confirmation rules. Without it, it falls back to a rough
+  // stage-based estimate that ignores confirmations.
   ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
+  RATE_EXCLUDED_STAGES: ['DISQUALIFIED', 'CANCELLED'],
 
   DAILY_TOTALS_SHEET: 'Daily Totals',
   TOTALS_SHEET: 'Totals',
@@ -1734,6 +1736,7 @@ function refreshDashboard() {
 
   // 3. Pull BD Tracker Pipeline Counts
   const trackerCounts = getBDCounts_();
+  const official = fetchOfficialMeetings_();
 
   // Union of non-excluded active openers
   const allOpeners = new Set([...Object.keys(stats), ...Object.keys(trackerCounts)]);
@@ -1754,7 +1757,7 @@ function refreshDashboard() {
     'Meetings Booked',
     'No-Show',
     'Attended',
-    'Show Rate (stage-based, unconfirmed)',
+    official ? 'Show Rate' : 'Show Rate (stage-based estimate, unconfirmed)',
     'Onboarded',
     'Close Rate',
     'Calls / Meeting',
@@ -1773,15 +1776,18 @@ function refreshDashboard() {
     const avgSec = s.calls > 0 ? Math.round(s.totalSec / s.calls) : 0;
 
     const tc = trackerCounts[op] ?? {};
-    const bdCols = CONFIG.BD_TABS.map(t => tc[t] ?? 0);
-    const booked = CONFIG.BD_TABS.reduce((sum, t) => sum + (tc[t] ?? 0), 0);
-    const noShow = tc['No-Show'] ?? 0;
-    const attended = CONFIG.ATTENDED_STAGES.reduce((sum, stage) => sum + (tc[stage] ?? 0), 0);
+    const bdCols = CONFIG.BD_TABS.map(t => (official && official[String(op).toLowerCase()] ? (official[String(op).toLowerCase()].stageCounts[t] ?? 0) : (tc[t] ?? 0)));
+    const off = official ? official[String(op).toLowerCase()] : null;
+    const booked = off ? off.booked : CONFIG.BD_TABS.reduce((sum, t) => sum + (tc[t] ?? 0), 0);
+    const rated = off ? off.rated : booked - CONFIG.RATE_EXCLUDED_STAGES.reduce((sum, t) => sum + (tc[t] ?? 0), 0);
+    const noShow = off ? off.noShow : (tc['No-Show'] ?? 0);
+    const attended = off ? off.attended : CONFIG.ATTENDED_STAGES.reduce((sum, stage) => sum + (tc[stage] ?? 0), 0);
+    const awaiting = off ? off.awaiting : '';
     const completedMeetings = attended + noShow;
     const showRate = completedMeetings > 0 ? attended / completedMeetings : 0;
-    const onboarded = tc['Onboarded'] ?? 0;
-    const closeRate = booked > 0 ? onboarded / booked : 0;
-    const callsPerMeeting = booked > 0 ? Number((s.calls / booked).toFixed(1)) : 0;
+    const onboarded = off ? off.onboarded : (tc['Onboarded'] ?? 0);
+    const closeRate = rated > 0 ? onboarded / rated : 0;
+    const callsPerMeeting = rated > 0 ? Number((s.calls / rated).toFixed(1)) : 0;
 
     rows.push([
       op,
@@ -1796,6 +1802,7 @@ function refreshDashboard() {
       booked,
       noShow,
       attended,
+      awaiting,
       showRate,
       onboarded,
       closeRate,
@@ -1820,10 +1827,10 @@ function refreshDashboard() {
 
     // Number format columns
     dash.getRange(2, 7, rows.length, 1).setNumberFormat('0.0%');   // Connection Rate
-    dash.getRange(2, 13, rows.length, 1).setNumberFormat('0.0%');  // Show Rate
-    dash.getRange(2, 15, rows.length, 1).setNumberFormat('0.0%');  // Close Rate
-    dash.getRange(2, 16, rows.length, 1).setNumberFormat('0.0');   // Calls / Meeting
-    dash.getRange(2, 17, rows.length, 2).setNumberFormat('#,##0.0#'); // Present days, Calls / present day
+    dash.getRange(2, 14, rows.length, 1).setNumberFormat('0.0%');  // Show Rate
+    dash.getRange(2, 16, rows.length, 1).setNumberFormat('0.0%');  // Close Rate
+    dash.getRange(2, 17, rows.length, 1).setNumberFormat('0.0');   // Calls / Meeting
+    dash.getRange(2, 18, rows.length, 2).setNumberFormat('#,##0.0#'); // Present days, Calls / present day
 
     // Alternating row styling
     for (let i = 2; i <= rows.length + 1; i++) {
@@ -1837,6 +1844,29 @@ function refreshDashboard() {
   dash.autoResizeColumns(1, header.length);
 
   buildDashboardCharts();
+}
+
+/**
+ * Official all-time meeting numbers per opener from the web dashboard (confirmations and the 9/28 rules applied).
+ * Needs the script properties DASHBOARD_URL and IMPORT_SECRET (the same secret the app calls this script with).
+ * @returns {Object<string, {booked:number, rated:number, noShow:number, attended:number, awaiting:number, onboarded:number, stageCounts:Object<string,number>}>|null}
+ *   keyed by lower-case opener; null when not configured or the dashboard cannot be reached
+ */
+function fetchOfficialMeetings_() {
+  const props = PropertiesService.getScriptProperties();
+  const base = String(props.getProperty('DASHBOARD_URL') || '').trim().replace(/\/+$/, '');
+  const secret = props.getProperty('IMPORT_SECRET') || '';
+  if (!base || !secret) return null;
+  try {
+    const res = UrlFetchApp.fetch(base + '/api/mirror', { headers: { Authorization: 'Bearer ' + secret }, muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode());
+    const out = {};
+    (JSON.parse(res.getContentText()).openers || []).forEach(o => { out[String(o.opener).toLowerCase()] = o; });
+    return out;
+  } catch (err) {
+    console.error('Could not read official meeting numbers from the dashboard, using the stage-based estimate:', err);
+    return null;
+  }
 }
 
 /**
@@ -1868,8 +1898,8 @@ function buildDashboardCharts() {
   dash.insertChart(dash.newChart()
     .setChartType(Charts.ChartType.COLUMN)
     .addRange(dash.getRange(1, 1, lastRow, 1))   // Opener
-    .addRange(dash.getRange(1, 13, lastRow, 1))  // Show Rate
-    .addRange(dash.getRange(1, 15, lastRow, 1))  // Close Rate
+    .addRange(dash.getRange(1, 14, lastRow, 1))  // Show Rate
+    .addRange(dash.getRange(1, 16, lastRow, 1))  // Close Rate
     .setPosition(lastRow + 3, 9, 0, 0)
     .setOption('title', 'Show Rate vs. Close Rate (%)')
     .setOption('colors', ['#10b981', '#a855f7'])
@@ -1880,7 +1910,7 @@ function buildDashboardCharts() {
   dash.insertChart(dash.newChart()
     .setChartType(Charts.ChartType.COLUMN)
     .addRange(dash.getRange(1, 1, lastRow, 1))    // Opener
-    .addRange(dash.getRange(1, 17, lastRow, CONFIG.BD_TABS.length)) // Stage columns
+    .addRange(dash.getRange(1, 20, lastRow, CONFIG.BD_TABS.length)) // Stage columns
     .setPosition(lastRow + 20, 1, 0, 0)
     .setOption('title', 'Pipeline Stage Counts by Opener')
     .setOption('isStacked', true)

@@ -1,8 +1,8 @@
 import { fetchAttendanceData, getDashboardRawData, RawDashboardDataset } from './sheets';
 import { getRawDataFromSupabase } from './supabase';
-import { annotateMeetings, isRescheduledStatus } from './meetings';
+import { annotateMeetings, buildMeetingKeys, findEditedKeys, isRescheduledStatus } from './meetings';
 import { loadRescheduledKeys, rememberRescheduled } from './reschedules';
-import { loadConfirmations } from './confirmations';
+import { loadConfirmations, renameStoredKeys } from './confirmations';
 import { AttendanceDataset } from './attendance';
 import { DataSourceInfo } from '../types/dashboard';
 
@@ -83,13 +83,24 @@ export async function loadDashboardInputs(
         .filter(Boolean).join(' '),
     };
   }
-  let meetings = annotateMeetings(rawData.meetings, confirmations ?? new Map());
+  const currentKeys = buildMeetingKeys(rawData.meetings);
+  // A row edited since it was confirmed keeps its confirmation: the stored key is re-keyed to the row's new key.
+  const edited = findEditedKeys(currentKeys, confirmations?.keys() ?? []);
+  let confirmationsByKey = confirmations ?? new Map();
+  if (edited.size > 0 && confirmations) {
+    confirmationsByKey = new Map(confirmations);
+    edited.forEach((oldKey, newKey) => confirmationsByKey.set(newKey, confirmations.get(oldKey)!));
+    void renameStoredKeys('show_confirmations', Array.from(edited, ([n, o]) => [o, n] as [string, string])).catch((e) => console.warn('[Confirmations]', e));
+  }
+  let meetings = annotateMeetings(rawData.meetings, confirmationsByKey);
 
   // Remember meetings seen as Rescheduled; they follow the confirmation rules once held (see reschedules.ts).
   const remembered = await loadRescheduledKeys();
   const waiting = meetings.filter((m) => isRescheduledStatus(m.status));
   if (waiting.length > 0) void rememberRescheduled(waiting).catch((e) => console.warn('[Reschedules]', e));
-  meetings = meetings.map((m) => (m.rescheduled || isRescheduledStatus(m.status) || remembered?.has(m.meetingKey as string) ? { ...m, rescheduled: true } : m));
+  const editedMarks = findEditedKeys(currentKeys, remembered ?? []);
+  if (editedMarks.size > 0) void renameStoredKeys('rescheduled_meetings', Array.from(editedMarks, ([n, o]) => [o, n] as [string, string])).catch((e) => console.warn('[Reschedules]', e));
+  meetings = meetings.map((m) => (m.rescheduled || isRescheduledStatus(m.status) || remembered?.has(m.meetingKey as string) || editedMarks.has(m.meetingKey as string) ? { ...m, rescheduled: true } : m));
 
   return {
     rawData: { ...rawData, meetings },

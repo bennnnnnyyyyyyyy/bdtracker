@@ -110,9 +110,9 @@ Opener = one person. Org = the "Team" figures in the top cards and totals rows.
 | **Meetings booked** | Rows in the 8 tabs by **Date Added** (the only date used for meetings, shows and no-shows). Rows with identical opener, date, company and contact are one meeting; a different Date Added makes it a separate meeting. Rows whose Status is **Rescheduled** are excluded: they are counted when the meeting is finally held and the status changes. |
 | **No-show** | Rows in the No-Show tab. |
 | **Show rate (every card, row and total)** | `attended ÷ (attended + no-show)`. Unconfirmed meetings and Dead Leads are not counted either way. The same formula is used for each person, each period, the Team card and the totals row. |
-| **Onboarded / Close rate** | `Onboarded ÷ booked`. |
-| **Calls per meeting** | `calls ÷ booked` (1 decimal). |
-| **Med B / PPO** | Count of ticked rows; rate = `count ÷ booked × 100` (1 decimal). |
+| **Onboarded / Close rate** | `Onboarded ÷ rated meetings`. Rated meetings = booked minus the `CANCELLED` and `DISQUALIFIED` tabs. A row whose Status says "No Show" is a no-show whatever tab it sits in, so it is never onboarded. |
+| **Calls per meeting** | `calls ÷ rated meetings` (1 decimal). |
+| **Med B / PPO** | Count of ticked rows; rows in CANCELLED / DISQUALIFIED are not counted; rate = `count ÷ rated meetings × 100` (1 decimal). |
 
 A meeting is counted in the **tab it sits in today but in the period of its Date Added**; its confirmation follows the row (see `SETUP_USERS_AND_CONFIRMATIONS.md` for how rows are identified). If a lead booked in July is onboarded in August, it counts as a July meeting that is now onboarded.
 
@@ -161,7 +161,9 @@ Ben's calls: 486 outbound + 15 inbound = 501; the 2 internal calls are dropped. 
 
 ## 7. Known limits (be aware when reading the numbers)
 - The daily Supabase snapshot (emergency fallback) holds only the active `Call Logs`, not archived months.
-- The in-sheet `BD Dashboard` mirror (Apps Script) reads only the active `Call Logs`.
+- The in-sheet `BD Dashboard` mirror (Apps Script) reads only the active `Call Logs`. Its meeting columns come from the web dashboard (`/api/mirror`) when the script property `DASHBOARD_URL` is set, so confirmations and the 9/28 rules match; without it they are a rough stage-based estimate.
+- Editing a tracker row's opener, Date Added, company or contact changes its key. If exactly one of the four changed and the other three are filled in, the saved confirmation / reschedule marker follows the row; two changes at once are not matched.
+- Reschedule markers are saved whenever the dashboard loads and by the daily sync (`/api/sync`). A reschedule that happened and was reversed before either ran can only be found through `_Activity_Log`.
 - Show confirmations are keyed on opener + date added + company + contact; editing any of those cells makes the meeting need confirming again.
 - Stage counts are a snapshot of where each meeting is *now*, grouped by the date it was added.
 - Meetings without a valid Date Added disappear as soon as a date range is applied.

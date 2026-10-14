@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
 import * as xlsx from 'xlsx';
-import { dedupeMeetings, isRescheduledStatus } from './meetings';
+import { dedupeMeetings, effectiveStage, isRescheduledStatus } from './meetings';
 import { CONFIRMATION_START_DATE } from './stages';
 import { CONFIG, isExcludedAgent } from './config';
 import { CallRecord, AgentMapping, MeetingRecord, DataSourceInfo } from '../types/dashboard';
@@ -314,7 +314,7 @@ export async function fetchBDTrackerData(): Promise<{
       }
 
       meetings.push({
-        stage: tabName,
+        stage: effectiveStage(tabName, status),
         opener,
         status,
         dateAdded: dateAdded || '',

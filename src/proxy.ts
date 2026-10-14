@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, getAuthSecret, isDevAuthBypass, readSessionValue } from '@/lib/session';
 
-// Everyone must be signed in with their own account. /api/sync is excluded (it has its own CRON_SECRET)
+// Everyone must be signed in with their own account. /api/sync (CRON_SECRET) and /api/mirror (the shared sheet secret) are excluded
 // and so are the sign-in page and endpoint. Role checks happen inside the route handlers.
 export async function proxy(request: NextRequest) {
   if (isDevAuthBypass()) return NextResponse.next();
@@ -25,5 +25,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|login|api/auth/login|api/sync|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|login|api/auth/login|api/sync|api/mirror|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
 };

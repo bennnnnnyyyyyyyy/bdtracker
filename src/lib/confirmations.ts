@@ -69,3 +69,16 @@ export async function applyConfirmations(
   }
   return keys.length;
 }
+
+/**
+ * A tracker row was edited (opener, date, company or contact), which changes its key. Re-keys the stored
+ * confirmation / reschedule marker so it follows the row. Failures are logged only: the in-memory match still applies.
+ */
+export async function renameStoredKeys(table: 'show_confirmations' | 'rescheduled_meetings', renames: Array<[string, string]>): Promise<void> {
+  const db = getSupabaseService();
+  if (!db) return;
+  for (const [from, to] of renames) {
+    const { error } = await db.from(table).update({ meeting_key: to }).eq('meeting_key', from);
+    if (error) console.warn(`[${table}] could not re-key an edited row:`, error.message);
+  }
+}

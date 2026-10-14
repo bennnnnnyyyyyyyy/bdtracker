@@ -29,3 +29,6 @@ export const LEGACY_SHOW_STAGES: readonly string[] = [...LIKELY_SHOW_STAGES, 'De
 export const STAGE_RANK: Record<string, number> = {
   'Onboarded': 7, 'Invoice Sent': 6, 'Contract Sent': 5, 'Follow Ups': 4, 'Temporary Inactive': 3, 'Dead Leads': 2, 'DISQUALIFIED': 1.6, 'CANCELLED': 1.5, 'No-Show': 1, 'New Meetings': 0,
 };
+
+/** Meetings in these tabs still count as booked meetings, but are left out of close, Med B and PPO rates and calls per meeting. */
+export const RATE_EXCLUDED_STAGES: readonly string[] = ['DISQUALIFIED', 'CANCELLED'];

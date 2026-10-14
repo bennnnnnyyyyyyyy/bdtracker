@@ -221,3 +221,10 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 49. Confirm shows ignores the date filter
 - The queue was built from the date-filtered meetings (default: this week), so it hid older waiting meetings. The API now returns `confirmationQueue`, every reviewable meeting regardless of the selected dates.
+
+## 50. Rates, No Show status, mirror, edited rows
+- Close rate, Med B / PPO rates and calls per meeting use rated meetings (booked minus CANCELLED / DISQUALIFIED); the counts themselves also skip those tabs for Med B / PPO.
+- A row with Status "No Show" is treated as a No-Show whatever tab it sits in (never onboarded, never a show).
+- Apps Script `BD Dashboard` mirror reads official numbers from the new `/api/mirror` (script property `DASHBOARD_URL`), adds an Awaiting Confirmation column, and its fallback excludes cancelled / disqualified from the close rate.
+- Confirmations and reschedule markers follow a row edited in one field (`findEditedKeys`); the stored key is re-keyed.
+- `/api/sync` now also saves Rescheduled markers.

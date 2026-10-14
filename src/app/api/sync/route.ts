@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDashboardRawData } from '@/lib/sheets';
 import { saveRawDataToSupabase } from '@/lib/supabase';
+import { annotateMeetings, isRescheduledStatus } from '@/lib/meetings';
+import { rememberRescheduled } from '@/lib/reschedules';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
 
 export const runtime = 'nodejs';
@@ -18,6 +20,10 @@ async function sync(request: NextRequest) {
 
   try {
     const rawData = await getDashboardRawData({ fresh: true });
+
+    // Remember every meeting currently marked Rescheduled, even if nobody opens the dashboard today.
+    const waiting = annotateMeetings(rawData.meetings, new Map()).filter((m) => isRescheduledStatus(m.status));
+    await rememberRescheduled(waiting).catch((e) => console.warn('[Sync] could not remember rescheduled meetings:', e));
 
     // Never replace a good snapshot with a partial pull.
     if (rawData.failedSources.length > 0) {

@@ -43,6 +43,44 @@ export function annotateMeetings(
   });
 }
 
+/** A row that sits in a pipeline tab but whose Status says "No Show" is a no-show, whatever tab it was moved to. */
+export function effectiveStage(stage: string, status: unknown): string {
+  return /^no[\s_-]*show/i.test(String(status ?? '').trim()) ? 'No-Show' : stage;
+}
+
+/**
+ * Keys of stored records (confirmations, reschedule markers) whose tracker row was edited since they were saved.
+ * A stored key that no longer matches any row is paired with the one current row that differs from it in a single
+ * field (opener, date added, company or contact) while the other three are filled in and identical.
+ * Returns current key -> stored key, only for unambiguous one-to-one pairs.
+ */
+export function findEditedKeys(currentKeys: string[], storedKeys: Iterable<string>): Map<string, string> {
+  const current = new Set(currentKeys);
+  const orphans = Array.from(new Set(Array.from(storedKeys).filter((k) => !current.has(k))));
+  const fields = (k: string): string[] | null => {
+    const f = k.replace(/#\d+$/, '').split('|');
+    return f.length === 4 ? f : null;
+  };
+  const stored = orphans.map((k) => ({ key: k, f: fields(k) })).filter((o): o is { key: string; f: string[] } => o.f !== null);
+  const candidates = new Map<string, string[]>();
+  const claimed = new Map<string, number>();
+  currentKeys.forEach((ck) => {
+    const cf = fields(ck);
+    if (!cf) return;
+    const hits = stored.filter((o) => {
+      const same = cf.filter((v, i) => v !== '' && v === o.f[i]).length;
+      return same === 3 && cf.filter((v, i) => v !== o.f[i]).length === 1;
+    }).map((o) => o.key);
+    if (hits.length === 1) {
+      candidates.set(ck, hits);
+      claimed.set(hits[0], (claimed.get(hits[0]) ?? 0) + 1);
+    }
+  });
+  const out = new Map<string, string>();
+  candidates.forEach(([old], ck) => { if (claimed.get(old) === 1) out.set(ck, old); });
+  return out;
+}
+
 /** A "Rescheduled" meeting is not counted as a meeting (or a show) until it is held and its status changes. */
 export function isRescheduledStatus(status: unknown): boolean {
   return /^rescheduled/i.test(String(status ?? '').trim());

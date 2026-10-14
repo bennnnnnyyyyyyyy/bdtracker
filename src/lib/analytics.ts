@@ -9,6 +9,7 @@ import {
   PeriodicAgentMetrics
 } from '../types/dashboard';
 import { AttendanceDataset, calculateAgentPresentDays } from './attendance';
+import { RATE_EXCLUDED_STAGES } from './stages';
 import { isAwaitingConfirmation, isConfirmedShow, isRescheduledStatus } from './meetings';
 
 /**
@@ -499,10 +500,10 @@ export function computeDashboardMetrics(
     // A show exists only once management confirmed it; stages alone never create one.
     if (isConfirmedShow(m)) openerShows[m.opener] = (openerShows[m.opener] || 0) + 1;
     if (isAwaitingConfirmation(m)) openerAwaiting[m.opener] = (openerAwaiting[m.opener] || 0) + 1;
-    if (m.medB) {
+    if (m.medB && !RATE_EXCLUDED_STAGES.includes(m.stage)) {
       openerMedBCounts[m.opener] = (openerMedBCounts[m.opener] || 0) + 1;
     }
-    if (m.ppo) {
+    if (m.ppo && !RATE_EXCLUDED_STAGES.includes(m.stage)) {
       openerPPOCounts[m.opener] = (openerPPOCounts[m.opener] || 0) + 1;
     }
   });
@@ -522,6 +523,8 @@ export function computeDashboardMetrics(
       stageCounts[tab] = count;
       booked += count;
     });
+    // Cancelled and disqualified meetings are booked, but they are left out of every rate.
+    const rated = booked - RATE_EXCLUDED_STAGES.reduce((n, t) => n + (tc[t] || 0), 0);
 
     const noShow = tc['No-Show'] || 0;
     const attended = openerShows[op] || 0;
@@ -530,15 +533,15 @@ export function computeDashboardMetrics(
     const onboarded = tc['Onboarded'] || 0;
 
     const medBCount = openerMedBCounts[op] || 0;
-    const medBRate = booked > 0 ? Number(((medBCount / booked) * 100).toFixed(1)) : 0;
+    const medBRate = rated > 0 ? Number(((medBCount / rated) * 100).toFixed(1)) : 0;
     const ppoCount = openerPPOCounts[op] || 0;
-    const ppoRate = booked > 0 ? Number(((ppoCount / booked) * 100).toFixed(1)) : 0;
+    const ppoRate = rated > 0 ? Number(((ppoCount / rated) * 100).toFixed(1)) : 0;
 
     const answerRate = s.calls > 0 ? s.answered / s.calls : 0;
     const connectionRate = answerRate;
     const avgCallSec = s.calls > 0 ? Math.round(s.totalSec / s.calls) : 0;
-    const closeRate = booked > 0 ? onboarded / booked : 0;
-    const callsPerMeeting = booked > 0 ? Number((s.calls / booked).toFixed(1)) : 0;
+    const closeRate = rated > 0 ? onboarded / rated : 0;
+    const callsPerMeeting = rated > 0 ? Number((s.calls / rated).toFixed(1)) : 0;
 
     // ACTIVE DAYS & AS-IS CALLS PER DAY
     const agentDaysCount = (agentActiveDays[op]?.size) || fallbackDaysCount;
@@ -572,6 +575,7 @@ export function computeDashboardMetrics(
       totalTalkSec: s.totalSec,
       avgCallSec,
       booked,
+      ratedMeetings: rated,
       medBCount,
       medBRate,
       ppoCount,
@@ -619,6 +623,7 @@ export function computeDashboardMetrics(
     totalTalkSec: 0,
     avgCallSec: 0,
     booked: 0,
+    ratedMeetings: 0,
     medBCount: 0,
     medBRate: 0,
     ppoCount: 0,
@@ -648,6 +653,7 @@ export function computeDashboardMetrics(
     totals.noAnswer += o.noAnswer;
     totals.totalTalkSec += o.totalTalkSec;
     totals.booked += o.booked;
+    totals.ratedMeetings += o.ratedMeetings;
     totals.medBCount += o.medBCount;
     totals.ppoCount += o.ppoCount;
     totals.noShow += o.noShow;
@@ -664,10 +670,10 @@ export function computeDashboardMetrics(
   totals.avgCallSec = totals.calls > 0 ? Math.round(totals.totalTalkSec / totals.calls) : 0;
   // Same definition everywhere: attended ÷ (attended + no-show).
   totals.showRate = totals.attended + totals.noShow > 0 ? totals.attended / (totals.attended + totals.noShow) : 0;
-  totals.closeRate = totals.booked > 0 ? totals.onboarded / totals.booked : 0;
-  totals.callsPerMeeting = totals.booked > 0 ? Number((totals.calls / totals.booked).toFixed(1)) : 0;
-  totals.medBRate = totals.booked > 0 ? Number(((totals.medBCount / totals.booked) * 100).toFixed(1)) : 0;
-  totals.ppoRate = totals.booked > 0 ? Number(((totals.ppoCount / totals.booked) * 100).toFixed(1)) : 0;
+  totals.closeRate = totals.ratedMeetings > 0 ? totals.onboarded / totals.ratedMeetings : 0;
+  totals.callsPerMeeting = totals.ratedMeetings > 0 ? Number((totals.calls / totals.ratedMeetings).toFixed(1)) : 0;
+  totals.medBRate = totals.ratedMeetings > 0 ? Number(((totals.medBCount / totals.ratedMeetings) * 100).toFixed(1)) : 0;
+  totals.ppoRate = totals.ratedMeetings > 0 ? Number(((totals.ppoCount / totals.ratedMeetings) * 100).toFixed(1)) : 0;
   totals.adherenceRate = expectedWorkingDays > 0 && totals.totalPresentDays > 0 && openers.length > 0
     ? Number(Math.min(100, (totals.totalPresentDays / (expectedWorkingDays * openers.length)) * 100).toFixed(1))
     : 0;
@@ -752,6 +758,7 @@ function buildPeriodicBreakdown(
       noShow: number;
       attended: number;
       onboarded: number;
+      rated: number;
     }>;
   }>();
 
@@ -773,7 +780,7 @@ function buildPeriodicBreakdown(
     const p = periodMap.get(period.key)!;
     const opener = c.opener || 'Unmapped';
     if (!p.agentStats[opener]) {
-      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0 };
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0, rated: 0 };
     }
     const a = p.agentStats[opener];
     const w = c.weight ?? 1;
@@ -802,10 +809,11 @@ function buildPeriodicBreakdown(
     const p = periodMap.get(period.key)!;
     const opener = m.opener || 'Unmapped';
     if (!p.agentStats[opener]) {
-      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0 };
+      p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0, rated: 0 };
     }
     const a = p.agentStats[opener];
     a.meetings++;
+    if (!RATE_EXCLUDED_STAGES.includes(m.stage)) a.rated++;
     if (m.stage === 'No-Show') a.noShow++;
     if (isConfirmedShow(m)) a.attended++;
     if (m.stage === 'Onboarded') a.onboarded++;
@@ -822,6 +830,7 @@ function buildPeriodicBreakdown(
     let totAnswered = 0;
     let totNoAnswer = 0;
     let totMeetings = 0;
+    let totRated = 0;
     let totNoShow = 0;
     let totOnboarded = 0;
     let totPresentDays = 0;
@@ -829,13 +838,14 @@ function buildPeriodicBreakdown(
     const agentList: PeriodicAgentMetrics[] = [];
 
     allOpeners.forEach(opener => {
-      const raw = entry.agentStats[opener] || { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0 };
+      const raw = entry.agentStats[opener] || { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0, rated: 0 };
       if (raw.calls === 0 && raw.meetings === 0) return;
 
       totCalls += raw.calls;
       totAnswered += raw.answered;
       totNoAnswer += raw.noAnswer;
       totMeetings += raw.meetings;
+      totRated += raw.rated;
       totNoShow += raw.noShow;
       totOnboarded += raw.onboarded;
 
@@ -843,8 +853,8 @@ function buildPeriodicBreakdown(
       const connectionRate = raw.calls > 0 ? raw.answered / raw.calls : 0;
       const completedMeetings = attended + raw.noShow;
       const showRate = completedMeetings > 0 ? attended / completedMeetings : 0;
-      const closeRate = raw.meetings > 0 ? raw.onboarded / raw.meetings : 0;
-      const callsPerMeeting = raw.meetings > 0 ? Number((raw.calls / raw.meetings).toFixed(1)) : 0;
+      const closeRate = raw.rated > 0 ? raw.onboarded / raw.rated : 0;
+      const callsPerMeeting = raw.rated > 0 ? Number((raw.calls / raw.rated).toFixed(1)) : 0;
 
       const presentDays = (attendance && agentMappings)
         ? calculateAgentPresentDays(opener, attendance, agentMappings, entry.startISO, entry.endISO)
@@ -881,7 +891,7 @@ function buildPeriodicBreakdown(
     const totConnectionRate = totCalls > 0 ? totAnswered / totCalls : 0;
     const completedMeetings = totAttended + totNoShow;
     const totShowRate = completedMeetings > 0 ? totAttended / completedMeetings : 0;
-    const totCloseRate = totMeetings > 0 ? totOnboarded / totMeetings : 0;
+    const totCloseRate = totRated > 0 ? totOnboarded / totRated : 0;
     const totCallsPerPresentDay = totPresentDays > 0 ? Number((totCalls / totPresentDays).toFixed(1)) : totCalls;
 
     result.push({
