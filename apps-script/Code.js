@@ -93,7 +93,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('BD Call Dashboard')
     .addItem('Refresh BD Dashboard', 'refreshDashboard')
-    .addItem('Rebuild Totals tab', 'rebuildTotalsMenu')
+    .addItem('Rebuild Totals + format tabs', 'rebuildTotalsMenu')
     .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
@@ -430,17 +430,22 @@ function importDays_(days, source) {
     if (newAgents.length > 0) mapping.getRange(mapping.getLastRow() + 1, 1, newAgents.length, 2).setValues(newAgents.map(a => [a, '']));
   }
   try {
+    formatDailyTotalsSheet_(sheet);
     rebuildTotalsSummary_();
   } catch (err) {
-    console.error('Totals summary failed:', err); // the upload itself succeeded
+    console.error('Formatting/Totals summary failed:', err); // the upload itself succeeded
   }
   return { days: days.length, rows: added.length, replaced: existing.length - kept.length, protectedRows, resolved, newAgents };
 }
 
 /** Menu item: rebuild the Totals tab now. */
 function rebuildTotalsMenu() {
-  withLock_(() => rebuildTotalsSummary_(), 50000);
-  SpreadsheetApp.getUi().alert('The Totals tab was rebuilt from Daily Totals.');
+  withLock_(() => {
+    const daily = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
+    if (daily) formatDailyTotalsSheet_(daily);
+    rebuildTotalsSummary_();
+  }, 50000);
+  SpreadsheetApp.getUi().alert('The Daily Totals and Totals tabs were re-formatted and rebuilt.');
 }
 
 /**
@@ -525,15 +530,145 @@ function rebuildTotalsSummary_() {
   sheet.getRange(2, 1).setValue('From the "Daily Totals" tab (Ultatel Total Calls Per Extension reports), ' + first + ' to ' + newest + '. Rebuilt after every upload; do not type here. Calls = Total Calls (outgoing + incoming). Agents are shown under their Opener name.');
   sheet.getRange(4, 1, 1, width).setNumberFormat('@').setValues([header]).setFontWeight('bold').setBackground('#e8e8e8').setWrap(true);
   sheet.getRange(5, 1, body.length, width).setValues(body);
-  sheet.getRange(5, 1, 1, width).setFontWeight('bold').setBackground('#fff2cc');
-  const monthCols = months.length;
-  sheet.getRange(5, 3, body.length, monthCols + 6).setNumberFormat('#,##0');
-  sheet.getRange(5, 3 + monthCols + 6, body.length, 1).setNumberFormat('0.0%');
-  sheet.getRange(5, 3 + monthCols + 7, body.length, 1).setNumberFormat('0.0');
+  formatTotalsSheet_(sheet, body.length, width, months.length);
+}
+
+/**
+ * Colours and dividers of the Totals tab: coloured heading per block (names / months / this week / totals / rates),
+ * medium vertical lines between the blocks, alternating row shading, a highlighted ALL AGENTS line and red
+ * connection rates under 60%.
+ */
+function formatTotalsSheet_(sheet, bodyRows, width, monthCols) {
+  const NAVY = '#1a365d';
+  const weekCol = 3 + monthCols;
+  const totalCol = weekCol + 1;
+  const rateCol = totalCol + 5;
+  const last = 4 + bodyRows;
+
+  sheet.setHiddenGridlines(true);
   sheet.setFrozenRows(5);
   sheet.setFrozenColumns(1);
+  sheet.setRowHeight(1, 34);
+  sheet.setRowHeight(4, 46);
+
+  sheet.getRange(1, 1, 1, width).setBackground(NAVY).setFontColor('#ffffff');
+  sheet.getRange(1, 1).setFontWeight('bold').setFontSize(15);
+  sheet.getRange(1, 1, 1, width).setVerticalAlignment('middle');
+  sheet.getRange(2, 1, 1, width).setBackground('#edf2f7').setFontColor('#4a5568').setFontStyle('italic').setFontSize(9);
+
+  // Heading row, one colour per block.
+  const head = sheet.getRange(4, 1, 1, width);
+  head.setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true);
+  sheet.getRange(4, 1, 1, 2).setBackground(NAVY);
+  if (monthCols > 0) sheet.getRange(4, 3, 1, monthCols).setBackground('#2c5282');
+  sheet.getRange(4, weekCol, 1, 1).setBackground('#2f855a');
+  sheet.getRange(4, totalCol, 1, 5).setBackground(NAVY);
+  sheet.getRange(4, rateCol, 1, 3).setBackground('#553c9a');
+
+  // Body: banded rows, numbers right-aligned, formats.
+  const body = sheet.getRange(5, 1, bodyRows, width);
+  body.setVerticalAlignment('middle').setFontColor('#1a202c');
+  const bands = [];
+  for (let i = 0; i < bodyRows; i++) bands.push(new Array(width).fill(i === 0 ? '#fff2cc' : (i % 2 === 0 ? '#f4f6f9' : '#ffffff')));
+  body.setBackgrounds(bands);
+  sheet.getRange(5, 3, bodyRows, width - 2).setHorizontalAlignment('right');
+  sheet.getRange(5, 3, bodyRows, monthCols + 6).setNumberFormat('#,##0');
+  sheet.getRange(5, rateCol, bodyRows, 1).setNumberFormat('0.0%');
+  sheet.getRange(5, rateCol + 1, bodyRows, 1).setNumberFormat('0.0');
+  sheet.getRange(5, rateCol + 2, bodyRows, 1).setNumberFormat('0');
+  if (bodyRows > 1) sheet.getRange(6, weekCol, bodyRows - 1, 1).setBackground('#e6f4ea');
+  sheet.getRange(5, weekCol, 1, 1).setBackground('#d4edda');
+  sheet.getRange(5, 1, bodyRows, 1).setFontWeight('bold');
+  sheet.getRange(5, 2, bodyRows, 1).setFontColor('#718096').setFontSize(9);
+  sheet.getRange(5, totalCol, bodyRows, 1).setFontWeight('bold');
+  sheet.getRange(5, 1, 1, width).setFontWeight('bold').setFontSize(11);
+
+  // Dividers: thin grey between rows, medium navy between the blocks, a heavier line under the headings and ALL AGENTS.
+  sheet.getRange(4, 1, bodyRows + 1, width).setBorder(null, null, null, null, false, true, '#d9dee5', SpreadsheetApp.BorderStyle.SOLID);
+  [3, weekCol, totalCol, rateCol].forEach(c => {
+    sheet.getRange(4, c, bodyRows + 1, 1).setBorder(null, true, null, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  });
+  sheet.getRange(4, 1, 1, width).setBorder(true, null, true, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sheet.getRange(5, 1, 1, width).setBorder(null, null, true, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sheet.getRange(4, 1, bodyRows + 1, width).setBorder(null, null, true, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sheet.getRange(4, 1, bodyRows + 1, 1).setBorder(null, true, null, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sheet.getRange(4, width, bodyRows + 1, 1).setBorder(null, null, null, true, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+
+  // Connection rate: red under 60%, green from 80%.
+  const rates = sheet.getRange(6, rateCol, Math.max(1, bodyRows - 1), 1);
+  sheet.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0.6).setFontColor('#c53030').setBold(true).setRanges([rates]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThanOrEqualTo(0.8).setFontColor('#2f855a').setBold(true).setRanges([rates]).build()
+  ]);
+
   sheet.setColumnWidth(1, 150);
-  sheet.setColumnWidth(2, 170);
+  sheet.setColumnWidth(2, 160);
+  for (let c = 3; c <= width; c++) sheet.setColumnWidth(c, c === weekCol ? 130 : 92);
+  sheet.setColumnWidth(rateCol + 2, 80);
+}
+
+/**
+ * Colours and dividers of the Daily Totals tab: dark heading, each day shaded in alternating tints so day boundaries
+ * stand out, thin lines between rows, medium lines between the blocks (day / who / answered / totals / source), the
+ * Total Calls column in bold, period-spread rows in orange, and a filter on the heading row.
+ */
+function formatDailyTotalsSheet_(sheet) {
+  const n = sheet.getLastRow() - 1;
+  if (n < 1) return;
+  const width = DAILY_HEADERS_.length;
+  const NAVY = '#1a365d';
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(2);
+  sheet.setRowHeight(1, 34);
+
+  const head = sheet.getRange(1, 1, 1, width);
+  head.setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true);
+  sheet.getRange(1, 1, 1, 4).setBackground(NAVY);
+  sheet.getRange(1, 5, 1, 2).setBackground('#2c5282');
+  sheet.getRange(1, 7, 1, 2).setBackground('#2b6cb0');
+  sheet.getRange(1, 9, 1, 3).setBackground(NAVY);
+  sheet.getRange(1, 10, 1, 2).setBackground('#553c9a');
+  sheet.getRange(1, 12, 1, 2).setBackground('#4a5568');
+
+  const body = sheet.getRange(2, 1, n, width);
+  const days = sheet.getRange(2, 1, n, 1).getValues();
+  const bg = [];
+  const fc = [];
+  let shade = 0;
+  for (let i = 0; i < n; i++) {
+    if (i > 0 && String(days[i][0]) !== String(days[i - 1][0])) shade = 1 - shade;
+    const row = new Array(width).fill(shade ? '#eaf1fb' : '#ffffff');
+    bg.push(row);
+    fc.push(new Array(width).fill('#1a202c'));
+  }
+  body.setBackgrounds(bg).setFontColors(fc).setVerticalAlignment('middle');
+  const sources = sheet.getRange(2, 13, n, 1).getValues();
+  const srcColors = sources.map(r => [/^period/.test(String(r[0])) ? '#c05621' : '#718096']);
+  sheet.getRange(2, 13, n, 1).setFontColors(srcColors).setFontSize(9);
+  sheet.getRange(2, 12, n, 1).setFontColor('#718096').setFontSize(9);
+
+  sheet.getRange(2, 1, n, 4).setHorizontalAlignment('left');
+  sheet.getRange(2, 5, n, 7).setHorizontalAlignment('right').setNumberFormat('#,##0');
+  sheet.getRange(2, 11, n, 1).setNumberFormat('0.00');
+  sheet.getRange(2, 9, n, 1).setFontWeight('bold');
+  sheet.getRange(2, 1, n, 1).setFontWeight('bold');
+
+  sheet.getRange(1, 1, n + 1, width).setBorder(null, null, null, null, false, true, '#d9dee5', SpreadsheetApp.BorderStyle.SOLID);
+  [1, 5, 9, 10, 12].forEach(c => {
+    sheet.getRange(1, c, n + 1, 1).setBorder(null, true, null, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  });
+  sheet.getRange(1, 1, n + 1, width).setBorder(true, null, true, true, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+
+  const widths = [100, 190, 140, 170, 90, 100, 90, 100, 90, 100, 70, 150, 230];
+  widths.forEach((w, i) => sheet.setColumnWidth(i + 1, w));
+
+  try {
+    const old = sheet.getFilter();
+    if (old) old.remove();
+    sheet.getRange(1, 1, n + 1, width).createFilter();
+  } catch (err) {
+    console.error('Filter failed:', err);
+  }
 }
 
 
@@ -636,7 +771,12 @@ function runSheetAction_(body) {
         return { changed };
       }, 50000);
     case 'rebuildTotals':
-      return withLock_(() => { rebuildTotalsSummary_(); return {}; }, 50000);
+      return withLock_(() => {
+        const daily = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
+        if (daily) formatDailyTotalsSheet_(daily);
+        rebuildTotalsSummary_();
+        return {};
+      }, 50000);
     case 'autoArchiveOn':
       disableAutoArchive_();
       ScriptApp.newTrigger('archiveClosedMonthsAuto').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();

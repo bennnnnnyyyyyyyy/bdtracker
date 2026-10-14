@@ -178,3 +178,8 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 ## 37. Totals tab readability
 - The Totals tab now groups by Opener name (as the dashboard does; "Kaity James" shows under "Jane", with the Ultatel name next to it), leaves out agents whose Opener is `ignore`, writes month headings as text (Sheets was turning them into dates), drops the empty Department column and adds a "This week" column (Monday to the newest day with data) for comparing with the dashboard.
 - Checked a real copy of the sheet: every Daily Totals row has Total Calls = the four columns added up, so the "Calls outside the four columns" change (36) did not apply there; it stays as a harmless safeguard.
+
+## 38. Sheet formatting
+- `Totals`: navy title bar, one heading colour per block (names / months / this week / totals / rates), medium dividers between blocks, banded rows, green "this week" column, highlighted ALL AGENTS line, connection rate red under 60% and green from 80%, gridlines hidden, frozen headings.
+- `Daily Totals`: coloured headings per block, each day shaded in alternating tints (clear day boundaries), thin row lines and medium block dividers, Total Calls in bold, period-spread rows in orange in the Source column, filter on the heading row, sensible column widths.
+- Applied after every upload and by the sheet menu item **Rebuild Totals + format tabs** (also the `rebuildTotals` action).
