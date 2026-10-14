@@ -357,7 +357,9 @@ function importDays_(days, source) {
   const width = DAILY_HEADERS_.length;
   const dayOf = v => (v instanceof Date ? Utilities.formatDate(v, ssTz_(), 'yyyy-MM-dd') : String(v == null ? '' : v).slice(0, 10));
   const extNo = v => { const m = String(v == null ? '' : v).match(/^\s*(\d+)/); return m ? m[1] : String(v == null ? '' : v).trim(); };
-  const existing = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues() : [];
+  // Month banners and day dividers live in the same tab as the data; only rows with a real date are data.
+  const isDataRow = r => /^\d{4}-\d{2}-\d{2}$/.test(dayOf(r[0]));
+  const existing = (sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues() : []).filter(isDataRow);
 
   // A report of one extension only names the number ("103"): find the full "103 (MMS-Name)" and department.
   const known = new Map();
@@ -409,11 +411,7 @@ function importDays_(days, source) {
   const addedKeys = new Set(added.map(a => a[0] + '|' + extNo(a[1])));
   const kept = existing.filter(r => !addedKeys.has(dayOf(r[0]) + '|' + extNo(r[1]))).map(r => [dayOf(r[0])].concat(r.slice(1)));
   const all = kept.concat(added).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : String(a[1]).localeCompare(String(b[1]))));
-  if (existing.length > 0) sheet.getRange(2, 1, existing.length, width).clearContent();
-  if (all.length > 0) {
-    sheet.getRange(2, 1, all.length, 2).setNumberFormat('@');
-    sheet.getRange(2, 1, all.length, width).setValues(all.map(r => { const row = r.slice(0, width); while (row.length < width) row.push(''); return row; }));
-  }
+  writeDailyRows_(sheet, all);
 
   const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
   const newAgents = [];
@@ -438,11 +436,54 @@ function importDays_(days, source) {
   return { days: days.length, rows: added.length, replaced: existing.length - kept.length, protectedRows, resolved, newAgents };
 }
 
+/**
+ * Writes the sorted data rows of Daily Totals with a month banner row at the start of every month and a divider row
+ * between days. Banner and divider rows have no date in column A, so every reader ignores them.
+ */
+function writeDailyRows_(sheet, all) {
+  const width = DAILY_HEADERS_.length;
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const blank = () => new Array(width).fill('');
+  const out = [];
+  all.forEach((r, i) => {
+    const prev = i > 0 ? all[i - 1] : null;
+    if (!prev || String(prev[0]).slice(0, 7) !== String(r[0]).slice(0, 7)) {
+      const banner = blank();
+      banner[0] = MONTH_NAMES[Number(String(r[0]).slice(5, 7)) - 1] + ' ' + String(r[0]).slice(0, 4);
+      out.push(banner);
+    } else if (String(prev[0]) !== String(r[0])) {
+      out.push(blank());
+    }
+    const row = r.slice(0, width);
+    while (row.length < width) row.push('');
+    out.push(row);
+  });
+  const oldRows = sheet.getLastRow() - 1;
+  if (oldRows > 0) sheet.getRange(2, 1, oldRows, width).clear();
+  if (out.length > 0) {
+    sheet.getRange(2, 1, out.length, 2).setNumberFormat('@');
+    sheet.getRange(2, 1, out.length, width).setValues(out);
+  }
+}
+
+/** Re-sorts Daily Totals, rewrites its banners and dividers and applies the colours (menu / dashboard action). */
+function relayoutDailyTotals_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  const width = DAILY_HEADERS_.length;
+  const dayOf = v => (v instanceof Date ? Utilities.formatDate(v, ssTz_(), 'yyyy-MM-dd') : String(v == null ? '' : v).slice(0, 10));
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues()
+    .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(dayOf(r[0])))
+    .map(r => [dayOf(r[0])].concat(r.slice(1)))
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : String(a[1]).localeCompare(String(b[1]))));
+  writeDailyRows_(sheet, data);
+  formatDailyTotalsSheet_(sheet);
+}
+
 /** Menu item: rebuild the Totals tab now. */
 function rebuildTotalsMenu() {
   withLock_(() => {
-    const daily = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
-    if (daily) formatDailyTotalsSheet_(daily);
+    relayoutDailyTotals_();
     rebuildTotalsSummary_();
   }, 50000);
   SpreadsheetApp.getUi().alert('The Daily Totals and Totals tabs were re-formatted and rebuilt.');
@@ -634,24 +675,43 @@ function formatDailyTotalsSheet_(sheet) {
   const days = sheet.getRange(2, 1, n, 1).getValues();
   const bg = [];
   const fc = [];
+  const fw = [];
+  const sz = [];
+  const bannerRows = [];
   let shade = 0;
   for (let i = 0; i < n; i++) {
-    if (i > 0 && String(days[i][0]) !== String(days[i - 1][0])) shade = 1 - shade;
-    const row = new Array(width).fill(shade ? '#eaf1fb' : '#ffffff');
-    bg.push(row);
-    fc.push(new Array(width).fill('#1a202c'));
+    const a = String(days[i][0]);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(a)) {
+      if (i > 0 && /^\d{4}-\d{2}-\d{2}$/.test(String(days[i - 1][0])) && a !== String(days[i - 1][0])) shade = 1 - shade;
+      bg.push(new Array(width).fill(shade ? '#eaf1fb' : '#ffffff'));
+      fc.push(new Array(width).fill('#1a202c'));
+      const w = new Array(width).fill('normal');
+      w[0] = 'bold';
+      w[8] = 'bold';
+      fw.push(w);
+      sz.push(new Array(width).fill(10));
+    } else if (a !== '') {
+      bannerRows.push(i + 2);
+      bg.push(new Array(width).fill('#2c5282'));
+      fc.push(new Array(width).fill('#ffffff'));
+      fw.push(new Array(width).fill('bold'));
+      sz.push(new Array(width).fill(12));
+    } else {
+      bg.push(new Array(width).fill('#a0aec0')); // divider between days
+      fc.push(new Array(width).fill('#1a202c'));
+      fw.push(new Array(width).fill('normal'));
+      sz.push(new Array(width).fill(10));
+    }
   }
-  body.setBackgrounds(bg).setFontColors(fc).setVerticalAlignment('middle');
+  body.setBackgrounds(bg).setFontColors(fc).setFontWeights(fw).setFontSizes(sz).setVerticalAlignment('middle');
   const sources = sheet.getRange(2, 13, n, 1).getValues();
-  const srcColors = sources.map(r => [/^period/.test(String(r[0])) ? '#c05621' : '#718096']);
+  const srcColors = sources.map((r, i) => [/^period/.test(String(r[0])) ? '#c05621' : (bg[i][0] === '#2c5282' ? '#ffffff' : '#718096')]);
   sheet.getRange(2, 13, n, 1).setFontColors(srcColors).setFontSize(9);
-  sheet.getRange(2, 12, n, 1).setFontColor('#718096').setFontSize(9);
+  sheet.getRange(2, 12, n, 1).setFontSize(9);
 
   sheet.getRange(2, 1, n, 4).setHorizontalAlignment('left');
   sheet.getRange(2, 5, n, 7).setHorizontalAlignment('right').setNumberFormat('#,##0');
   sheet.getRange(2, 11, n, 1).setNumberFormat('0.00');
-  sheet.getRange(2, 9, n, 1).setFontWeight('bold');
-  sheet.getRange(2, 1, n, 1).setFontWeight('bold');
 
   sheet.getRange(1, 1, n + 1, width).setBorder(null, null, null, null, false, true, '#d9dee5', SpreadsheetApp.BorderStyle.SOLID);
   [1, 5, 9, 10, 12].forEach(c => {
@@ -772,8 +832,7 @@ function runSheetAction_(body) {
       }, 50000);
     case 'rebuildTotals':
       return withLock_(() => {
-        const daily = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
-        if (daily) formatDailyTotalsSheet_(daily);
+        relayoutDailyTotals_();
         rebuildTotalsSummary_();
         return {};
       }, 50000);

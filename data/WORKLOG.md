@@ -183,3 +183,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - `Totals`: navy title bar, one heading colour per block (names / months / this week / totals / rates), medium dividers between blocks, banded rows, green "this week" column, highlighted ALL AGENTS line, connection rate red under 60% and green from 80%, gridlines hidden, frozen headings.
 - `Daily Totals`: coloured headings per block, each day shaded in alternating tints (clear day boundaries), thin row lines and medium block dividers, Total Calls in bold, period-spread rows in orange in the Source column, filter on the heading row, sensible column widths.
 - Applied after every upload and by the sheet menu item **Rebuild Totals + format tabs** (also the `rebuildTotals` action).
+
+## 39. Daily Totals: month banners and day dividers
+- `Daily Totals` now has a navy banner row ("July 2026") at the start of every month and a grey divider row between days, rewritten on every upload (`writeDailyRows_`) and by **Rebuild Totals + format tabs** (`relayoutDailyTotals_`). These rows have no date in column A, so the dashboard, the totals summary and the importer ignore them. Do not type in them.
