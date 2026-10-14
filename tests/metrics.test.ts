@@ -117,8 +117,8 @@ describe('computeDashboardMetrics', () => {
   it('computes meeting funnel metrics', () => {
     const ben = run().openers.find(o => o.opener === 'Ben')!;
     expect(ben.booked).toBe(7);
-    expect(ben.attended).toBe(5);        // old meetings (before 10/12) count by tab: B, C, F, J and E in Dead Leads
-    expect(ben.awaitingConfirmation).toBe(0); // nothing before 10/12 needs confirming
+    expect(ben.attended).toBe(5);        // old meetings (before 9/28) count by tab: B, C, F, J and E in Dead Leads
+    expect(ben.awaitingConfirmation).toBe(0); // nothing before 9/28 needs confirming
     expect(ben.noShow).toBe(1);
     expect(ben.showRate).toBeCloseTo(5 / 6);   // attended / (attended + no-show)
     expect(ben.onboarded).toBe(1);
@@ -158,13 +158,13 @@ describe('computeDashboardMetrics', () => {
 describe('shows after the confirmation start date require management confirmation', () => {
   // Added on or after 2026-10-12: a show only when management confirmed it.
   const raw = [
-    meeting('Follow Ups', 'Ben', '2026-10-12', { companyName: 'A' }),
+    meeting('Follow Ups', 'Ben', '2026-09-28', { companyName: 'A' }),
     meeting('Onboarded', 'Ben', '2026-10-12', { companyName: 'B' }),       // skipped Follow Ups: not a show until confirmed
     meeting('No-Show', 'Ben', '2026-10-13', { companyName: 'C' }),
     meeting('New Meetings', 'Ben', '2026-10-13', { companyName: 'D' }),
     meeting('New Meetings', 'Ben', '2026-10-13', { companyName: 'R', status: 'Rescheduled' }), // not a new meeting
   ];
-  const range = { startDate: '2026-10-12', endDate: '2026-10-18' };
+  const range = { startDate: '2026-09-28', endDate: '2026-10-18' };
   const run = (meetings = annotateMeetings(raw, new Map())) => computeDashboardMetrics([], meetings, {}, mappings, range);
 
   it('counts nothing as a show until it is confirmed; Follow Ups and skipped Follow Ups are awaiting', () => {
@@ -194,27 +194,27 @@ describe('shows after the confirmation start date require management confirmatio
   });
 
   it('only new meetings in a show tab can be confirmed; old ones already count by their tab', () => {
-    const m = annotateMeetings([...raw, meeting('Follow Ups', 'Ben', '2026-10-01', { companyName: 'OLD' })], new Map());
+    const m = annotateMeetings([...raw, meeting('Follow Ups', 'Ben', '2026-09-20', { companyName: 'OLD' })], new Map());
     expect(m.map((x) => canBeConfirmed(x))).toEqual([true, true, false, false, false, false]);
     expect(isConfirmedShow(m[5])).toBe(true);      // old meeting in Follow Ups
-    expect(isAwaitingConfirmation(m[1])).toBe(true); // skipped Follow Ups, after 10/12: queued
+    expect(isAwaitingConfirmation(m[1])).toBe(true); // skipped Follow Ups, after 9/28: queued
   });
 
-  it('old Dead Leads meetings are shows; new Dead Leads are not until confirmed', () => {
-    const [oldDead, newDead] = annotateMeetings([meeting('Dead Leads', 'Ben', '2026-10-01', { companyName: 'D1' }), meeting('Dead Leads', 'Ben', '2026-10-13', { companyName: 'D2' })], new Map());
+  it('old Dead Leads meetings are shows; new ones are queued, not shows, until confirmed', () => {
+    const [oldDead, newDead] = annotateMeetings([meeting('Dead Leads', 'Ben', '2026-09-20', { companyName: 'D1' }), meeting('Dead Leads', 'Ben', '2026-10-13', { companyName: 'D2' })], new Map());
     expect(isConfirmedShow(oldDead)).toBe(true);
     expect(isConfirmedShow(newDead)).toBe(false);
-    expect(isAwaitingConfirmation(newDead)).toBe(false);
+    expect(isAwaitingConfirmation(newDead)).toBe(true);
   });
 
   it('DISQUALIFIED and CANCELLED: old ones are shows, new ones need confirmation', () => {
-    const m = annotateMeetings(['DISQUALIFIED', 'CANCELLED'].flatMap((st) => [meeting(st, 'Ben', '2026-10-01', { companyName: st + 'o' }), meeting(st, 'Ben', '2026-10-13', { companyName: st + 'n' })]), new Map());
+    const m = annotateMeetings(['DISQUALIFIED', 'CANCELLED'].flatMap((st) => [meeting(st, 'Ben', '2026-09-20', { companyName: st + 'o' }), meeting(st, 'Ben', '2026-10-13', { companyName: st + 'n' })]), new Map());
     expect(m.map((x) => isConfirmedShow(x))).toEqual([true, false, true, false]);
     expect(m.map((x) => isAwaitingConfirmation(x))).toEqual([false, true, false, true]);
   });
 
-  it('a pre-10/12 meeting flagged as rescheduled needs confirmation first', () => {
-    const [m] = annotateMeetings([meeting('Follow Ups', 'Ben', '2026-10-01', { companyName: 'R', rescheduled: true })], new Map());
+  it('a pre-9/28 meeting flagged as rescheduled needs confirmation first', () => {
+    const [m] = annotateMeetings([meeting('Follow Ups', 'Ben', '2026-09-20', { companyName: 'R', rescheduled: true })], new Map());
     expect(isConfirmedShow(m)).toBe(false);
     expect(isAwaitingConfirmation(m)).toBe(true);
     expect(canBeConfirmed(m)).toBe(true);

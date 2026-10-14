@@ -1,4 +1,4 @@
-import { CONFIRMATION_START_DATE, LEGACY_SHOW_STAGES, LIKELY_SHOW_STAGES, STAGE_RANK } from './stages';
+import { CONFIRMATION_START_DATE, LEGACY_SHOW_STAGES, STAGE_RANK } from './stages';
 import { MeetingRecord } from '../types/dashboard';
 
 export interface ConfirmationInfo {
@@ -71,14 +71,14 @@ export function isConfirmedShow(m: MeetingRecord): boolean {
   return m.showConfirmed === true;
 }
 
-/** The confirmation queue: a new meeting that reached Follow Ups, or skipped it for a later show tab, not confirmed yet. */
+/** The confirmation queue: a new meeting that moved from New Meetings to any other tab except No-Show and is not confirmed yet. */
 export function isAwaitingConfirmation(m: MeetingRecord): boolean {
-  return !isLegacyMeeting(m) && m.showConfirmed !== true && LIKELY_SHOW_STAGES.includes(m.stage);
+  return !isLegacyMeeting(m) && m.showConfirmed !== true && m.stage !== 'New Meetings' && m.stage !== 'No-Show';
 }
 
-/** May management confirm this row? New meetings in a show tab or Dead Leads (a confirmed one stays a show). */
+/** May management confirm this row? New meetings (or rescheduled ones) in any tab except New Meetings and No-Show. */
 export function canBeConfirmed(m: MeetingRecord): boolean {
-  return !isLegacyMeeting(m) && (LIKELY_SHOW_STAGES.includes(m.stage) || m.stage === 'Dead Leads');
+  return !isLegacyMeeting(m) && m.stage !== 'New Meetings' && m.stage !== 'No-Show';
 }
 
 /** Confirmed as a show, but the row is back in New Meetings: management should decide if it became a no-show. */

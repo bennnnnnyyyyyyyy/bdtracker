@@ -14,7 +14,7 @@ export const LIKELY_SHOW_STAGES: readonly string[] = ['Follow Ups', 'Contract Se
  * Dead Leads for shows) counts as a meeting and, in a show stage, as a show. From this day on a show needs
  * management confirmation in the dashboard.
  */
-export const CONFIRMATION_START_DATE = '2026-10-12';
+export const CONFIRMATION_START_DATE = '2026-09-28';
 
 /** New meetings waiting to be confirmed are the ones that reached this tab. */
 export const CONFIRMATION_QUEUE_STAGE = 'Follow Ups';

@@ -15,7 +15,7 @@ For every active opener (BD agent), over a chosen date range, the dashboard repo
 | **Calls** | Outbound + Inbound call records (`type` = `OUT-Bound` / `IN-Bound`, exact match). |
 | **Connection rate** | `answered / calls` (`outcome === 'ANSWERED'`). `answerRate` is identical. |
 | **Meetings booked** | Rows across the 8 tracker stage tabs by Date Added, except rows whose Status is *Rescheduled*. |
-| **Attended (show)** | Meetings added before 2026-10-12: those in Follow Ups, Contract Sent, Invoice Sent, Onboarded or Temporary Inactive (no confirmation). Meetings added from 2026-10-12: only those management confirmed in the dashboard (candidates are the ones in Follow Ups; *awaiting confirmation*). Never No-Show. |
+| **Attended (show)** | Meetings added before 2026-09-28: those in Follow Ups, Contract Sent, Invoice Sent, Onboarded or Temporary Inactive (no confirmation). Meetings added from 2026-09-28: only those management confirmed in the dashboard (candidates are the ones in Follow Ups; *awaiting confirmation*). Never No-Show. |
 | **No-show** | Rows in the `No-Show` tab. |
 | **Show rate (everywhere: openers, periods, Team card, totals)** | `attended / (attended + noShow)`. Unconfirmed meetings and Dead Leads are **not** counted as attended. |
 | **Closing rate** | `onboarded / booked`. |

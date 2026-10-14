@@ -215,3 +215,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 47. DISQUALIFIED and CANCELLED tabs
 - Both tabs are now read as meeting stages (`CONFIG.BD_TABS`). Same rules as the show tabs: before 10/12 they count as meetings and shows; from 10/12 they count as meetings and wait in the confirmation queue.
+
+## 48. Confirmation start moved to 2026-09-28
+- `CONFIRMATION_START_DATE` is now 2026-09-28. From then, a meeting that moves out of New Meetings to any tab except No-Show (Dead Leads, DISQUALIFIED, CANCELLED included) goes to the confirmation queue and is not a show until confirmed.
