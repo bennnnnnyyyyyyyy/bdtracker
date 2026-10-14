@@ -27,6 +27,32 @@ export interface RawDashboardDataset {
   dailyDays?: string[];
 }
 
+/** The e-mail address the dashboard reads the sheets as (people must share their sheets with it). */
+function serviceAccountEmail(): string | null {
+  const saPath = path.join(process.cwd(), 'google2.json');
+  try {
+    if (fs.existsSync(saPath)) return JSON.parse(fs.readFileSync(saPath, 'utf8')).client_email ?? null;
+  } catch { /* fall through to the environment */ }
+  return process.env.GOOGLE_CLIENT_EMAIL ?? null;
+}
+
+/** Turns a Google API error into a sentence that says what to fix. */
+export function describeAttendanceError(err: unknown, email: string | null): string {
+  const e = err as { code?: number; message?: string; status?: number };
+  const msg = String(e?.message ?? err);
+  const code = Number(e?.code ?? e?.status);
+  if (code === 403 || /permission|forbidden/i.test(msg)) {
+    return `no access to the attendance sheet: share it with ${email ?? 'the dashboard\'s service account'} (Viewer)`;
+  }
+  if (code === 404 || /not found|requested entity/i.test(msg)) {
+    return 'the attendance sheet was not found: check ATTENDANCE_SHEET_ID';
+  }
+  if (/unable to parse range/i.test(msg)) {
+    return `the attendance sheet has no tab named "${CONFIG.ATTENDANCE_SHEET_NAME}"`;
+  }
+  return msg;
+}
+
 function getSheetsClient() {
   const saPath = path.join(process.cwd(), 'google2.json');
   if (fs.existsSync(saPath)) {
@@ -286,10 +312,13 @@ export async function fetchBDTrackerData(): Promise<{
 type AttendanceFetchResult = {
   attendance: AttendanceDataset;
   source: 'google_sheets' | 'local_excel' | 'none';
+  /** Why the Google sheet could not be used (shown to managers). */
+  error?: string;
 };
 
 export async function fetchAttendanceData(): Promise<AttendanceFetchResult> {
   const sheets = getSheetsClient();
+  let googleError: string | undefined;
 
   // Try Google Sheets API first
   if (sheets && CONFIG.ATTENDANCE_SHEET_ID) {
@@ -304,11 +333,17 @@ export async function fetchAttendanceData(): Promise<AttendanceFetchResult> {
 
       if (res.data.values && res.data.values.length > 0) {
         const attendance = parseAttendanceRows(res.data.values);
-        return { attendance, source: 'google_sheets' };
+        if (Object.keys(attendance.agentDaily).length > 0) return { attendance, source: 'google_sheets' };
+        googleError = 'the "Attendance" tab was read but no attendance blocks were found (a block starts with a row whose first cell is "Date")';
+      } else {
+        googleError = 'the "Attendance" tab is empty';
       }
     } catch (err: unknown) {
+      googleError = describeAttendanceError(err, serviceAccountEmail());
       console.warn('[Attendance] Google Sheets API fetch failed, trying local file fallback:', (err as Error).message);
     }
+  } else if (!sheets) {
+    googleError = 'Google credentials are not configured on the server';
   }
 
   // Fallback to local Excel file
@@ -320,7 +355,7 @@ export async function fetchAttendanceData(): Promise<AttendanceFetchResult> {
       if (sheet) {
         const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
         const attendance = parseAttendanceRows(rows);
-        return { attendance, source: 'local_excel' };
+        return { attendance, source: 'local_excel', error: googleError };
       }
     } catch (err) {
       console.warn('[Attendance] Local Excel parse failed:', err);
@@ -329,7 +364,8 @@ export async function fetchAttendanceData(): Promise<AttendanceFetchResult> {
 
   return {
     attendance: { agentDaily: {}, agentMonthly: {} },
-    source: 'none'
+    source: 'none',
+    error: googleError
   };
 }
 
@@ -416,10 +452,10 @@ async function loadDashboardRawData(): Promise<RawDashboardDataset> {
           ? 'Calls come from the Ultatel department summary report, which has no per-call dates: every call is dated today and date filters do not apply.'
           : '',
         attendanceResult.source === 'none'
-          ? 'No attendance data found: per-day figures fall back to active calendar days.'
+          ? `No attendance data found${attendanceResult.error ? ` (${attendanceResult.error})` : ''}: per-day figures fall back to active calendar days.`
           : '',
         attendanceResult.source === 'local_excel'
-          ? 'Attendance loaded from local Excel file (BD _ French Dashboard 2026)'
+          ? `Attendance loaded from the local Excel file (BD _ French Dashboard 2026)${attendanceResult.error ? `; Google Sheets failed: ${attendanceResult.error}` : ''}.`
           : '',
         failedSources.length > 0
           ? `Live load failed for: ${failedSources.join(', ')}. Figures may be incomplete.`

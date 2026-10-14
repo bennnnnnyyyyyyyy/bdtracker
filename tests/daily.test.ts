@@ -101,3 +101,12 @@ describe('Total Calls Per Extension report', () => {
     expect(spread.reduce((t, d) => t + d.rows[0].totalCalls, 0)).toBe(141);
   });
 });
+
+describe('attendance error messages', () => {
+  it('says what to fix', async () => {
+    const { describeAttendanceError } = await import('../src/lib/sheets');
+    expect(describeAttendanceError({ code: 403, message: 'The caller does not have permission' }, 'bot@x.iam.gserviceaccount.com')).toMatch(/share it with bot@x/);
+    expect(describeAttendanceError({ code: 404, message: 'Requested entity was not found.' }, null)).toMatch(/ATTENDANCE_SHEET_ID/);
+    expect(describeAttendanceError({ code: 400, message: "Unable to parse range: 'Attendance'!A1:AT" }, null)).toMatch(/no tab named "Attendance"/);
+  });
+});

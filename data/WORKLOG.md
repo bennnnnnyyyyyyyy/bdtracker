@@ -186,3 +186,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 39. Daily Totals: month banners and day dividers
 - `Daily Totals` now has a navy banner row ("July 2026") at the start of every month and a grey divider row between days, rewritten on every upload (`writeDailyRows_`) and by **Rebuild Totals + format tabs** (`relayoutDailyTotals_`). These rows have no date in column A, so the dashboard, the totals summary and the importer ignore them. Do not type in them.
+
+## 40. Attendance diagnostics
+- Checked the real BD French workbook (`Attendance` tab): the parser reads 13 people and dates from 2025-12-28 to 2026-11-28; present days for the week of Oct 12 came out as expected (e.g. Rick 2, Selene 2, Nora 1.75). The remaining way attendance fails live is access/config, so the dashboard banner now says why: no access (with the service-account e-mail to share the sheet with), sheet not found (ATTENDANCE_SHEET_ID), no tab named "Attendance", empty tab, or no attendance blocks found.
