@@ -1,14 +1,12 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Upload, X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface FileImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  /** Admins also get the one-click "Repair duplicates" fix when the check fails. */
-  isAdmin?: boolean;
 }
 
 async function sheetCall(action: string, extra: Record<string, unknown> = {}) {
@@ -18,362 +16,120 @@ async function sheetCall(action: string, extra: Record<string, unknown> = {}) {
   return json;
 }
 
-export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClose, onSuccess, isAdmin }) => {
+const ACCEPTED = /\.(csv|xlsx|xls)$/i;
+
+export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [dragOver, setDragOver] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [details, setDetails] = useState<string[]>([]);
-  const [lastFile, setLastFile] = useState<File | null>(null);   // kept so a failed check can be retried after a repair
-  const [checkFailed, setCheckFailed] = useState(false);
   const [newAgents, setNewAgents] = useState<string[]>([]);
   const [openers, setOpeners] = useState<Record<string, string>>({});
-  const [fixing, setFixing] = useState(false);
-  const [replace, setReplace] = useState(false);
-  const [files, setFiles] = useState<File[]>([]);
-  const [reportDate, setReportDate] = useState('');
-  const [reportEnd, setReportEnd] = useState('');
-  const [clock, setClock] = useState<'local' | 'ultatel'>('local');
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const dropped = Array.from(e.dataTransfer.files).filter((f) => /\.(csv|xlsx|xls)$/i.test(f.name));
-      if (dropped.length > 0) {
-        selectFiles(dropped);
-      } else {
-        setStatusMessage({ type: 'error', text: 'Please upload an Ultatel export (.csv) or an Excel workbook (.xlsx or .xls).' });
-      }
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) selectFiles(Array.from(e.target.files));
-  };
-
-  // One or several files. A single file keeps the full flow; several files are daily reports uploaded in a row.
   const selectFiles = (picked: File[]) => {
-    setFile(picked[0]);
-    setFiles(picked);
-    setReportDate('');
-    setReportEnd('');
-    setStatusMessage(null);
+    const ok = picked.filter((f) => ACCEPTED.test(f.name));
+    if (ok.length === 0) {
+      setStatus({ type: 'error', text: 'Please choose a .csv or Excel file.' });
+      return;
+    }
+    setFiles(ok);
+    setFrom('');
+    setTo('');
+    setStatus(null);
     setDetails([]);
   };
 
-  const uploadFile = async (target: File) => {
+  // Each file is uploaded in turn. Dates typed above apply to a single file; otherwise they come from the file.
+  const upload = async () => {
     setUploading(true);
-    setStatusMessage(null);
-    setCheckFailed(false);
-    setNewAgents([]);
-    setLastFile(target);
-
-    try {
-      // A big call export is handled in several requests (each stays under the server's time limit). Replace
-      // mode: 1) add what is missing, 2) per sheet tab: back it up and remove what the file does not hold,
-      // 3) run the import once more, which now only verifies (everything is "already there").
-      const backupId = new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '');
-      let json: Record<string, unknown> = {};
-
-      const post = async (fields: Record<string, string>): Promise<Record<string, unknown>> => {
-        const formData = new FormData();
-        formData.append('file', target);
-        formData.append('clock', clock);
-        if (reportDate) formData.append('date', reportDate);
-        if (reportEnd) formData.append('endDate', reportEnd);
-        Object.entries(fields).forEach(([k, v]) => formData.append(k, v));
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        const text = await res.text();
-        let body: Record<string, unknown>;
-        try {
-          body = JSON.parse(text);
-        } catch {
-          throw new Error(`The server stopped answering (${res.status}${text ? `: ${text.slice(0, 80)}` : ''}). Uploading the file again only adds what is missing.`);
-        }
-        if (!res.ok) throw new Error((body.error as string) || 'Upload failed');
-        return body;
-      };
-
-      const runImport = async (skipCheck: boolean, label: string) => {
-        const out = { imported: 0, duplicates: 0, newAgents: [] as string[], checkOk: true, checkProblems: [] as string[], last: {} as Record<string, unknown> };
-        let startChunk = 0;
-        for (let guard = 0; guard < 100; guard++) {
-          const body = await post({ startChunk: String(startChunk), ...(skipCheck ? { skipCheck: '1' } : {}) });
-          out.last = body;
-          if (body.fileType !== 'ultatel_calls') break;
-          out.imported += (body.imported as number) ?? 0;
-          out.duplicates += (body.duplicates as number) ?? 0;
-          ((body.newAgents as string[]) ?? []).forEach((a) => { if (!out.newAgents.includes(a)) out.newAgents.push(a); });
-          if (body.checkOk === false) out.checkOk = false;
-          out.checkProblems.push(...((body.checkProblems as string[]) ?? []));
-          if (body.nextChunk === null || body.nextChunk === undefined) break;
-          startChunk = body.nextChunk as number;
-          setStatusMessage({ type: 'success', text: `${label}… ${startChunk} of ${body.chunks} parts done.` });
-        }
-        return out;
-      };
-
-      const first = await runImport(replace, 'Importing');
-      json = first.last;
-      let removed = 0;
-      let sum = { imported: first.imported, duplicates: first.duplicates, newAgents: first.newAgents, checkOk: first.checkOk, checkProblems: first.checkProblems };
-      if (replace && json.fileType === 'ultatel_calls') {
-        setStatusMessage({ type: 'success', text: 'Sending the file to the sheet for cleaning…' });
-        await post({ phase: 'start', backupId });
-        // The sheet backs up and cleans each affected tab in the background; ask it how far it is.
-        let job: Record<string, unknown> | null = null;
-        for (let i = 0; i < 300; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-          job = ((await sheetCall('replaceStatus')).job as Record<string, unknown> | null) ?? null;
-          if (!job) throw new Error('The sheet lost track of the clean-up. Run it again.');
-          if (job.state === 'error') throw new Error(`The clean-up failed: ${job.error as string}`);
-          if (job.state === 'done') break;
-          setStatusMessage({ type: 'success', text: `Backing up and cleaning old rows… ${job.current ? `"${job.current as string}" ` : ''}(${(job.done as number) ?? 0} of ${(job.total as number) || '?'} tabs, ${(job.removed as number) ?? 0} removed so far)` });
-        }
-        if (!job || job.state !== 'done') throw new Error('The clean-up is still running in the sheet. Wait a few minutes, then upload the file again (without Replace) to check.');
-        removed = (job.removed as number) ?? 0;
-        const verify = await runImport(false, 'Checking');
-        json = verify.last;
-        sum = { ...sum, checkOk: verify.checkOk, checkProblems: verify.checkProblems, newAgents: Array.from(new Set([...sum.newAgents, ...verify.newAgents])) };
-      }
-      if (json.fileType === 'ultatel_calls') {
-        const parts = [`${sum.imported} new call(s) added`];
-        if (sum.duplicates > 0) parts.push(`${sum.duplicates} already in the sheet`);
-        if (replace) parts.push(`${removed} old row(s) not in the file removed${removed > 0 ? ` (hidden backup tabs "Backup ${backupId} …" kept)` : ''}`);
-        json = { ...json, ...sum, message: `Call export imported: ${parts.join(', ')}.` };
-      }
-
-      setStatusMessage({
-        type: json.checkOk === false ? 'error' : 'success',
-        text: (json.message as string | undefined) || 'File uploaded successfully! Refreshing dashboard metrics...',
-      });
-      // Extra lines for a call export: the sheet's per-agent check and agents that still need an Opener name.
-      const lines: string[] = [];
-      if (json.fileType === 'ultatel_calls') {
-        if (json.checkOk === false) {
-          lines.push('Check failed: the sheet differs from the file for:');
-          (json.checkProblems as string[]).forEach((problem) => lines.push(problem));
-          lines.push('Extra rows are usually duplicates: run "Repair duplicate calls" in the sheet, then upload the file again. If the same rows are still listed, they are not in this file.');
-        } else {
-          lines.push('Check passed: every agent in the file matches the sheet.');
-        }
-        if ((json.newAgents as string[] | undefined)?.length) {
-          lines.push(`New agent(s) added to Agent Mapping: ${(json.newAgents as string[]).join(', ')}. Enter their Opener name below.`);
-        }
-      }
-      if (json.fileType === 'daily_totals' && (json.newAgents as string[] | undefined)?.length) {
-        lines.push(`New agent(s) added to Agent Mapping: ${(json.newAgents as string[]).join(', ')}. Enter their Opener name below (type “ignore” for anyone not on the BD team).`);
-      }
-      setDetails(lines);
-      setCheckFailed(json.fileType === 'ultatel_calls' && json.checkOk === false);
-      setNewAgents((json.newAgents as string[] | undefined) ?? []);
-      setFile(null);
-      setFiles([]);
-
-      // Trigger automatic dashboard refresh; stay open longer when there is something to read or do.
-      setTimeout(() => {
-        onSuccess();
-        if (lines.length === 0) onClose();
-      }, lines.length > 0 ? 400 : 1200);
-    } catch (err: unknown) {
-      setStatusMessage({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Upload failed',
-      });
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // Several daily reports at once: each file is dated from its file name and uploaded in turn.
-  const uploadBatch = async (batch: File[]) => {
-    setUploading(true);
-    setStatusMessage(null);
+    setStatus(null);
     setNewAgents([]);
     const lines: string[] = [];
     const agents: string[] = [];
-    let done = 0;
-    for (let i = 0; i < batch.length; i++) {
-      setStatusMessage({ type: 'success', text: `Uploading ${i + 1} of ${batch.length}: ${batch[i].name}…` });
+    let saved = 0;
+    for (let i = 0; i < files.length; i++) {
+      setStatus({ type: 'success', text: files.length > 1 ? `Uploading ${i + 1} of ${files.length}: ${files[i].name}…` : 'Uploading…' });
       try {
         const formData = new FormData();
-        formData.append('file', batch[i]);
-        formData.append('clock', clock);
+        formData.append('file', files[i]);
+        if (files.length === 1 && from) formData.append('date', from);
+        if (files.length === 1 && to) formData.append('endDate', to);
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        const body = await res.json().catch(() => ({} as Record<string, unknown>));
-        if (!res.ok) throw new Error((body.error as string) || `Upload failed (${res.status})`);
-        done++;
+        const text = await res.text();
+        let body: Record<string, unknown> = {};
+        try { body = JSON.parse(text); } catch { throw new Error(`The server did not answer properly (${res.status}). Try again.`); }
+        if (!res.ok) throw new Error((body.error as string) || 'Upload failed');
+        saved++;
         ((body.newAgents as string[]) ?? []).forEach((a) => { if (!agents.includes(a)) agents.push(a); });
-        lines.push(`${batch[i].name}: ${(body.message as string) ?? 'saved'}`);
+        lines.push(files.length > 1 ? `${files[i].name}: ${body.message as string}` : (body.message as string));
       } catch (err) {
-        lines.push(`${batch[i].name}: NOT saved (${err instanceof Error ? err.message : 'failed'})`);
+        lines.push(`${files[i].name}: not saved (${err instanceof Error ? err.message : 'failed'})`);
       }
     }
-    if (agents.length > 0) lines.push(`New agent(s) added to Agent Mapping: ${agents.join(', ')}. Enter their Opener name in Call log maintenance (type “ignore” for anyone not on the BD team).`);
-    setStatusMessage({ type: done === batch.length ? 'success' : 'error', text: `${done} of ${batch.length} file(s) saved.` });
+    setStatus({ type: saved === files.length ? 'success' : 'error', text: `${saved} of ${files.length} file(s) saved.` });
     setDetails(lines);
-    setFile(null);
+    setNewAgents(agents);
     setFiles([]);
     setUploading(false);
-    onSuccess();
-  };
-
-  const handleUpload = () => {
-    if (files.length > 1) void uploadBatch(files);
-    else if (file) void uploadFile(file);
-  };
-
-  // One click: repair duplicate rows in the sheet, then upload the same file again to re-check it.
-  const repairAndRecheck = async () => {
-    if (!lastFile) return;
-    setFixing(true);
-    try {
-      await sheetCall('repair');
-      await uploadFile(lastFile);
-    } catch (err: unknown) {
-      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Repair failed' });
-    } finally {
-      setFixing(false);
-    }
+    if (saved > 0) onSuccess();
   };
 
   const saveOpenerNames = async () => {
-    setFixing(true);
+    setSaving(true);
     try {
       const entries = newAgents.map((agent) => ({ agent, opener: (openers[agent] ?? '').trim() || agent.split(' ')[0] }));
       await sheetCall('setMapping', { entries });
       setNewAgents([]);
       setDetails((prev) => [...prev, 'Opener names saved.']);
       onSuccess();
-    } catch (err: unknown) {
-      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not save the names' });
+    } catch (err) {
+      setStatus({ type: 'error', text: err instanceof Error ? err.message : 'Could not save the names' });
     } finally {
-      setFixing(false);
+      setSaving(false);
     }
   };
 
+  const dateInput = 'bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white';
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-    >
-      <div
-        className="w-full max-w-lg max-h-[92vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
-        style={{ background: '#111113', border: '1px solid rgba(255,255,255,0.1)' }}
-      >
-        {/* Modal Header */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div className="w-full max-w-lg max-h-[92vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col" style={{ background: '#111113', border: '1px solid rgba(255,255,255,0.1)' }}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.08)]">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#1a1608] border border-[rgba(201,168,76,0.3)]">
+            <div className="p-1.5 rounded-lg" style={{ background: 'rgba(201,168,76,0.12)' }}>
               <FileSpreadsheet className="w-4 h-4 text-[#e8c56a]" />
             </div>
             <div>
-              <h2 id="modal-title" className="font-serif text-base font-bold text-white">Import Spreadsheet</h2>
-              <p className="label-caps mt-0.5 text-slate-400">Ultatel Calls or Attendance Workbook</p>
+              <h2 id="modal-title" className="font-serif text-base font-bold text-white">Upload Ultatel report</h2>
+              <p className="label-caps mt-0.5 text-slate-400">Total Calls Per Extension (CSV or Excel)</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-            aria-label="Close modal"
-          >
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer" aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-6 space-y-4 overflow-y-auto min-h-0">
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Drag &amp; drop or select a file. The app recognizes what it is:
-          </p>
-
-          <div className="grid grid-cols-1 gap-2 text-xs">
-            <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
-              <span className="font-semibold text-[#4ade80]">Ultatel Call Details (CSV or Excel)</span>
-              <span className="text-[11px] text-slate-400">e.g. <code>Call Details - 10-12-2026.csv</code>. Added straight to the Call Logs sheet; calls already there are skipped, so uploading an overlapping file is safe.</span>
-            </div>
-            <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
-              <span className="font-semibold text-[#4ade80]">Total Calls Per Extension (daily report, CSV or Excel)</span>
-              <span className="text-[11px] text-slate-400">One file per day (or per period), e.g. <code>Total_Calls_Per_Extension_JULY_1.xlsx</code>. The dates are read from “Date from / Date to” above the table, or typed below. Several files can be selected at once. Uploading a day again replaces that day.</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
-                <span className="font-semibold text-[#e8c56a]">Attendance Workbook</span>
-                <span className="text-[11px] text-slate-400">local use only</span>
-              </div>
-              <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
-                <span className="font-semibold text-[#38bdf8]">Ultatel Outbound summary</span>
-                <span className="text-[11px] text-slate-400">local use only</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Drag & Drop Box */}
-          <label className="flex items-center gap-2 text-xs text-slate-300 mb-2">
-            Times in a call export are in
-            <select
-              value={clock}
-              onChange={(e) => setClock(e.target.value === 'ultatel' ? 'ultatel' : 'local')}
-              className="bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white"
-            >
-              <option value="local" className="text-black">our local time (new Ultatel setting)</option>
-              <option value="ultatel" className="text-black">Ultatel&apos;s old UTC-6 clock</option>
-            </select>
-          </label>
-          {files.length <= 1 && (
-            <div className="text-xs text-slate-300 mb-2 space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                Report dates (only needed when the file has no “Date from / Date to” cells)
-                <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} className="bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white" />
-                to
-                <input type="date" value={reportEnd} onChange={(e) => setReportEnd(e.target.value)} className="bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white" />
-              </div>
-              <div className="text-[11px] text-slate-500">Normally leave both empty: the dates are read from the file (“Date from / Date to” above the table). Dates typed here override it. One date = a single day; two dates = a period whose totals are spread evenly over its working days.</div>
-            </div>
-          )}
-          <label className="flex items-start gap-2 text-xs text-slate-300 mb-2">
-            <input
-              type="checkbox"
-              checked={replace}
-              onChange={(e) => {
-                if (e.target.checked && !window.confirm('Replace mode: for the dates in the file, calls the sheet holds that are NOT in the file will be deleted. A hidden backup copy of each affected tab is made first. Continue?')) return;
-                setReplace(e.target.checked);
-              }}
-              className="mt-0.5"
-            />
-            <span>Replace what the sheet has for the dates in this file (removes calls that are not in the file; backed up first)</span>
-          </label>
           <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); selectFiles(Array.from(e.dataTransfer.files)); }}
             onClick={() => fileInputRef.current?.click()}
             className={`cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-all flex flex-col items-center justify-center gap-2 ${
-              dragOver
-                ? 'border-[#e8c56a] bg-[#1a1608]/50'
-                : 'border-white/10 hover:border-white/20 bg-white/2'
+              dragOver ? 'border-[#e8c56a] bg-[#1a1608]/50' : 'border-white/10 hover:border-white/20 bg-white/2'
             }`}
           >
             <input
               type="file"
               ref={fileInputRef}
-              onChange={handleFileChange}
+              onChange={(e) => { if (e.target.files) selectFiles(Array.from(e.target.files)); }}
               accept=".csv,.xlsx,.xls"
               multiple
               className="hidden"
@@ -382,50 +138,38 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
             <div className="text-xs font-medium text-slate-200">
               {files.length > 1 ? (
                 <span className="text-[#e8c56a] font-semibold">{files.length} files selected</span>
-              ) : file ? (
-                <span className="text-[#e8c56a] font-semibold">{file.name} ({(file.size / 1024).toFixed(0)} KB)</span>
+              ) : files.length === 1 ? (
+                <span className="text-[#e8c56a] font-semibold">{files[0].name} ({(files[0].size / 1024).toFixed(0)} KB)</span>
               ) : (
-                <span>Drop the file here or <span className="text-[#e8c56a] underline">browse</span></span>
+                <span>Drop the file(s) here or <span className="text-[#e8c56a] underline">browse</span></span>
               )}
             </div>
-            <span className="text-[10px] text-slate-500 font-num">Supported: .csv, .xlsx, .xls</span>
           </div>
 
-          {/* Status Message */}
-          {statusMessage && (
-            <div
-              className={`p-3 rounded-xl flex items-center gap-2.5 text-xs ${
-                statusMessage.type === 'success'
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-              }`}
-            >
-              {statusMessage.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 shrink-0" />
-              )}
-              <span>{statusMessage.text}</span>
+          {files.length === 1 && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              Dates (optional, if the file has none)
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={dateInput} aria-label="From date" />
+              to
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={dateInput} aria-label="To date" />
+            </div>
+          )}
+
+          {status && (
+            <div className={`p-3 rounded-xl flex items-center gap-2.5 text-xs ${status.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+              {status.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+              <span>{status.text}</span>
             </div>
           )}
           {details.length > 0 && (
             <ul className="space-y-1 text-[11px] text-slate-300 list-disc pl-5 max-h-48 overflow-y-auto break-words">
               {details.slice(0, 12).map((line, i) => <li key={i}>{line.length > 400 ? `${line.slice(0, 400)}…` : line}</li>)}
-              {details.length > 12 && <li>…and {details.length - 12} more line(s).</li>}
+              {details.length > 12 && <li>…and {details.length - 12} more.</li>}
             </ul>
-          )}
-          {checkFailed && (
-            isAdmin ? (
-              <button onClick={repairAndRecheck} disabled={fixing || uploading} className="px-3 py-2 rounded-lg text-xs font-semibold border border-[rgba(201,168,76,0.35)] text-[#e8c56a] disabled:opacity-40 flex items-center gap-2">
-                {(fixing || uploading) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}Repair duplicates and check again
-              </button>
-            ) : (
-              <p className="text-[11px] text-slate-400">Ask an admin to repair the duplicates (Actions &gt; Call log maintenance).</p>
-            )
           )}
           {newAgents.length > 0 && (
             <div className="space-y-2 rounded-lg border border-white/10 p-3">
-              <p className="text-[11px] text-slate-300">New agent(s) need the name the BD tracker uses for them (type “ignore” for anyone who is not on the BD team):</p>
+              <p className="text-[11px] text-slate-300">New agent(s): type the name the BD tracker uses, or “ignore” for anyone not on the BD team.</p>
               {newAgents.map((agent) => (
                 <label key={agent} className="flex items-center gap-2 text-[11px]">
                   <span className="w-40 shrink-0 truncate text-slate-300">{agent}</span>
@@ -437,37 +181,22 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
                   />
                 </label>
               ))}
-              <button onClick={saveOpenerNames} disabled={fixing} className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-white disabled:opacity-40">Save names</button>
+              <button onClick={saveOpenerNames} disabled={saving} className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-white disabled:opacity-40">Save names</button>
             </div>
           )}
         </div>
 
-        {/* Modal Footer */}
         <div className="flex items-center justify-end gap-2.5 px-6 py-4 bg-white/2 border-t border-white/6">
-          <button
-            onClick={onClose}
-            disabled={uploading}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-          >
-            Cancel
+          <button onClick={onClose} disabled={uploading} className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
+            Close
           </button>
           <button
-            onClick={handleUpload}
-            disabled={!file || uploading}
+            onClick={() => void upload()}
+            disabled={files.length === 0 || uploading}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 transition-all"
             style={{ background: '#1a1608', border: '1px solid rgba(201,168,76,0.35)', color: '#e8c56a' }}
           >
-            {uploading ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Importing...</span>
-              </>
-            ) : (
-              <>
-                <Upload className="w-3.5 h-3.5" />
-                <span>Upload &amp; Sync</span>
-              </>
-            )}
+            {uploading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Uploading…</span></> : <><Upload className="w-3.5 h-3.5" /><span>Upload</span></>}
           </button>
         </div>
       </div>

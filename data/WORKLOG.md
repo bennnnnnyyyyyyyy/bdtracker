@@ -166,3 +166,8 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 34. Totals tab
 - New sheet tab `Totals` (rebuilt after every daily-totals upload, also via the `rebuildTotals` action): one line per agent with calls per month, total calls, out/in answered/unanswered, connection %, talk time and days with data, and an ALL AGENTS line right under the headings. Plain values, not formulas. `Daily Totals` holds the data (one row per day and extension); `Call Logs` and its month archives stay untouched as the fallback for days that have no daily totals.
+
+## 35. Clean-up after the move to daily totals
+- Removed the call-by-call upload path: Apps Script `importCallRows_`, `processStagingImport`, the Import Staging tab/menu, the import check (`reconcileImportData_`), replace mode and its background job/backups, `collectLogRowsDisplay_`, `effectiveCounts_`, `toCairoDate_`; web `sendRowsToSheet`, `startReplace`, `chunkRowsByCall`, the call-export file reader and its API branch. The upload window now only takes Total Calls Per Extension reports (with optional dates) and keeps the Opener-name entry for new agents.
+- Kept: reading `Call Logs` (and archives) as a fallback, its repair/archive/fix-times tools, local attendance/department workbook uploads, the upload reminder, the `ignore` Opener.
+- Tabs to delete by hand in the spreadsheet: `Import Staging`, hidden `Backup …` tabs, `Replace Job`.

@@ -42,7 +42,7 @@ Local Ultatel dept report (.xlsx, fallback)  ─┘      analytics.ts computeDas
 ```
 
 ### Data sources (`src/lib/config.ts`)
-- **Call Logs sheet** (`CALL_DASHBOARD_SHEET_ID`): `Call Logs` (A:O, the active log), `Call Logs YYYY-MM` archive tabs created by the sheet menu's *Archive closed months*, and `Agent Mapping` (A:B).
+- **Call Logs sheet** (`CALL_DASHBOARD_SHEET_ID`): `Daily Totals` (one row per day and extension, from the uploaded Total Calls Per Extension reports; the main call source), `Totals` (readable summary, rebuilt by the script), `Call Logs` (A:O, the older call-by-call log, now a fallback for days without daily totals), `Call Logs YYYY-MM` archive tabs created by the sheet menu's *Archive closed months*, and `Agent Mapping` (A:B).
 - **BD Tracker sheet** (`BD_TRACKER_SHEET_ID`): tabs `New Meetings`, `Follow Ups`, `Contract Sent`, `Invoice Sent`, `Onboarded`, `No-Show`, `Dead Leads`, `Temporary Inactive`, read as `A1:Z`. Header names are auto-detected (opener, date, company, contact, `MEDB`, `PPO`).
 - **Attendance** (`ATTENDANCE_SHEET_ID`, default `1OifBiymAAVSm8JNpIULtU7V4k_b_7Mj9Puo6Ag_suHw`, tab `Attendance`, `A1:AT`): the BD French attendance workbook. Share it with the dashboard's service account (Viewer). Falls back to the local `BD _ French Dashboard 2026 (3).xlsx`.
 - **Local Ultatel department report** `OutBound Calls Per Department ( BusinessDevelopmentTeam ).xlsx`: only used when the `Call Logs` sheet returns **zero** calls. It contains per-agent totals, not individual calls, so `ultatel.ts` synthesizes one `CallRecord` per call, **all dated today** (server date). Date filters are therefore not meaningful in this mode (the dashboard shows a warning banner).
@@ -72,7 +72,7 @@ Per-user accounts (`app_users` in Supabase; scrypt-hashed passwords; roles admin
 | `/api/admin/users`, `/api/admin/users/[id]` | GET, POST, PATCH | Admin only: list, create, edit role / disable / reset password. |
 | `/api/confirmations` | POST | Admin/manager: confirm or undo shows (validated against current tracker data). |
 | `/api/confirmations/bulk` | POST | Admin: one-time confirmation of existing show-stage meetings. |
-| `/api/upload` | POST | Admin/manager. An Ultatel Call Details file (CSV or Excel) is sent to the call-log sheet's Apps Script web app (`IMPORT_WEBHOOK_URL`). Attendance / department workbooks are local-only files. |
+| `/api/upload` | POST | Admin/manager. An Ultatel *Total Calls Per Extension* report (CSV or Excel; one day, a period, or one extension's days) is stored by the call-log sheet's Apps Script web app (`IMPORT_WEBHOOK_URL`) in `Daily Totals`. Attendance / department workbooks are local-only files. |
 | (same route) other workbooks | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
 
 ---
@@ -95,7 +95,7 @@ Four tabs, switched by CSS show/hide (no unmount):
 ## 5. Directory Structure
 
 ```
-├── apps-script/                 # Google Apps Script (clasp project): staging import, Call Logs backfill, in-sheet dashboard
+├── apps-script/                 # Google Apps Script (clasp project): daily-totals intake, Totals tab, Call Logs repair/archive, in-sheet dashboard
 ├── data/                        # Docs + local data workbooks (treat spreadsheets as user data)
 │   ├── PROJECT_OVERVIEW.md      # This file
 │   ├── AGENT_METHODOLOGY.md     # Opener resolution rules

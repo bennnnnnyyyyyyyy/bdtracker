@@ -9,9 +9,9 @@ This is the end-to-end trace of the data: who types or pastes what, where it is 
 ```
 RECORDING (people + Apps Script)                        READING (Next.js server)                       SHOWING
 ────────────────────────────────                        ────────────────────────                       ───────
-Ultatel export ──paste──► "Import Staging" tab
-   Apps Script: fix time zone, dedupe, add Agent,
-   Duration (sec) ──► "Call Logs" tab  ────────────┐
+Ultatel "Total Calls Per Extension" report
+   ──upload──► Apps Script ──► "Daily Totals" tab ─┐   (rebuilds the readable "Totals" tab)
+   (older per-call log "Call Logs" = fallback) ────┤
    new agent names ──► "Agent Mapping" tab ────────┤
 BD team types meetings into 8 stage tabs ──────────┼──► Google Sheets API v4 ──► in-memory cache (60 s)
 French Dashboard ──bridge──► "Attendance" tab ─────┘            │                      │
@@ -27,17 +27,15 @@ Two things never change in the pipeline: **the sheets are the single source of t
 
 ## 2. Recording: where each raw fact comes from
 
-### 2.1 Calls (Ultatel → `Call Logs`)
-1. Someone exports call details from Ultatel (columns: *Call Date, Call ID, From, To, Extension, Department, DID, Description, Type, Outcome, Duration, Notes, Call Path*). Example row: `07-18-2026 05:59:49 | 1784375989.17 | … | 103 (MMS-Rick Nelson) | Business Development Team | … | IN-Bound | ANSWERED | 00:01`.
-2. Management uploads the file in the dashboard (**Actions > Import Excel**); the server hands the rows to the sheet's Apps Script web app, which runs the same import as the old menu (the `Import Staging` menu remains as a fallback: paste at row 2, then **Process Staged Call Import**) (`apps-script/Code.js › processStagingImport`). For each row it:
-   - **Sets the Cairo time.** The Call ID's number before the dot is the call's start time in Unix seconds, so the script converts that to Africa/Cairo time (DST aware) and stores text like `2026-08-10 09:00:00`. Only if an ID has no timestamp does it fall back to converting the export's UTC-6 clock. **All call dates on the dashboard are Cairo dates.**
-   - **Skips duplicate copies, keeps repeated legs.** Ultatel can list the SAME Call ID on several rows (ring attempts / call legs with their own time, duration and outcome) and counts every row, so every row is kept. A row is only skipped if the sheet already holds as many rows of the same call as the export does (same ID timestamp, From, To, Extension, Type, Outcome and Duration; phone numbers are compared by their last 10 digits, so `+16156173189` and `16156173189` are the same number), so re-importing an overlapping export adds nothing while genuinely repeated rows in one export all land. The export's extra `Team Call` column is ignored. After every import the completion message ends with a per-agent **check** comparing the export with what `Call Logs` now holds for that period; if it says CHECK FAILED, extra rows are old duplicates (run **Repair duplicate calls**, then import the file again).
-   - **Derives Agent** = the text inside `(MMS-…)` of *Extension* (`112 (MMS-Ben Arthur)` → `Ben Arthur`; if there is no `(MMS-…)` the whole extension text is used).
-   - **Derives Duration (sec)** from *Duration* (`mm:ss` or `hh:mm:ss`).
-   - Appends the row to `Call Logs` (columns A–M raw, **N = Agent**, **O = Duration (sec)**).
-   - Adds any **new agent name** to `Agent Mapping` column A with a blank Opener. *A person must fill in column B (the opener name) for the new agent.* Excluded people (Russ, George, Caroline) are not added.
-   - Deletes the staging tab and refreshes the in-sheet `BD Dashboard` mirror.
-3. **Monthly archive.** Automatically every Sunday (turn it on once with **BD Call Dashboard > Turn ON automatic archiving (weekly)**; **Archive closed months now** does it on demand). Calls older than 45 days move out of `Call Logs` into one tab per month (`Call Logs 2026-08`, `Call Logs 2026-09`, …); the newest 45 days stay in `Call Logs`. A hidden backup is saved first, rows are only removed after the archive tabs are confirmed, and later imports compare against archive tabs too, so re-importing an old export never duplicates archived calls. The dashboard reads archive tabs only when your date range reaches those months (and caches them for an hour), so current numbers stay fast.
+### 2.1 Calls (Ultatel → `Daily Totals`)
+1. Someone exports Ultatel's **Total Calls Per Extension** report (one row per extension: Out Answered, Out Unanswered, In Answered, In Unanswered, Total Calls, Total Duration, ACD, Department). Three shapes are read: the all-extensions report for one day, the same report for a period (it carries `Date from / Date to` cells above the table), and the one-extension *Date Distribution* report (one row per day, the extension number is in the title).
+2. Management uploads the file in the dashboard (**Actions > Import Excel**). The server reads it and hands it to the sheet's Apps Script web app (`apps-script/Code.js › importDays_`), which writes one row per day and extension to the **`Daily Totals`** tab:
+   - **Which days**: dates typed in the upload window, else `Date from / Date to` in the file, else the day in the file name. A period report is spread evenly over its Monday-Friday days (whole numbers adding up exactly to the report), so weekly and monthly totals are exact and daily ones approximate.
+   - **Replacing**: rows are replaced per day **and** extension, so uploading a day again never doubles it and a one-extension file never wipes the others. A spread period never overwrites a real daily row.
+   - **One-extension reports** name only the number (`103`); the script finds the full `103 (MMS-Rick Nelson)` in `Daily Totals` or `Call Logs`.
+   - New Business-Development agents are added to `Agent Mapping` (column A) with a blank Opener. Agents of other departments (OPS, Fulfillment, …) are not added and are left out of the dashboard unless someone gives them an Opener name; type `ignore` as the Opener to hide any agent.
+   - The readable **`Totals`** tab is rebuilt: one line per agent with calls per month, total calls, out/in answered/unanswered, connection %, talk time and days with data, and an ALL AGENTS line right under the headings.
+3. **The dashboard reads `Daily Totals`** and turns each row into up to four weighted records (out/in × answered/unanswered, `weight` = number of calls), so every formula below works unchanged. Per-call records are used only for days that have **no** daily totals (the older `Call Logs` tab and its month archives stay as a fallback, see 2.4).
 4. `Agent Mapping` (A = PBX agent name, B = canonical Opener name) is maintained by hand.
 
 ### 2.2 Meetings (BD tracker)
@@ -47,6 +45,7 @@ The team keeps one row per meeting in the tracker, **in the tab that is the meet
 The French Dashboard workbook is copied into the tracker's `Attendance` tab by a bridge script. The parser (`attendance.ts`) expects blocks: a row whose first cell is `Date` followed by dates in columns B–AG, then one row per agent with a code per day. Codes: **P, L1, L2 = 1 day; Q = 0.75; H = 0.5; anything else/blank = 0**. Notes in brackets in the name, e.g. `Ben (Part-time)`, are stripped. The date headers are real date cells shown as `12/28` (no year); the Google Sheets read asks for raw values so the year is kept, and if a header ever arrives as plain text the year is inferred (set `ATTENDANCE_YEAR` to override the starting year). If the same date appears in several blocks, a later blank never erases an earlier mark. (Column AH, the sheet's own total, is read but not used — the dashboard re-adds the daily codes itself so any date range works.)
 
 ### 2.4 Fallback inputs
+- `Call Logs` (and `Call Logs YYYY-MM` archive tabs) — the older call-by-call log. It is no longer uploaded to. It is read for days that have no daily totals; its duplicate-handling and clock rules are described in section 4. The sheet menu still offers **Repair duplicate calls**, **Fix call times** and archiving for it.
 - `OutBound Calls Per Department (…).xlsx` — per-agent *totals* (no individual calls, no dates). Used only if `Call Logs` returns zero calls.
 - `BD _ French Dashboard 2026 (3).xlsx` — used if the Attendance tab cannot be read.
 - Both can be replaced from the dashboard's import dialog when running locally.
@@ -58,7 +57,7 @@ The French Dashboard workbook is copied into the tracker's `Attendance` tab by a
 1. **Auth**: the proxy requires a signed session cookie (`/api/sync` has its own secret).
 2. **Cache** (`sheets.ts › getDashboardRawData`): reuses the last load if it is under 30 s old (Refresh forces a reload, at most every 10 s). The open page also re-requests every 30 s, so the screen follows the sheets within about a minute. Concurrent requests share one load.
 3. **Load** (parallel):
-   - `Agent Mapping!A2:B` and `Call Logs!A2:O`, read in 20 000-row chunks; plus, when the date range reaches closed months, the matching `Call Logs YYYY-MM` archive tabs (cached for an hour).
+   - `Agent Mapping!A2:B`, `Daily Totals!A2:L` and `Call Logs!A2:O` (read in 20 000-row chunks); plus, when the date range reaches closed months, the matching `Call Logs YYYY-MM` archive tabs (cached for an hour).
    - The 8 stage tabs with one batch call, range `A1:Z`.
    - `Attendance!A1:AT`, falling back to the local workbook.
 4. **Failure handling**: if the call log or tracker cannot be read, the server serves the last good in-memory copy, else the Supabase snapshot, else partial data — and always says so in the yellow banner. A partial load is never cached and never written to Supabase.

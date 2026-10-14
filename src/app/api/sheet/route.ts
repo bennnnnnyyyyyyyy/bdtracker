@@ -17,7 +17,6 @@ const ROLES: Record<SheetAction, UserRole[]> = {
   fixTimes: ['admin'],
   autoArchiveOn: ['admin'],
   autoArchiveOff: ['admin'],
-  replaceStatus: ['admin', 'manager'],
   rebuildTotals: ['admin', 'manager'],
 };
 const MUTATING: SheetAction[] = ['repair', 'archive', 'fixTimes', 'setMapping'];

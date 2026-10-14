@@ -5,9 +5,8 @@ import * as xlsx from 'xlsx';
 import { CONFIG } from '@/lib/config';
 import { invalidateDashboardCache } from '@/lib/sheets';
 import { requireUser } from '@/lib/api-auth';
-import { looksLikeCallExport, parseCallExportFile, parseCsv } from '@/lib/ultatelFile';
 import { dateFromFileName, dateRangeFromTable, looksLikeDailyTotals, looksLikeDateDistribution, parseDailyTotalsRows, parseDateDistribution, readTable, spreadOverDays, workingDaysBetween } from '@/lib/dailyTotals';
-import { isImportConfigured, missingImportSettings, sendDailyToSheet, sendRowsToSheet, startReplace } from '@/lib/importWebhook';
+import { isImportConfigured, missingImportSettings, sendDailyToSheet } from '@/lib/importWebhook';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -17,9 +16,8 @@ export async function POST(request: NextRequest) {
   const guard = await requireUser(request, ['admin', 'manager'], { form: true });
   if (guard.response) return guard.response;
 
-  // Ultatel "Call Details" exports (CSV or Excel) go straight into the Call Logs sheet through its Apps Script
-  // web app: the same rules as the Import Staging menu, no pasting. Other workbooks (attendance, department
-  // report) are local-only files below.
+  // Ultatel "Total Calls Per Extension" reports (CSV or Excel) go to the Daily Totals sheet through its Apps Script
+  // web app. Other workbooks (attendance, department report) are local-only files below.
   try {
     const peek = await request.clone().formData();
     const upload = peek.get('file');
@@ -103,59 +101,13 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      if (looksLikeCallExport(buf, upload.name)) {
-        if (!isImportConfigured()) {
-          return NextResponse.json({ error: `Uploading call exports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}. Settings only take effect after a redeploy (Vercel) or a restart (local), and must be added to the Production environment.` }, { status: 501 });
-        }
-        const parsed = parseCallExportFile(buf, upload.name);
-        // Replace mode: the sheet cleans its tabs in the background (see FileImportModal).
-        const phase = String(peek.get('phase') ?? 'import');
-        if (phase === 'start') {
-          const backupId = String(peek.get('backupId') ?? '').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20) || 'manual';
-          const job = await startReplace(parsed.rows, backupId);
-          return NextResponse.json({ success: true, fileType: 'ultatel_calls', phase, job });
-        }
-        const result = await sendRowsToSheet(parsed.rows, fetch, {
-          clock: peek.get('clock') === 'ultatel' ? 'ultatel' : 'local',
-          skipCheck: peek.get('skipCheck') === '1',
-          startChunk: Math.max(0, Number(peek.get('startChunk')) || 0),
-          budgetMs: 35_000, // a big file is imported in several requests (each under the 60 s limit)
-        });
-        invalidateDashboardCache();
-        if (result.nextChunk !== null) {
-          return NextResponse.json({ success: true, fileType: 'ultatel_calls', ...result, message: `Importing… ${result.nextChunk} of ${result.chunks} parts done.` });
-        }
-        const parts = [`${result.imported} new call(s) added`];
-        if (result.duplicates > 0) parts.push(`${result.duplicates} already in the sheet`);
-        return NextResponse.json({
-          success: true,
-          fileType: 'ultatel_calls',
-          ...result,
-          message: `Call export imported: ${parts.join(', ')}.`,
-        });
-      }
       if (/\.csv$/i.test(upload.name)) {
-        // A CSV that is not a Call Details export may be the Ultatel per-department summary: store it as the
-        // local workbook the app reads. Anything else is rejected with the reason.
-        const table = parseCsv(buf.toString('utf8'));
-        const isDeptSummary = table.some((row) => row.some((cell) => /out answered|total calls/i.test(cell)));
-        if (!isDeptSummary) {
-          const why = parseCallExportFile(buf, upload.name).error;
-          return NextResponse.json({ error: why || 'Unrecognized CSV. Upload an Ultatel Call Details export or the Ultatel per-department summary.' }, { status: 400 });
-        }
-        if (process.env.VERCEL) {
-          return NextResponse.json({ error: 'The department summary can only be imported in the local dashboard; call exports (Call Details) work everywhere.' }, { status: 501 });
-        }
-        const wb = xlsx.utils.book_new();
-        xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(table), 'Sheet1');
-        await writeFile(path.join(process.cwd(), CONFIG.LOCAL_ULTATEL_DEPT_FILE), xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }));
-        invalidateDashboardCache();
-        return NextResponse.json({ success: true, fileType: 'ultatel', fileName: CONFIG.LOCAL_ULTATEL_DEPT_FILE, message: 'Updated Ultatel calls report from the CSV.' });
+        return NextResponse.json({ error: 'This CSV is not an Ultatel "Total Calls Per Extension" report (the Extension and Out/In Answered/Unanswered columns were not found).' }, { status: 400 });
       }
     }
   } catch (error) {
-    console.error('Call export import failed:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Call export import failed' }, { status: 500 });
+    console.error('Report import failed:', error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Report import failed' }, { status: 500 });
   }
 
   if (process.env.VERCEL) {

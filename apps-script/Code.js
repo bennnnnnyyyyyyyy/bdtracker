@@ -2,8 +2,9 @@
  * @fileoverview BD Call & Pipeline Tracker — In-Sheet Data Intake & Report Mirror
  * 
  * Role:
- * - Log Intake: Allows team members to paste raw Ultatel call exports via a temporary staging tab.
- * - Deduplication: Skips existing calls and deletes the staging tab once saved to 'Call Logs'.
+ * - Daily totals: stores Ultatel "Total Calls Per Extension" reports uploaded from the web dashboard ('Daily Totals')
+ *   and keeps the readable 'Totals' tab up to date.
+ * - Call Logs: the older per-call log is kept as a fallback; this file still repairs and archives it.
  * - In-Sheet Mirror: Renders a summary table in 'BD Dashboard' for spreadsheet viewers.
  * 
  * Note: The actual web application and backend are hosted on Vercel backed by Supabase PostgreSQL.
@@ -40,7 +41,6 @@ const CONFIG = {
   // The newest ARCHIVE_KEEP_DAYS stay in the active tab so an export that overlaps the boundary can never re-add old calls.
   ARCHIVE_PREFIX: 'Call Logs ',
   ARCHIVE_KEEP_DAYS: 45,
-  STAGING_SHEET: 'Import Staging',
   MAPPING_SHEET: 'Agent Mapping',
   DASHBOARD_SHEET: 'BD Dashboard',
 
@@ -64,8 +64,7 @@ const CONFIG = {
   // Agents to permanently exclude from dashboard calculations & mappings
   EXCLUDED_AGENTS: ['russ', 'george', 'caroline', 'caroline richards'],
 
-  // Ultatel export clock and destination clock. Africa/Cairo applies Egypt DST rules.
-  SOURCE_TIME_ZONE: 'Etc/GMT+6',
+  // Time zone of the call times stored in Call Logs (applies Egypt DST rules).
   CAIRO_TIME_ZONE: 'Africa/Cairo'
 };
 
@@ -93,9 +92,8 @@ function isExcludedAgent_(name) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('BD Call Dashboard')
-    .addItem('1. Prepare / Open Staging Tab', 'createStagingTab')
-    .addItem('2. Process Staged Call Import', 'processStagingImport')
-    .addItem('3. Refresh BD Dashboard', 'refreshDashboard')
+    .addItem('Refresh BD Dashboard', 'refreshDashboard')
+    .addItem('Rebuild Totals tab', 'rebuildTotalsMenu')
     .addSeparator()
     .addItem('Setup / Reset Core Tabs', 'setupTabs')
     .addItem('Backfill Call Log Fields (Repair)', 'backfillCallLogFields')
@@ -119,9 +117,6 @@ function setupTabs() {
   const callLog = getOrCreateSheet_(ss, CONFIG.CALL_LOG_SHEET);
   writeHeaderIfEmpty_(callLog, [...CONFIG.RAW_HEADERS, ...CONFIG.CALL_LOG_EXTRA]);
 
-  const staging = getOrCreateSheet_(ss, CONFIG.STAGING_SHEET);
-  writeHeaderIfEmpty_(staging, CONFIG.RAW_HEADERS);
-
   const mapping = getOrCreateSheet_(ss, CONFIG.MAPPING_SHEET);
   writeHeaderIfEmpty_(mapping, ['Call Log Agent Name', 'Opener Name (must match BD tabs)']);
 
@@ -131,9 +126,7 @@ function setupTabs() {
   }
 
   SpreadsheetApp.getUi().alert(
-    'Tabs initialized successfully.\n\n' +
-    '1. Paste raw Ultatel call export into "' + CONFIG.STAGING_SHEET + '" (row 2 onwards).\n' +
-    '2. Click "BD Call Dashboard > 2. Process Staged Call Import".'
+    'Tabs initialized successfully.\n\nUpload Ultatel "Total Calls Per Extension" reports from the web dashboard (Import).'
   );
 }
 
@@ -163,25 +156,6 @@ function writeHeaderIfEmpty_(sheet, headers) {
 // STAGED IMPORT & CALL LOG PROCESSING
 // ==========================================
 
-/**
- * Creates or resets the Import Staging tab with headers ready for pasting.
- */
-function createStagingTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let staging = ss.getSheetByName(CONFIG.STAGING_SHEET);
-  if (!staging) {
-    staging = ss.insertSheet(CONFIG.STAGING_SHEET);
-  } else {
-    staging.clear();
-  }
-  staging.getRange(1, 1, 1, CONFIG.RAW_HEADERS.length).setValues([CONFIG.RAW_HEADERS]).setFontWeight('bold');
-  staging.setFrozenRows(1);
-  ss.setActiveSheet(staging);
-  SpreadsheetApp.getUi().alert(
-    `"${CONFIG.STAGING_SHEET}" is ready.\n\nPaste your raw Ultatel call export starting at row 2, then click "Process Staged Call Import".`
-  );
-}
-
 // ==========================================
 // MONTHLY ARCHIVE
 // ==========================================
@@ -189,43 +163,6 @@ function createStagingTab() {
 /** Name of the archive tab for a month key like "2026-09". */
 function archiveTabName_(monthKey) {
   return CONFIG.ARCHIVE_PREFIX + monthKey;
-}
-
-/** Month keys (YYYY-MM) touched by [minEpoch, maxEpoch] widened by 2 days, so month-edge time zones are covered. */
-function monthKeysForEpochRange_(minEpoch, maxEpoch) {
-  const keys = [];
-  const start = new Date((minEpoch - 2 * 86400) * 1000);
-  const end = new Date((maxEpoch + 2 * 86400) * 1000);
-  let y = start.getUTCFullYear();
-  let m = start.getUTCMonth();
-  while (y < end.getUTCFullYear() || (y === end.getUTCFullYear() && m <= end.getUTCMonth())) {
-    keys.push(`${y}-${String(m + 1).padStart(2, '0')}`);
-    m++;
-    if (m > 11) { m = 0; y++; }
-  }
-  return keys;
-}
-
-/**
- * Rows (as shown in the cells, 15 columns) of the active Call Logs plus the archive tabs for the months an
- * epoch range touches. Used so imports compare against archived calls too.
- */
-function collectLogRowsDisplay_(minEpoch, maxEpoch) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
-  const tabs = [CONFIG.CALL_LOG_SHEET];
-  if (isFinite(minEpoch) && isFinite(maxEpoch)) {
-    monthKeysForEpochRange_(minEpoch, maxEpoch).forEach(k => {
-      if (ss.getSheetByName(archiveTabName_(k))) tabs.push(archiveTabName_(k));
-    });
-  }
-  const rows = [];
-  tabs.forEach(name => {
-    const sheet = ss.getSheetByName(name);
-    if (!sheet || sheet.getLastRow() < 2) return;
-    getDisplayExact_(sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols)).forEach(r => rows.push(r));
-  });
-  return rows;
 }
 
 /**
@@ -397,166 +334,6 @@ function autoArchiveStatus() {
   SpreadsheetApp.getUi().alert(`Automatic archiving is ${on ? 'ON (every Sunday ~03:00)' : 'OFF'}.\n\n${last}`);
 }
 
-/**
- * After an import: compares, per agent, how many rows the export had with how many rows Call Logs now holds
- * for the same period (by Call ID timestamp), so any mismatch is visible straight away.
- * @param {unknown[][]} stagedRows the export rows that were imported
- * @returns {{ok: boolean, problems: string[]}}
- */
-function reconcileImportData_(stagedRows, stagedDisp) {
-  const expected = new Map();
-  const exportKeyCount = new Map();
-  const exportByEpoch = new Map();
-  const exportKeyText = new Map();
-  const exportKeyAgent = new Map();
-  let minEpoch = Infinity;
-  let maxEpoch = -Infinity;
-  stagedRows.forEach((r, i) => {
-    const epoch = callEpoch_(r[1]);
-    if (epoch === null) return;
-    minEpoch = Math.min(minEpoch, epoch);
-    maxEpoch = Math.max(maxEpoch, epoch);
-    const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
-    expected.set(agent, (expected.get(agent) ?? 0) + 1);
-    const key = callRowKey_(stagedDisp[i], stagedDisp[i][0]);
-    exportKeyCount.set(key, (exportKeyCount.get(key) ?? 0) + 1);
-    if (!exportByEpoch.has(epoch)) exportByEpoch.set(epoch, []);
-    exportByEpoch.get(epoch).push(`to ${stagedDisp[i][3]} ${stagedDisp[i][8]} ${stagedDisp[i][9]} ${stagedDisp[i][10]}`);
-    exportKeyText.set(key, `${stagedDisp[i][0]} id ${stagedDisp[i][1]} to ${stagedDisp[i][3]} ${stagedDisp[i][8]} ${stagedDisp[i][9]} ${stagedDisp[i][10]}`);
-    exportKeyAgent.set(key, agent);
-  });
-  if (expected.size === 0) return { ok: true, problems: [] };
-
-  SpreadsheetApp.flush();
-  const actual = new Map();
-  const sheetKeyCount = new Map();
-  const extras = new Map(); // agent -> sheet rows beyond what the export holds
-  collectLogRowsDisplay_(minEpoch, maxEpoch).forEach(r => {
-    const epoch = callEpoch_(r[1]);
-    if (epoch === null || epoch < minEpoch || epoch > maxEpoch) return;
-    const agent = parseAgentName_(String(r[4] ?? '')) || '(no agent)';
-    actual.set(agent, (actual.get(agent) ?? 0) + 1);
-    const key = callRowKey_(r, r[0]);
-    const n = (sheetKeyCount.get(key) ?? 0) + 1;
-    sheetKeyCount.set(key, n);
-    if (n > (exportKeyCount.get(key) ?? 0)) {
-      if (!extras.has(agent)) extras.set(agent, []);
-      const same = exportByEpoch.get(epoch);
-      const note = !exportKeyCount.has(key) && same ? ` [the file has for that call: ${same.slice(0, 2).join('; ')}]` : '';
-      extras.get(agent).push(`${exportKeyCount.has(key) ? 'extra copy' : 'not in the export'}: ${r[0]} id ${r[1]} to ${r[3]} ${r[8]} ${r[9]} ${r[10]}${note}`);
-    }
-  });
-
-  const problems = [];
-  expected.forEach((n, agent) => {
-    const got = actual.get(agent) ?? 0;
-    if (got === n) return;
-    const missing = [];
-    exportKeyCount.forEach((cnt, key) => {
-      if (exportKeyAgent.get(key) === agent && (sheetKeyCount.get(key) ?? 0) < cnt) missing.push(`missing from the sheet: ${exportKeyText.get(key)}`);
-    });
-    const examples = (extras.get(agent) ?? []).slice(0, 3).concat(missing.slice(0, 3)).join(' | ');
-    problems.push(`${agent}: export ${n}, Call Logs ${got} (${got - n > 0 ? '+' : ''}${got - n})${examples ? ' - ' + examples : ''}`);
-  });
-  return { ok: problems.length === 0, problems };
-}
-
-/**
- * Replace mode, step 1: which tabs (Call Logs and the month archive tabs) hold calls inside the export's period,
- * with the first and last call time each holds. Cheap: reads only the Call ID column.
- * @returns {{name: string, minEpoch: number, maxEpoch: number}[]}
- */
-function replacePlan_(minEpoch, maxEpoch) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const names = [CONFIG.CALL_LOG_SHEET];
-  monthKeysForEpochRange_(minEpoch, maxEpoch).forEach(k => {
-    if (ss.getSheetByName(archiveTabName_(k))) names.push(archiveTabName_(k));
-  });
-  const tabs = [];
-  names.forEach(name => {
-    const sheet = ss.getSheetByName(name);
-    if (!sheet || sheet.getLastRow() < 2) return;
-    let lo = Infinity;
-    let hi = -Infinity;
-    getDisplayExact_(sheet.getRange(2, 2, sheet.getLastRow() - 1, 1)).forEach(r => {
-      const e = callEpoch_(r[0]);
-      if (e !== null) { lo = Math.min(lo, e); hi = Math.max(hi, e); }
-    });
-    if (isFinite(lo) && hi >= minEpoch && lo <= maxEpoch) tabs.push({ name, minEpoch: Math.max(lo, minEpoch), maxEpoch: Math.min(hi, maxEpoch) });
-  });
-  return tabs;
-}
-
-/**
- * Replace mode, step 2 (one tab per request): inside [minEpoch, maxEpoch], removes the tab's rows that the export
- * rows do not contain (for every call-row key, rows beyond the number the export holds). The tab is first copied
- * to a hidden "Backup <id> <tab>" tab; if that fails nothing is removed. Rows outside the period are untouched.
- * @param {string} tabName
- * @param {string[][]} exportRows export rows (columns A-M as text) whose calls fall in this tab's period
- * @returns {number} rows removed
- */
-/**
- * Copies a tab's data (values only, no empty grid, so it stays small) into a new hidden tab. Does nothing when the
- * backup already exists (a second request of the same upload).
- */
-function backupTab_(ss, sheet, backupName, numCols) {
-  if (ss.getSheetByName(backupName)) return;
-  const rows = sheet.getLastRow();
-  const data = sheet.getRange(1, 1, rows, numCols).getValues();
-  const backup = ss.insertSheet(backupName);
-  backup.getRange(1, 1, data.length, numCols).setValues(data);
-  SpreadsheetApp.flush();
-  try { backup.hideSheet(); } catch (err) { /* a visible backup is still a backup */ }
-}
-
-function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId, seenAcrossTabs) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const known = [CONFIG.CALL_LOG_SHEET].concat(monthKeysForEpochRange_(minEpoch, maxEpoch).map(archiveTabName_));
-  if (known.indexOf(tabName) < 0) throw new Error('Unexpected tab "' + tabName + '".');
-  const sheet = ss.getSheetByName(tabName);
-  if (!sheet || sheet.getLastRow() < 2 || !isFinite(minEpoch) || !isFinite(maxEpoch)) return 0;
-
-  const exportKeyCount = new Map();
-  exportRows.forEach(d => {
-    if (callEpoch_(d[1]) === null) return;
-    const key = callRowKey_(d, d[0]);
-    exportKeyCount.set(key, (exportKeyCount.get(key) ?? 0) + 1);
-  });
-  SpreadsheetApp.flush();
-
-  const numCols = CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length;
-  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols);
-  const vals = range.getValues();
-  const disp = getDisplayExact_(range);
-  // Counts are shared with the tabs cleaned before this one: the same call can sit in Call Logs and in an archive tab.
-  const seen = seenAcrossTabs || new Map();
-  const kept = [];
-  vals.forEach((v, i) => {
-    const epoch = callEpoch_(disp[i][1]);
-    if (epoch !== null && epoch >= minEpoch && epoch <= maxEpoch) {
-      const key = callRowKey_(disp[i], disp[i][0]);
-      const n = (seen.get(key) ?? 0) + 1;
-      seen.set(key, n);
-      if (n > (exportKeyCount.get(key) ?? 0)) return; // not in the export: drop
-    }
-    kept.push(v);
-  });
-  const dropped = vals.length - kept.length;
-  if (dropped === 0) return 0;
-
-  const backupName = ('Backup ' + backupId + ' ' + tabName).slice(0, 99);
-  try {
-    backupTab_(ss, sheet, backupName, numCols);
-  } catch (err) {
-    throw new Error('backing up "' + tabName + '" failed (' + String(err && err.message ? err.message : err) + '); nothing was removed from it. If the spreadsheet is near its size limit, delete old "Backup ..." tabs first.');
-  }
-
-  range.clearContent();
-  if (kept.length > 0) sheet.getRange(2, 1, kept.length, numCols).setValues(kept);
-  SpreadsheetApp.flush();
-  return dropped;
-}
-
 // ---- Daily totals: Ultatel's "Total Calls Per Extension" report (one day, or a period spread over its working days) ----
 const DAILY_HEADERS_ = ['Date', 'Extension', 'Agent', 'Department', 'Out Answered', 'Out Unanswered', 'In Answered', 'In Unanswered', 'Total Calls', 'Duration (sec)', 'ACD', 'Uploaded At', 'Source'];
 
@@ -660,6 +437,12 @@ function importDays_(days, source) {
   return { days: days.length, rows: added.length, replaced: existing.length - kept.length, protectedRows, resolved, newAgents };
 }
 
+/** Menu item: rebuild the Totals tab now. */
+function rebuildTotalsMenu() {
+  withLock_(() => rebuildTotalsSummary_(), 50000);
+  SpreadsheetApp.getUi().alert('The Totals tab was rebuilt from Daily Totals.');
+}
+
 /**
  * Rebuilds the easy-to-read "Totals" tab from "Daily Totals": one line per agent with calls per month and overall
  * figures, and an ALL AGENTS line right under the headings. Plain values (not formulas), rewritten after every upload.
@@ -729,176 +512,6 @@ function rebuildTotalsSummary_() {
   sheet.setColumnWidth(2, 190);
 }
 
-// ---- Replace mode runs in the background (a time-driven trigger), because cleaning big tabs takes longer than a web request may ----
-const REPLACE_JOB_SHEET_ = 'Replace Job';
-const REPLACE_JOB_PROP_ = 'REPLACE_JOB';
-
-function getReplaceJob_() {
-  const raw = PropertiesService.getScriptProperties().getProperty(REPLACE_JOB_PROP_);
-  return raw ? JSON.parse(raw) : null;
-}
-
-function saveReplaceJob_(job) {
-  job.updated = Date.now();
-  PropertiesService.getScriptProperties().setProperty(REPLACE_JOB_PROP_, JSON.stringify(job));
-}
-
-function deleteReplaceTriggers_() {
-  ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === 'replaceJobRun_') ScriptApp.deleteTrigger(t);
-  });
-}
-
-/** Current state of the background clean-up: {state: 'queued'|'running'|'done'|'error', ...} or null. */
-function replaceJobStatus_() {
-  const job = getReplaceJob_();
-  if (!job) return null;
-  if ((job.state === 'queued' || job.state === 'running') && Date.now() - job.updated > 12 * 60 * 1000) {
-    job.state = 'error';
-    job.error = 'The clean-up stopped before finishing. Rows already removed are backed up; run it again.';
-  }
-  return job;
-}
-
-/**
- * Starts the background clean-up of replace mode: stores the file's calls in a hidden "Replace Job" tab and schedules
- * replaceJobRun_ to back up and clean every affected tab (see replaceTab_).
- * @param {string[][]} rows slim export rows (only the call-identifying columns filled)
- */
-function replaceStart_(rows, minEpoch, maxEpoch, backupId) {
-  const existing = replaceJobStatus_();
-  if (existing && (existing.state === 'queued' || existing.state === 'running')) {
-    throw new Error('A clean-up is already running (' + (existing.current || 'starting') + '). Wait for it to finish.');
-  }
-  if (!isFinite(minEpoch) || !isFinite(maxEpoch) || rows.length === 0) throw new Error('Nothing to replace.');
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const old = ss.getSheetByName(REPLACE_JOB_SHEET_);
-  if (old) ss.deleteSheet(old);
-  const width = CONFIG.RAW_HEADERS.length;
-  const sheet = ss.insertSheet(REPLACE_JOB_SHEET_);
-  sheet.hideSheet();
-  const data = rows.map(r => {
-    const row = [];
-    for (let i = 0; i < width; i++) row.push(r && r[i] !== undefined && r[i] !== null ? String(r[i]) : '');
-    return row;
-  });
-  sheet.getRange(1, 1, data.length, width).setNumberFormat('@').setValues(data);
-  SpreadsheetApp.flush();
-  const job = { state: 'queued', minEpoch, maxEpoch, backupId, rows: data.length, removed: 0, done: 0, total: 0, current: '' };
-  saveReplaceJob_(job);
-  deleteReplaceTriggers_();
-  ScriptApp.newTrigger('replaceJobRun_').timeBased().after(2000).create();
-  return job;
-}
-
-/** Trigger handler: backs up and cleans every tab holding calls of the stored export. */
-function replaceJobRun_() {
-  deleteReplaceTriggers_();
-  const job = getReplaceJob_();
-  if (!job || job.state !== 'queued') return;
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) {
-    job.current = 'waiting for the sheet';
-    saveReplaceJob_(job);
-    ScriptApp.newTrigger('replaceJobRun_').timeBased().after(30000).create();
-    return;
-  }
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  try {
-    job.state = 'running';
-    saveReplaceJob_(job);
-    const jobSheet = ss.getSheetByName(REPLACE_JOB_SHEET_);
-    if (!jobSheet || jobSheet.getLastRow() < 1) throw new Error('The stored export is missing.');
-    const rows = jobSheet.getRange(1, 1, jobSheet.getLastRow(), CONFIG.RAW_HEADERS.length).getDisplayValues();
-    const tabs = replacePlan_(job.minEpoch, job.maxEpoch);
-    const seenAcrossTabs = new Map();
-    job.total = tabs.length;
-    tabs.forEach((t, i) => {
-      job.current = t.name;
-      saveReplaceJob_(job);
-      job.removed += replaceTab_(t.name, rows, t.minEpoch, t.maxEpoch, job.backupId, seenAcrossTabs);
-      job.done = i + 1;
-      saveReplaceJob_(job);
-    });
-    job.state = 'done';
-    job.current = '';
-  } catch (err) {
-    job.state = 'error';
-    job.error = (job.current ? 'In "' + job.current + '": ' : '') + String(err && err.message ? err.message : err);
-  } finally {
-    saveReplaceJob_(job);
-    const js = ss.getSheetByName(REPLACE_JOB_SHEET_);
-    if (js) ss.deleteSheet(js);
-    lock.releaseLock();
-  }
-}
-
-
-/** Message lines for the result of reconcileImportData_. */
-function formatReconcile_(check) {
-  return check.ok
-    ? '\n• Check: every agent matches the export exactly.'
-    : '\n• CHECK FAILED - Call Logs differs from the export for this period:\n   ' + check.problems.join('\n   ') +
-      '\n   (extra rows usually mean old duplicates: run "Repair duplicate calls")';
-}
-
-/**
- * Processes rows from Import Staging into Call Logs:
- * 1. Checks for duplicates by Call ID (and compound key fallback) against existing logs.
- * 2. Deduplicates intra-batch rows.
- * 3. Appends only new records to Call Logs.
- * 4. Deletes the Import Staging tab completely after completion.
- */
-function processStagingImport() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const staging = ss.getSheetByName(CONFIG.STAGING_SHEET);
-
-  if (!ss.getSheetByName(CONFIG.CALL_LOG_SHEET) || !ss.getSheetByName(CONFIG.MAPPING_SHEET)) {
-    SpreadsheetApp.getUi().alert('Required tabs missing. Please run "1. Setup / Reset Tabs" first.');
-    return;
-  }
-
-  if (!staging) {
-    SpreadsheetApp.getUi().alert(
-      `"${CONFIG.STAGING_SHEET}" tab not found.\n\nClick "BD Call Dashboard > 1. Create / Open Staging Tab" to prepare an import tab.\n\n(Normally exports are uploaded from the web dashboard instead.)`
-    );
-    return;
-  }
-
-  const lastRow = staging.getLastRow();
-  if (lastRow < 2) {
-    SpreadsheetApp.getUi().alert('Import Staging is empty. Paste raw call data starting at row 2.');
-    return;
-  }
-
-  const stagingRange = staging.getRange(2, 1, lastRow - 1, CONFIG.RAW_HEADERS.length);
-  const rawRows = stagingRange.getValues();
-  const stagingDisp = getDisplayExact_(stagingRange); // text as shown (e.g. "0:37"), used for comparing
-
-  const result = withLock_(() => importCallRows_(rawRows, stagingDisp));
-
-  // Delete the staging tab completely after finishing
-  try {
-    ss.deleteSheet(staging);
-  } catch (err) {
-    console.warn('Could not delete staging sheet, clearing content instead:', err);
-    staging.clear();
-  }
-
-  let message = `✅ Import Complete:\n• ${result.imported} new call(s) imported into Call Logs.`;
-  if (result.duplicates > 0) {
-    message += `\n• ${result.duplicates} duplicate call(s) detected and skipped.`;
-  }
-  if (result.newAgents.length > 0) {
-    message += `\n• ${result.newAgents.length} new agent(s) added to Agent Mapping. Please assign their Opener names.`;
-  }
-  message += `\n• Staging tab removed.`;
-  message += formatReconcile_(result.check);
-
-  SpreadsheetApp.getUi().alert(message);
-
-  refreshDashboard();
-}
 
 // ==========================================
 // WEB APP: call-export upload from the dashboard
@@ -1000,8 +613,6 @@ function runSheetAction_(body) {
       }, 50000);
     case 'rebuildTotals':
       return withLock_(() => { rebuildTotalsSummary_(); return {}; }, 50000);
-    case 'replaceStatus':
-      return { job: replaceJobStatus_() };
     case 'autoArchiveOn':
       disableAutoArchive_();
       ScriptApp.newTrigger('archiveClosedMonthsAuto').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
@@ -1028,16 +639,15 @@ function safeEqual_(a, b) {
 }
 
 /**
- * Receives call-export rows from the web dashboard and adds them to Call Logs with exactly the same rules as
- * the Import Staging menu (duplicates skipped, repeated legs kept, archive-aware, per-agent check).
+ * Web app entry point for the dashboard: stores uploaded daily call totals and runs sheet maintenance.
  *
  * Setup (once): Project Settings > Script properties > add IMPORT_SECRET (a long random string), then
  * Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone). Put the web app URL and the same
  * secret in the dashboard's IMPORT_WEBHOOK_URL / IMPORT_WEBHOOK_SECRET settings. The secret is what protects it.
  *
  * Request body (JSON): { secret, action: 'ping' | 'status' | 'check' | 'repair' | 'archive' | 'fixTimes' |
- * 'autoArchiveOn' | 'autoArchiveOff' | 'setMapping' (entries: [{agent, opener}]) } or
- * { secret, action: 'import', rows: string[13][] }
+ * 'autoArchiveOn' | 'autoArchiveOff' | 'rebuildTotals' | 'setMapping' (entries: [{agent, opener}]) } or
+ * { secret, action: 'importDaily', days: [{date, rows}], source }
  */
 function doPost(e) {
   try {
@@ -1052,25 +662,7 @@ function doPost(e) {
       const source = String(body.source || 'daily').slice(0, 80);
       return jsonOut_({ ok: true, ...withLock_(() => importDays_(body.days, source), 50000) });
     }
-    if (body.action === 'replaceStart') {
-      if (!Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
-      const backupId = String(body.backupId || 'manual').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20);
-      return jsonOut_({ ok: true, job: withLock_(() => replaceStart_(body.rows, Number(body.minEpoch), Number(body.maxEpoch), backupId), 50000) });
-    }
-    if (body.action !== 'import') return jsonOut_({ ok: true, ...runSheetAction_(body) });
-    if (!Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
-    if (body.rows.length > 12000) return jsonOut_({ ok: false, error: 'Too many rows in one request (max 12000)' });
-
-    const width = CONFIG.RAW_HEADERS.length;
-    const rows = body.rows.map(r => {
-      const row = [];
-      for (let i = 0; i < width; i++) row.push(r && r[i] !== undefined && r[i] !== null ? String(r[i]) : '');
-      return row;
-    });
-    const display = rows.map(r => r.slice());
-    const clock = body.clock === 'ultatel' ? 'ultatel' : 'local';
-    const result = withLock_(() => importCallRows_(rows, display, { clock, skipCheck: body.skipCheck === true }), 50000);
-    return jsonOut_({ ok: true, ...result });
+    return jsonOut_({ ok: true, ...runSheetAction_(body) });
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err && err.message ? err.message : err) });
   }
@@ -1092,108 +684,6 @@ function withLock_(fn, waitMs) {
   } finally {
     lock.releaseLock();
   }
-}
-
-/**
- * Adds call rows (13 export columns) to Call Logs, skipping rows the sheet already holds. Used by both the
- * Import Staging menu and the web dashboard upload (doPost). Does no UI work.
- * @param {unknown[][]} rawRows rows as values (mutated: the Call Date becomes Cairo time)
- * @param {string[][]} dispRows the same rows as text, used for comparing (e.g. "0:37")
- * @param {{clock?: 'local'|'ultatel'}} [opts] clock the export's Call Date is written on. 'local' (default, the
- *   export is already in our local/Cairo time) keeps the time as written; 'ultatel' is the old fixed UTC-6 clock
- *   and is converted. Rows whose Call ID holds a real timestamp are recognised on either clock automatically.
- * @returns {{imported: number, duplicates: number, newAgents: string[], check: {ok: boolean, problems: string[]}}}
- */
-function importCallRows_(rawRows, dispRows, opts) {
-  const exportClock = opts && opts.clock === 'ultatel' ? 'ultatel' : 'local';
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const callLog = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
-  const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
-  if (!callLog || !mapping) throw new Error('Call Logs / Agent Mapping tab is missing.');
-
-  // How many rows of each call (see callRowKey_) are already stored: the active Call Logs plus the archive tabs of
-  // the months this export touches (so re-importing old data never duplicates archived calls).
-  const existingCount = new Map();
-  let stagedMin = Infinity;
-  let stagedMax = -Infinity;
-  dispRows.forEach(d => {
-    const e = callEpoch_(d[1]);
-    if (e !== null) { stagedMin = Math.min(stagedMin, e); stagedMax = Math.max(stagedMax, e); }
-  });
-  const existingItems = collectLogRowsDisplay_(stagedMin, stagedMax).map(d => ({ key: callRowKey_(d, d[0]), text: rowSignature_(d) }));
-  effectiveCounts_(existingItems).forEach((n, key) => existingCount.set(key, n));
-  const seenInBatch = new Map();
-
-  // Cache known mapped agents
-  const mapLastRow = mapping.getLastRow();
-  const knownAgents = new Set();
-  if (mapLastRow > 1) {
-    const agentValues = mapping.getRange(2, 1, mapLastRow - 1, 1).getValues();
-    agentValues.forEach(r => {
-      if (r[0]) knownAgents.add(String(r[0]).trim());
-    });
-  }
-
-  const toAppend = [];
-  const newAgents = new Set();
-  let duplicateCount = 0;
-
-  rawRows.forEach((r, rowIdx) => {
-    const disp = dispRows[rowIdx];
-    const rawText = disp[0] || dateText_(r[0]);
-    const callId = String(r[1] ?? '').trim();
-    const fromNum = String(r[2] ?? '').trim();
-    const toNum = String(r[3] ?? '').trim();
-    const extension = String(r[4] ?? '').trim();
-
-    // Skip empty rows
-    if (!rawText && !callId && !fromNum && !toNum) return;
-
-    // Local (Cairo) time: the Call ID's timestamp is exact; without one, keep the written time (local export)
-    // or convert the old UTC-6 export clock.
-    const epoch = callEpoch_(callId);
-    if (epoch !== null) r[0] = exactCairoTime_(rawText, callId);
-    else if (exportClock === 'ultatel') r[0] = toCairoDate_(r[0]);
-    else { const nv = naiveMs_(rawText); r[0] = nv !== null ? formatNaive_(nv) : rawText; }
-
-    // A call may legitimately have several rows. Add rows only beyond the number already stored,
-    // so re-importing an overlapping export adds nothing, while repeated legs in one export all stay.
-    const key = callRowKey_(disp, String(r[0]));
-    const seen = (seenInBatch.get(key) ?? 0) + 1;
-    seenInBatch.set(key, seen);
-    if (seen <= (existingCount.get(key) ?? 0)) {
-      duplicateCount++;
-      return;
-    }
-
-    const agent = parseAgentName_(extension);
-    const durationSec = durationToSeconds_(disp[10]);
-
-    if (agent && !isExcludedAgent_(agent) && !knownAgents.has(agent)) {
-      newAgents.add(agent);
-      knownAgents.add(agent);
-    }
-
-    toAppend.push([...r, agent, durationSec]);
-  });
-
-  // Batch insert new call rows
-  if (toAppend.length > 0) {
-    callLog.getRange(callLog.getLastRow() + 1, 1, toAppend.length, toAppend[0].length).setValues(toAppend);
-  }
-
-  // Batch insert newly discovered agents into mapping table
-  if (newAgents.size > 0) {
-    const newMappingRows = Array.from(newAgents).map(a => [a, '']);
-    mapping.getRange(mapping.getLastRow() + 1, 1, newMappingRows.length, 2).setValues(newMappingRows);
-  }
-
-  return {
-    imported: toAppend.length,
-    duplicates: duplicateCount,
-    newAgents: Array.from(newAgents),
-    check: opts && opts.skipCheck ? { ok: true, problems: [] } : reconcileImportData_(rawRows, dispRows)
-  };
 }
 
 /**
@@ -1358,24 +848,6 @@ function cellText_(v) {
  */
 function rowSignature_(r) {
   return JSON.stringify([0, 1, 2, 3, 4, 8, 9, 10, 11, 12, 14].map(i => cellText_(r[i])));
-}
-
-/**
- * Number of real rows for each key in a list of rows. Rows with the same key but written differently
- * are copies of each other; rows written identically are separate legs and all count.
- * @param {{key: string, text: string}[]} items  text = rowSignature_ of the row
- * @returns {Map<string, number>}
- */
-function effectiveCounts_(items) {
-  const byKey = new Map();
-  items.forEach(it => {
-    if (!byKey.has(it.key)) byKey.set(it.key, new Map());
-    const byText = byKey.get(it.key);
-    byText.set(it.text, (byText.get(it.text) ?? 0) + 1);
-  });
-  const counts = new Map();
-  byKey.forEach((byText, key) => counts.set(key, Math.max(...byText.values())));
-  return counts;
 }
 
 /**
@@ -1627,62 +1099,6 @@ function runRepair_(opts) {
   callLog.getRange(2, 1, lastRow - 1, numCols).clearContent();
   callLog.getRange(2, 1, plan.rows.length, numCols).setValues(plan.rows);
   return { duplicates: plan.duplicates, redated: plan.redated, rows: plan.rows.length, backup: backupName };
-}
-
-/**
- * Treats timestamps without an explicit offset as fixed UTC-6, then formats
- * the resulting instant in Africa/Cairo. Cairo DST is applied by Apps Script.
- */
-function toCairoDate_(value) {
-  if (value === null || value === undefined || value === '') return '';
-
-  let text;
-  if (value instanceof Date && !isNaN(value.getTime())) {
-    // Read the displayed source clock in UTC-6 before converting it.
-    text = Utilities.formatDate(value, CONFIG.SOURCE_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
-  } else {
-    text = String(value).trim();
-  }
-  if (!text) return '';
-
-  // Explicitly zoned values are already instants; only reformat them.
-  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(text)) {
-    const explicit = new Date(text);
-    if (!isNaN(explicit.getTime())) {
-      return Utilities.formatDate(explicit, CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
-    }
-  }
-
-  let match = text.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T]+(\d{1,2}):?(\d{2})?(?::?(\d{2}))?)?/);
-  let year;
-  let month;
-  let day;
-  let hour;
-  let minute;
-  let second;
-
-  if (match) {
-    year = Number(match[1]);
-    month = Number(match[2]);
-    day = Number(match[3]);
-    hour = Number(match[4] || 0);
-    minute = Number(match[5] || 0);
-    second = Number(match[6] || 0);
-  } else {
-    match = text.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})(?:[ T]+(\d{1,2}):?(\d{2})?(?::?(\d{2}))?)?/);
-    if (!match) return text;
-    month = Number(match[1]);
-    day = Number(match[2]);
-    year = Number(match[3]);
-    if (year < 100) year += 2000;
-    hour = Number(match[4] || 0);
-    minute = Number(match[5] || 0);
-    second = Number(match[6] || 0);
-  }
-
-  // UTC-6 local clock -> UTC instant; Africa/Cairo then applies DST rules.
-  const instant = new Date(Date.UTC(year, month - 1, day, hour + 6, minute, second));
-  return Utilities.formatDate(instant, CONFIG.CAIRO_TIME_ZONE, 'yyyy-MM-dd HH:mm:ss');
 }
 
 // ==========================================

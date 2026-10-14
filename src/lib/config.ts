@@ -1,7 +1,7 @@
 import { LIKELY_SHOW_STAGES, NEVER_SHOW_STAGES } from './stages';
 
 export const CONFIG = {
-  // Call Dashboard Sheet (Call Logs, Import Staging, Agent Mapping, BD Dashboard)
+  // Call Dashboard Sheet (Daily Totals, Totals, Call Logs, Agent Mapping, BD Dashboard)
   CALL_DASHBOARD_SHEET_ID: process.env.CALL_DASHBOARD_SHEET_ID || '1aI0879YxZdu17GHm-QLhOoE8CuFlkpyROvCtRjjuRbw',
 
   // BD Meetings Tracker Sheet (New Meetings, Follow Ups, etc.)
@@ -36,7 +36,7 @@ export const CONFIG = {
   MAPPING_SHEET: 'Agent Mapping',
 
   // Agents/Openers to completely exclude from dashboard.
-  // Keep in sync with CONFIG.EXCLUDED_AGENTS in apps-script/Code.js (which also owns the staging/dashboard tab names).
+  // Keep in sync with CONFIG.EXCLUDED_AGENTS in apps-script/Code.js (which also owns the dashboard tab names).
   EXCLUDED_AGENTS: ['russ', 'george', 'caroline', 'caroline richards']
 };
 

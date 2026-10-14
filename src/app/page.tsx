@@ -294,7 +294,6 @@ export default function DashboardPage() {
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
         onSuccess={() => fetchData(true)}
-        isAdmin={data?.viewer?.role === 'admin'}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
