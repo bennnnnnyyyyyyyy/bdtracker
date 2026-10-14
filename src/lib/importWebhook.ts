@@ -1,3 +1,4 @@
+import type { DailyTotalRow } from './dailyTotals';
 import { callEpoch } from './callKeys';
 
 export interface SheetImportResult {
@@ -151,4 +152,20 @@ export async function startReplace(rows: string[][], backupId: string, fetchFn: 
   if (slim.length === 0) throw new Error('The file has no calls with a Call ID timestamp, so there is nothing to replace.');
   const reply = await postToSheet<{ ok?: boolean; error?: string; job?: Record<string, unknown> }>({ action: 'replaceStart', minEpoch, maxEpoch, backupId, rows: slim }, fetchFn);
   return reply.job ?? {};
+}
+
+/**
+ * Stores per-extension totals for one or more days in the sheet's Daily Totals tab. A day uploaded again is replaced.
+ * `source` is saved next to the rows ("daily", or a description of the period that was spread over its working days).
+ */
+export async function sendDailyToSheet(
+  days: { date: string; rows: DailyTotalRow[] }[],
+  source: string,
+  fetchFn: Fetch = fetch,
+): Promise<{ days: number; rows: number; replaced: number; newAgents: string[] }> {
+  const reply = await postToSheet<{ ok?: boolean; error?: string; days: number; rows: number; replaced: number; newAgents: string[] }>(
+    { action: 'importDaily', days, source },
+    fetchFn,
+  );
+  return { days: reply.days, rows: reply.rows, replaced: reply.replaced, newAgents: reply.newAgents ?? [] };
 }

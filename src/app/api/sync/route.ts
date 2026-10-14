@@ -26,8 +26,16 @@ async function sync(request: NextRequest) {
         { status: 503 }
       );
     }
+    // Daily totals (weighted records) cannot be stored one row per call; the fallback snapshot keeps per-call rows only.
+    const perCall = rawData.calls.filter((c) => c.weight === undefined);
+    if (perCall.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'Nothing synced: calls now come from daily totals, which the Supabase fallback snapshot does not store. The previous snapshot was left untouched.',
+      });
+    }
     const supabaseResult = await saveRawDataToSupabase({
-      calls: rawData.calls,
+      calls: perCall,
       meetings: rawData.meetings,
       trackerCounts: rawData.trackerCounts,
       agentMappings: rawData.agentMappings,

@@ -1,3 +1,4 @@
+import { agentOfExtension, dailyRowsToCalls, DailyTotalRow } from './dailyTotals';
 import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
@@ -22,6 +23,8 @@ export interface RawDashboardDataset {
   failedSources: string[];
   /** Epoch ms when the sources were actually read. */
   loadedAt: number;
+  /** Days (YYYY-MM-DD) covered by uploaded daily totals; per-call rows of those days are ignored. */
+  dailyDays?: string[];
 }
 
 function getSheetsClient() {
@@ -140,6 +143,46 @@ export async function fetchCallDashboardData(): Promise<{
 
   const active = await readCallTab(sheets, CONFIG.CALL_LOG_SHEET);
   return { calls: active.calls, agentMappings, duplicatesRemoved: active.duplicatesRemoved };
+}
+
+/**
+ * Reads the "Daily Totals" tab (one row per day and extension, written by the dashboard upload of Ultatel's
+ * "Total Calls Per Extension" report) and turns it into weighted call records. A missing tab means no daily totals yet.
+ */
+export async function fetchDailyTotals(agentMappings: AgentMapping[]): Promise<{ calls: CallRecord[]; days: string[] }> {
+  const sheets = getSheetsClient();
+  if (!sheets) throw new Error('Google Sheets API credentials not configured');
+  let values: unknown[][] = [];
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: CONFIG.CALL_DASHBOARD_SHEET_ID,
+      range: `'${CONFIG.DAILY_TOTALS_SHEET}'!A2:L`,
+      valueRenderOption: 'UNFORMATTED_VALUE',
+    });
+    values = (res.data.values as unknown[][]) || [];
+  } catch (err) {
+    if (/Unable to parse range|not found/i.test((err as Error).message)) return { calls: [], days: [] };
+    throw err;
+  }
+
+  const mapped = new Map<string, string>();
+  agentMappings.forEach((m) => { if (m.agent) mapped.set(m.agent.toLowerCase(), m.opener); });
+  const byDay = new Map<string, DailyTotalRow[]>();
+  values.forEach((r) => {
+    const date = String(r[0] ?? '').trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !r[1]) return;
+    const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+    const row: DailyTotalRow = {
+      extension: String(r[1]), agent: String(r[2] ?? '') || agentOfExtension(String(r[1])), department: String(r[3] ?? ''),
+      outAnswered: n(r[4]), outUnanswered: n(r[5]), inAnswered: n(r[6]), inUnanswered: n(r[7]),
+      totalCalls: n(r[8]), durationSec: n(r[9]), acd: n(r[10]),
+    };
+    const list = byDay.get(date);
+    if (list) list.push(row); else byDay.set(date, [row]);
+  });
+  const calls: CallRecord[] = [];
+  byDay.forEach((rows, date) => calls.push(...dailyRowsToCalls(date, rows, mapped)));
+  return { calls, days: Array.from(byDay.keys()).sort() };
 }
 
 /**
@@ -335,18 +378,28 @@ async function loadDashboardRawData(): Promise<RawDashboardDataset> {
       fetchAttendanceData()
     ]);
 
+    // Daily totals (Total Calls Per Extension uploads) replace per-call rows for the days they cover.
+    const daily = await fetchDailyTotals(callData.agentMappings).catch((err) => {
+      console.warn('[Google Sheets] Daily totals fetch failed:', err.message);
+      failedSources.push('daily totals');
+      return { calls: [] as CallRecord[], days: [] as string[] };
+    });
+
     // 2. Check if local Ultatel departmental summary is present
     const ultatelDeptCalls = fetchLocalUltatelDeptData();
 
     // If call logs are empty or if local Ultatel departmental export exists, prioritize/merge
-    let calls = callData.calls;
+    const dailySet = new Set(daily.days);
+    let calls = daily.days.length > 0
+      ? [...daily.calls, ...callData.calls.filter((c) => !dailySet.has(String(c.callDate).slice(0, 10)))]
+      : callData.calls;
     let callsSource: DataSourceInfo['callsSource'] = 'google_sheets';
 
     if (calls.length === 0 && ultatelDeptCalls && ultatelDeptCalls.length > 0) {
       calls = ultatelDeptCalls;
       callsSource = 'ultatel_dept_report';
     } else if (calls.length > 0) {
-      callsSource = 'call_logs';
+      callsSource = daily.days.length > 0 ? 'daily_totals' : 'call_logs';
     }
 
     const dataSourceInfo: DataSourceInfo = {
@@ -383,7 +436,8 @@ async function loadDashboardRawData(): Promise<RawDashboardDataset> {
       dataSourceInfo,
       isMockData: false,
       failedSources,
-      loadedAt: Date.now()
+      loadedAt: Date.now(),
+      dailyDays: daily.days
     };
 
     return result;
@@ -541,11 +595,12 @@ export async function getDashboardRawData(
 ): Promise<RawDashboardDataset> {
   const base = await getActiveDashboardData(opts);
   if (opts.fresh) return base;
+  const dailyDays = new Set(base.dailyDays ?? []);
   const archived = await getArchivedCalls(opts.startDate, opts.endDate);
   if (archived.calls.length === 0 && !archived.note) return base;
   return {
     ...base,
-    calls: archived.calls.length > 0 ? [...archived.calls, ...base.calls] : base.calls,
+    calls: archived.calls.length > 0 ? [...archived.calls.filter((c) => !dailyDays.has(String(c.callDate).slice(0, 10))), ...base.calls] : base.calls,
     dataSourceInfo: {
       ...base.dataSourceInfo,
       notes: [base.dataSourceInfo.notes, archived.note].filter(Boolean).join(' ') || undefined

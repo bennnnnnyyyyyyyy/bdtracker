@@ -1,5 +1,6 @@
 'use client';
 
+import { dateFromFileName } from '@/lib/fileDate';
 import React, { useState, useRef } from 'react';
 import { Upload, X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
@@ -30,6 +31,9 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   const [openers, setOpeners] = useState<Record<string, string>>({});
   const [fixing, setFixing] = useState(false);
   const [replace, setReplace] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [reportDate, setReportDate] = useState('');
+  const [reportEnd, setReportEnd] = useState('');
   const [clock, setClock] = useState<'local' | 'ultatel'>('local');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,11 +53,9 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
     e.preventDefault();
     setDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (/\.(csv|xlsx|xls)$/i.test(droppedFile.name)) {
-        setFile(droppedFile);
-        setStatusMessage(null);
-        setDetails([]);
+      const dropped = Array.from(e.dataTransfer.files).filter((f) => /\.(csv|xlsx|xls)$/i.test(f.name));
+      if (dropped.length > 0) {
+        selectFiles(dropped);
       } else {
         setStatusMessage({ type: 'error', text: 'Please upload an Ultatel export (.csv) or an Excel workbook (.xlsx or .xls).' });
       }
@@ -61,11 +63,17 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
-      setStatusMessage(null);
-      setDetails([]);
-    }
+    if (e.target.files && e.target.files.length > 0) selectFiles(Array.from(e.target.files));
+  };
+
+  // One or several files. A single file keeps the full flow; several files are daily reports uploaded in a row.
+  const selectFiles = (picked: File[]) => {
+    setFile(picked[0]);
+    setFiles(picked);
+    setReportDate(picked.length === 1 ? (dateFromFileName(picked[0].name) ?? '') : '');
+    setReportEnd('');
+    setStatusMessage(null);
+    setDetails([]);
   };
 
   const uploadFile = async (target: File) => {
@@ -86,6 +94,8 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
         const formData = new FormData();
         formData.append('file', target);
         formData.append('clock', clock);
+        if (reportDate) formData.append('date', reportDate);
+        if (reportEnd) formData.append('endDate', reportEnd);
         Object.entries(fields).forEach(([k, v]) => formData.append(k, v));
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const text = await res.text();
@@ -166,10 +176,14 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
           lines.push(`New agent(s) added to Agent Mapping: ${(json.newAgents as string[]).join(', ')}. Enter their Opener name below.`);
         }
       }
+      if (json.fileType === 'daily_totals' && (json.newAgents as string[] | undefined)?.length) {
+        lines.push(`New agent(s) added to Agent Mapping: ${(json.newAgents as string[]).join(', ')}. Enter their Opener name below (type “ignore” for anyone not on the BD team).`);
+      }
       setDetails(lines);
       setCheckFailed(json.fileType === 'ultatel_calls' && json.checkOk === false);
       setNewAgents((json.newAgents as string[] | undefined) ?? []);
       setFile(null);
+      setFiles([]);
 
       // Trigger automatic dashboard refresh; stay open longer when there is something to read or do.
       setTimeout(() => {
@@ -186,8 +200,42 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
     }
   };
 
+  // Several daily reports at once: each file is dated from its file name and uploaded in turn.
+  const uploadBatch = async (batch: File[]) => {
+    setUploading(true);
+    setStatusMessage(null);
+    setNewAgents([]);
+    const lines: string[] = [];
+    const agents: string[] = [];
+    let done = 0;
+    for (let i = 0; i < batch.length; i++) {
+      setStatusMessage({ type: 'success', text: `Uploading ${i + 1} of ${batch.length}: ${batch[i].name}…` });
+      try {
+        const formData = new FormData();
+        formData.append('file', batch[i]);
+        formData.append('clock', clock);
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const body = await res.json().catch(() => ({} as Record<string, unknown>));
+        if (!res.ok) throw new Error((body.error as string) || `Upload failed (${res.status})`);
+        done++;
+        ((body.newAgents as string[]) ?? []).forEach((a) => { if (!agents.includes(a)) agents.push(a); });
+        lines.push(`${batch[i].name}: ${(body.message as string) ?? 'saved'}`);
+      } catch (err) {
+        lines.push(`${batch[i].name}: NOT saved (${err instanceof Error ? err.message : 'failed'})`);
+      }
+    }
+    if (agents.length > 0) lines.push(`New agent(s) added to Agent Mapping: ${agents.join(', ')}. Enter their Opener name in Call log maintenance (type “ignore” for anyone not on the BD team).`);
+    setStatusMessage({ type: done === batch.length ? 'success' : 'error', text: `${done} of ${batch.length} file(s) saved.` });
+    setDetails(lines);
+    setFile(null);
+    setFiles([]);
+    setUploading(false);
+    onSuccess();
+  };
+
   const handleUpload = () => {
-    if (file) void uploadFile(file);
+    if (files.length > 1) void uploadBatch(files);
+    else if (file) void uploadFile(file);
   };
 
   // One click: repair duplicate rows in the sheet, then upload the same file again to re-check it.
@@ -261,6 +309,10 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
               <span className="font-semibold text-[#4ade80]">Ultatel Call Details (CSV or Excel)</span>
               <span className="text-[11px] text-slate-400">e.g. <code>Call Details - 10-12-2026.csv</code>. Added straight to the Call Logs sheet; calls already there are skipped, so uploading an overlapping file is safe.</span>
             </div>
+            <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
+              <span className="font-semibold text-[#4ade80]">Total Calls Per Extension (daily report, CSV or Excel)</span>
+              <span className="text-[11px] text-slate-400">One file per day (or per period), e.g. <code>Total_Calls_Per_Extension_JULY_1.xlsx</code>. The first date is read from the file name or chosen below. Several single-day files can be selected at once. Uploading a day again replaces that day.</span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
                 <span className="font-semibold text-[#e8c56a]">Attendance Workbook</span>
@@ -285,6 +337,17 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
               <option value="ultatel" className="text-black">Ultatel&apos;s old UTC-6 clock</option>
             </select>
           </label>
+          {files.length <= 1 && (
+            <div className="text-xs text-slate-300 mb-2 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                Daily / period report covers
+                <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} className="bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white" />
+                to
+                <input type="date" value={reportEnd} onChange={(e) => setReportEnd(e.target.value)} className="bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white" />
+              </div>
+              <div className="text-[11px] text-slate-500">Leave the second date empty for a single day. For a longer period the totals are spread evenly over its working days.</div>
+            </div>
+          )}
           <label className="flex items-start gap-2 text-xs text-slate-300 mb-2">
             <input
               type="checkbox"
@@ -313,11 +376,14 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
               ref={fileInputRef}
               onChange={handleFileChange}
               accept=".csv,.xlsx,.xls"
+              multiple
               className="hidden"
             />
             <Upload className={`w-6 h-6 ${dragOver ? 'text-[#e8c56a]' : 'text-slate-500'}`} />
             <div className="text-xs font-medium text-slate-200">
-              {file ? (
+              {files.length > 1 ? (
+                <span className="text-[#e8c56a] font-semibold">{files.length} files selected</span>
+              ) : file ? (
                 <span className="text-[#e8c56a] font-semibold">{file.name} ({(file.size / 1024).toFixed(0)} KB)</span>
               ) : (
                 <span>Drop the file here or <span className="text-[#e8c56a] underline">browse</span></span>

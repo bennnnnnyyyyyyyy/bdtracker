@@ -151,3 +151,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 30. Replace counts across tabs
 - A call can sit both in `Call Logs` and in a month archive tab (an import adds to the active log while the original was already archived). The clean-up now shares its per-call counts across the tabs it processes, so only as many rows as the file holds are kept in total.
+
+## 31. Daily totals (Total Calls Per Extension) replace per-call uploads
+- New upload type: Ultatel's "Total Calls Per Extension" report (CSV/Excel; one row per extension: Out/In Answered/Unanswered, total, duration, ACD, department). The file has no date: it is taken from the file name (`..._JULY_1`), or from the two date boxes in the upload window. One date = one day; two dates = a period whose totals are spread evenly over its Monday-Friday days (weekly/monthly totals exact, daily approximate). Several single-day files can be selected at once. Uploading a day again replaces that day.
+- Stored in the sheet tab `Daily Totals` (Apps Script action `importDaily`, `importDays_`). The web app reads it (`fetchDailyTotals`) and turns each row into weighted call records (`CallRecord.weight`), so all formulas are unchanged. For days covered by daily totals, per-call rows are ignored (no double counting). Per-call exports and the Call Logs sheet still work for days without daily totals.
+- Agents whose department is not Business Development (OPS, Fulfillment, BOO, …) are left out unless given an Opener name in Agent Mapping; blank department stays in. New BD/blank-department agents are added to Agent Mapping.
+- Supabase fallback snapshot stores per-call rows only; daily totals are not in it.

@@ -46,9 +46,9 @@ export async function GET(request: NextRequest) {
     const response: DashboardResponse = {
       openers: responseOpeners,
       totals,
-      calls: includeCalls ? filteredCalls : [],
+      calls: includeCalls ? filteredCalls.filter((c) => c.weight === undefined) : [],
       callsIncluded: includeCalls,
-      callsTotal: filteredCalls.length,
+      callsTotal: filteredCalls.reduce((sum, c) => sum + (c.weight ?? 1), 0),
       meetings: filteredMeetings,
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,

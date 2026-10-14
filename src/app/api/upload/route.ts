@@ -6,7 +6,8 @@ import { CONFIG } from '@/lib/config';
 import { invalidateDashboardCache } from '@/lib/sheets';
 import { requireUser } from '@/lib/api-auth';
 import { looksLikeCallExport, parseCallExportFile, parseCsv } from '@/lib/ultatelFile';
-import { isImportConfigured, missingImportSettings, sendRowsToSheet, startReplace } from '@/lib/importWebhook';
+import { dateFromFileName, looksLikeDailyTotals, parseDailyTotalsRows, readTable, spreadOverDays, workingDaysBetween } from '@/lib/dailyTotals';
+import { isImportConfigured, missingImportSettings, sendDailyToSheet, sendRowsToSheet, startReplace } from '@/lib/importWebhook';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -25,6 +26,48 @@ export async function POST(request: NextRequest) {
     if (upload instanceof File && (/\.csv$/i.test(upload.name) || /\.xlsx?$/i.test(upload.name))) {
       if (upload.size > MAX_UPLOAD_BYTES) return NextResponse.json({ error: 'The file must be 15 MB or smaller.' }, { status: 413 });
       const buf = Buffer.from(await upload.arrayBuffer());
+
+      // Ultatel "Total Calls Per Extension" report: one row per extension for one day.
+      let table: unknown[][] = [];
+      try { table = readTable(buf, upload.name); } catch { table = []; }
+      if (looksLikeDailyTotals(table)) {
+        if (!isImportConfigured()) {
+          return NextResponse.json({ error: `Uploading reports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}.` }, { status: 501 });
+        }
+        const typed = String(peek.get('date') ?? '').trim();
+        const typedEnd = String(peek.get('endDate') ?? '').trim();
+        const iso = /^\d{4}-\d{2}-\d{2}$/;
+        const from = iso.test(typed) ? typed : dateFromFileName(upload.name);
+        if (!from) {
+          return NextResponse.json({ error: 'Which day is this report for? The file name has no date: choose the date and upload again.', needsDate: true }, { status: 400 });
+        }
+        const to = iso.test(typedEnd) && typedEnd > from ? typedEnd : from;
+        const today = new Date().toISOString().slice(0, 10);
+        if (from > today || to > today) {
+          return NextResponse.json({ error: `The report date ${to > today ? to : from} is in the future.` }, { status: 400 });
+        }
+        const parsed = parseDailyTotalsRows(table);
+        if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 400 });
+
+        const isPeriod = to !== from;
+        const dates = isPeriod ? workingDaysBetween(from, to) : [from];
+        if (dates.length === 0) return NextResponse.json({ error: 'That period has no working days (Monday to Friday).' }, { status: 400 });
+        const days = isPeriod ? spreadOverDays(parsed.rows, dates) : [{ date: from, rows: parsed.rows }];
+        const source = isPeriod ? `period ${from}..${to} spread over ${dates.length} working days` : 'daily';
+        const result = await sendDailyToSheet(days, source);
+        invalidateDashboardCache();
+        const total = parsed.rows.reduce((sum, r) => sum + r.totalCalls, 0);
+        return NextResponse.json({
+          success: true,
+          fileType: 'daily_totals',
+          date: from,
+          message: isPeriod
+            ? `Report saved for ${from} to ${to}: ${total} calls spread evenly over ${dates.length} working days (daily numbers inside the period are approximate; weekly and monthly totals are exact).`
+            : `Daily totals for ${from} saved: ${parsed.rows.length} extension(s), ${total} calls${result.replaced > 0 ? ' (replaced the earlier upload of that day)' : ''}.`,
+          newAgents: result.newAgents,
+        });
+      }
+
       if (looksLikeCallExport(buf, upload.name)) {
         if (!isImportConfigured()) {
           return NextResponse.json({ error: `Uploading call exports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}. Settings only take effect after a redeploy (Vercel) or a restart (local), and must be added to the Production environment.` }, { status: 501 });

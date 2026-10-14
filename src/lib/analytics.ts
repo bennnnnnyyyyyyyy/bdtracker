@@ -418,12 +418,13 @@ export function computeDashboardMetrics(
       stats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, totalSec: 0 };
     }
     const s = stats[opener];
-    s.calls++;
-    if (r.type === 'OUT-Bound') s.out++;
-    else if (r.type === 'IN-Bound') s.in++;
+    const w = r.weight ?? 1;
+    s.calls += w;
+    if (r.type === 'OUT-Bound') s.out += w;
+    else if (r.type === 'IN-Bound') s.in += w;
 
-    if (r.outcome === 'ANSWERED') s.answered++;
-    else if (r.outcome === 'NO ANSWER') s.noAnswer++;
+    if (r.outcome === 'ANSWERED') s.answered += w;
+    else if (r.outcome === 'NO ANSWER') s.noAnswer += w;
 
     s.totalSec += r.durationSec || 0;
   });
@@ -774,11 +775,12 @@ function buildPeriodicBreakdown(
       p.agentStats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, meetings: 0, noShow: 0, attended: 0, onboarded: 0 };
     }
     const a = p.agentStats[opener];
-    a.calls++;
-    if (c.type === 'OUT-Bound') a.out++;
-    else if (c.type === 'IN-Bound') a.in++;
-    if (c.outcome === 'ANSWERED') a.answered++;
-    else if (c.outcome === 'NO ANSWER') a.noAnswer++;
+    const w = c.weight ?? 1;
+    a.calls += w;
+    if (c.type === 'OUT-Bound') a.out += w;
+    else if (c.type === 'IN-Bound') a.in += w;
+    if (c.outcome === 'ANSWERED') a.answered += w;
+    else if (c.outcome === 'NO ANSWER') a.noAnswer += w;
   });
 
   // 2. Process Meetings

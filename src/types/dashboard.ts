@@ -15,6 +15,8 @@ export interface CallRecord {
   callPath: string;
   agent: string;
   opener: string;
+  /** How many calls this record stands for (daily totals from the Total Calls Per Extension report); 1 when absent. */
+  weight?: number;
   /** Text of the sheet row as read (internal, used to tell copies of a row from repeated rows). */
   rowSignature?: string;
 }
@@ -167,7 +169,7 @@ export interface AgentMapping {
 export interface DataSourceInfo {
   source: 'google_sheets' | 'local_excel' | 'supabase';
   attendanceSource: 'google_sheets' | 'local_excel' | 'none';
-  callsSource: 'google_sheets' | 'ultatel_dept_report' | 'call_logs' | 'supabase';
+  callsSource: 'google_sheets' | 'ultatel_dept_report' | 'call_logs' | 'daily_totals' | 'supabase';
   notes?: string;
 }
 

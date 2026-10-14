@@ -32,6 +32,7 @@ const CONFIG = {
   // a show only after management confirms it there, so use the dashboard for official show numbers.
   ATTENDED_STAGES: ['Follow Ups', 'Contract Sent', 'Invoice Sent', 'Onboarded', 'Temporary Inactive'],
 
+  DAILY_TOTALS_SHEET: 'Daily Totals',
   CALL_LOG_SHEET: 'Call Logs',
 
   // Closed months move out of 'Call Logs' into tabs named 'Call Logs YYYY-MM' to keep the active log small and fast.
@@ -555,6 +556,61 @@ function replaceTab_(tabName, exportRows, minEpoch, maxEpoch, backupId, seenAcro
   return dropped;
 }
 
+// ---- Daily totals: Ultatel's "Total Calls Per Extension" report (one day, or a period spread over its working days) ----
+const DAILY_HEADERS_ = ['Date', 'Extension', 'Agent', 'Department', 'Out Answered', 'Out Unanswered', 'In Answered', 'In Unanswered', 'Total Calls', 'Duration (sec)', 'ACD', 'Uploaded At', 'Source'];
+
+/**
+ * Stores per-extension totals for one or more days in the "Daily Totals" tab. Uploading a day again replaces that
+ * day's rows (never doubles them). Agents of the Business Development team (or without a department) that are not in
+ * Agent Mapping yet are added there so they can be given an Opener name.
+ * @param {{date: string, rows: {extension: string, agent: string, department: string, outAnswered: number, outUnanswered: number, inAnswered: number, inUnanswered: number, totalCalls: number, durationSec: number, acd: number}[]}[]} days
+ * @param {string} source text saved in the Source column ("daily" or a description of the spread period)
+ * @returns {{days: number, rows: number, replaced: number, newAgents: string[]}}
+ */
+function importDays_(days, source) {
+  days.forEach(d => { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date))) throw new Error('A report date is missing or invalid.'); });
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.DAILY_TOTALS_SHEET);
+    sheet.getRange(1, 1, 1, DAILY_HEADERS_.length).setValues([DAILY_HEADERS_]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  const width = DAILY_HEADERS_.length;
+  const dayOf = v => (v instanceof Date ? Utilities.formatDate(v, ssTz_(), 'yyyy-MM-dd') : String(v == null ? '' : v).slice(0, 10));
+  const replaceDates = new Set(days.map(d => d.date));
+  const existing = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues() : [];
+  const kept = existing.filter(r => !replaceDates.has(dayOf(r[0]))).map(r => [dayOf(r[0])].concat(r.slice(1)));
+  const now = Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm:ss');
+  const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+  const added = [];
+  days.forEach(d => d.rows.forEach(r => added.push([
+    d.date, String(r.extension || ''), String(r.agent || ''), String(r.department || ''),
+    num(r.outAnswered), num(r.outUnanswered), num(r.inAnswered), num(r.inUnanswered),
+    num(r.totalCalls), Math.round(num(r.durationSec)), num(r.acd), now, source
+  ])));
+  const all = kept.concat(added).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : String(a[1]).localeCompare(String(b[1]))));
+  if (existing.length > 0) sheet.getRange(2, 1, existing.length, width).clearContent();
+  sheet.getRange(2, 1, all.length, 2).setNumberFormat('@');
+  sheet.getRange(2, 1, all.length, width).setValues(all.map(r => { const row = r.slice(0, width); while (row.length < width) row.push(''); return row; }));
+
+  const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
+  const newAgents = [];
+  if (mapping) {
+    const known = new Set(mapping.getLastRow() > 1 ? mapping.getRange(2, 1, mapping.getLastRow() - 1, 1).getValues().map(r => String(r[0]).trim()) : []);
+    added.forEach(r => {
+      const agent = String(r[2] || '').trim();
+      const dept = String(r[3] || '').trim();
+      if (!agent || known.has(agent) || isExcludedAgent_(agent)) return;
+      if (dept && !/business development/i.test(dept)) return;
+      known.add(agent);
+      newAgents.push(agent);
+    });
+    if (newAgents.length > 0) mapping.getRange(mapping.getLastRow() + 1, 1, newAgents.length, 2).setValues(newAgents.map(a => [a, '']));
+  }
+  return { days: days.length, rows: added.length, replaced: existing.length - kept.length, newAgents };
+}
+
 // ---- Replace mode runs in the background (a time-driven trigger), because cleaning big tabs takes longer than a web request may ----
 const REPLACE_JOB_SHEET_ = 'Replace Job';
 const REPLACE_JOB_PROP_ = 'REPLACE_JOB';
@@ -871,6 +927,11 @@ function doPost(e) {
       return jsonOut_({ ok: false, error: 'Unauthorized' });
     }
     if (body.action === 'ping') return jsonOut_({ ok: true, pong: true });
+    if (body.action === 'importDaily') {
+      if (!Array.isArray(body.days) || body.days.length === 0 || body.days.length > 70) return jsonOut_({ ok: false, error: 'Bad request' });
+      const source = String(body.source || 'daily').slice(0, 80);
+      return jsonOut_({ ok: true, ...withLock_(() => importDays_(body.days, source), 50000) });
+    }
     if (body.action === 'replaceStart') {
       if (!Array.isArray(body.rows)) return jsonOut_({ ok: false, error: 'Bad request' });
       const backupId = String(body.backupId || 'manual').replace(/[^0-9A-Za-z-]/g, '').slice(0, 20);

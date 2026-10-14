@@ -31,6 +31,7 @@ export const CONFIG = {
   NEVER_SHOW_STAGES,
   LIKELY_SHOW_STAGES,
 
+  DAILY_TOTALS_SHEET: 'Daily Totals',
   CALL_LOG_SHEET: 'Call Logs',
   MAPPING_SHEET: 'Agent Mapping',
 
