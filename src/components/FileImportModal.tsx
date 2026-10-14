@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Upload, X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface FileImportModalProps {
@@ -15,6 +15,13 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   const [uploading, setUploading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !uploading) onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, uploading, onClose]);
 
   if (!isOpen) return null;
 
@@ -92,28 +99,28 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+      onMouseDown={(e) => { if (e.target === e.currentTarget && !uploading) onClose(); }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div
-        className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col"
-        style={{ background: '#111113', border: '1px solid rgba(255,255,255,0.1)' }}
+        className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col bg-surface border border-white/12"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.08)]">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-white/8">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#1a1608] border border-[rgba(201,168,76,0.3)]">
-              <FileSpreadsheet className="w-4 h-4 text-[#e8c56a]" />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gold-dim border border-gold-border">
+              <FileSpreadsheet className="w-4 h-4 text-gold-light" />
             </div>
             <div>
-              <h2 id="modal-title" className="font-serif text-base font-bold text-white">Import Spreadsheet</h2>
-              <p className="label-caps mt-0.5 text-slate-400">Ultatel Calls or Attendance Workbook</p>
+              <h2 id="modal-title" className="font-serif text-lg font-bold text-white">Import spreadsheet</h2>
+              <p className="text-xs text-text-dim mt-0.5">Ultatel calls or attendance workbook</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+            className="btn btn-icon border-transparent bg-transparent text-text-dim hover:text-white"
             aria-label="Close modal"
           >
             <X className="w-4 h-4" />
@@ -122,18 +129,18 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
 
         {/* Modal Body */}
         <div className="p-6 space-y-4">
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Drag &amp; drop or select an Excel file to update your local dataset. The app automatically recognizes both:
+          <p className="text-sm text-text-muted leading-relaxed">
+            Drag and drop or select an Excel file to update the dashboard data. The file type is detected automatically:
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
-              <span className="font-semibold text-[#e8c56a]">1. Attendance Workbook</span>
-              <span className="text-[11px] text-slate-400">e.g. <code>BD _ French Dashboard 2026.xlsx</code></span>
+              <span className="font-semibold text-gold-light">1. Attendance Workbook</span>
+              <span className="text-xs text-text-dim">e.g. <code>BD _ French Dashboard 2026.xlsx</code></span>
             </div>
             <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
-              <span className="font-semibold text-[#38bdf8]">2. Ultatel Outbound</span>
-              <span className="text-[11px] text-slate-400">e.g. <code>OutBound Calls Per Department.xlsx</code></span>
+              <span className="font-semibold text-white">2. Ultatel Outbound</span>
+              <span className="text-xs text-text-dim">e.g. <code>OutBound Calls Per Department.xlsx</code></span>
             </div>
           </div>
 
@@ -145,8 +152,8 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
             onClick={() => fileInputRef.current?.click()}
             className={`cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-all flex flex-col items-center justify-center gap-2 ${
               dragOver
-                ? 'border-[#e8c56a] bg-[#1a1608]/50'
-                : 'border-white/10 hover:border-white/20 bg-white/2'
+                ? 'border-gold bg-gold-dim'
+                : 'border-white/15 hover:border-white/30 bg-white/2'
             }`}
           >
             <input
@@ -156,24 +163,25 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
               accept=".xlsx,.xls"
               className="hidden"
             />
-            <Upload className={`w-6 h-6 ${dragOver ? 'text-[#e8c56a]' : 'text-slate-500'}`} />
-            <div className="text-xs font-medium text-slate-200">
+            <Upload className={`w-6 h-6 ${dragOver ? 'text-gold-light' : 'text-text-dim'}`} />
+            <div className="text-sm font-medium text-text-primary">
               {file ? (
-                <span className="text-[#e8c56a] font-semibold">{file.name} ({(file.size / 1024).toFixed(0)} KB)</span>
+                <span className="text-gold-light font-semibold">{file.name} ({(file.size / 1024).toFixed(0)} KB)</span>
               ) : (
-                <span>Drop Excel file here or <span className="text-[#e8c56a] underline">browse</span></span>
+                <span>Drop Excel file here or <span className="text-gold-light underline">browse</span></span>
               )}
             </div>
-            <span className="text-[10px] text-slate-500 font-num">Supported: .xlsx, .xls</span>
+            <span className="text-xs text-text-dim font-num">Supported: .xlsx, .xls</span>
           </div>
 
           {/* Status Message */}
           {statusMessage && (
             <div
-              className={`p-3 rounded-xl flex items-center gap-2.5 text-xs ${
+              role={statusMessage.type === 'error' ? 'alert' : 'status'}
+              className={`p-3 rounded-xl flex items-center gap-2.5 text-sm ${
                 statusMessage.type === 'success'
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                  ? 'bg-success-dim text-success border border-success-border'
+                  : 'bg-danger-dim text-danger border border-danger-border'
               }`}
             >
               {statusMessage.type === 'success' ? (
@@ -187,19 +195,18 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-end gap-2.5 px-6 py-4 bg-white/2 border-t border-white/6">
+        <div className="flex items-center justify-end gap-2.5 px-6 py-4 bg-white/2 border-t border-white/8">
           <button
             onClick={onClose}
             disabled={uploading}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+            className="btn"
           >
             Cancel
           </button>
           <button
             onClick={handleUpload}
             disabled={!file || uploading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 transition-all"
-            style={{ background: '#1a1608', border: '1px solid rgba(201,168,76,0.35)', color: '#e8c56a' }}
+            className="btn btn-primary"
           >
             {uploading ? (
               <>
