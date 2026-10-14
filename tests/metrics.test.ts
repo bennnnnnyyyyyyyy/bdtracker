@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeDashboardMetrics, resolveOpener } from '../src/lib/analytics';
-import { annotateMeetings } from '../src/lib/meetings';
+import { annotateMeetings, canBeConfirmed, isConfirmedShow, isSkippedConfirmation } from '../src/lib/meetings';
 import { calculateAgentPresentDays, getAttendanceWeight, parseAttendanceRows } from '../src/lib/attendance';
 import type { AgentMapping, CallRecord, MeetingRecord } from '../src/types/dashboard';
 
@@ -117,10 +117,10 @@ describe('computeDashboardMetrics', () => {
   it('computes meeting funnel metrics', () => {
     const ben = run().openers.find(o => o.opener === 'Ben')!;
     expect(ben.booked).toBe(7);
-    expect(ben.attended).toBe(3);        // confirmed B (Follow Ups), C (Onboarded), F (Temporary Inactive); E in Dead Leads never counts
-    expect(ben.awaitingConfirmation).toBe(1); // J: in Follow Ups but not confirmed
+    expect(ben.attended).toBe(4);        // old meetings (before 10/12) count by tab: B, C, F, J; E in Dead Leads never counts
+    expect(ben.awaitingConfirmation).toBe(0); // nothing before 10/12 needs confirming
     expect(ben.noShow).toBe(1);
-    expect(ben.showRate).toBeCloseTo(3 / 4);   // attended / (attended + no-show)
+    expect(ben.showRate).toBeCloseTo(4 / 5);   // attended / (attended + no-show)
     expect(ben.onboarded).toBe(1);
     expect(ben.closeRate).toBeCloseTo(1 / 7);
     expect(ben.medBCount).toBe(1);
@@ -140,9 +140,9 @@ describe('computeDashboardMetrics', () => {
     const { openers, totals } = run();
     expect(totals.calls).toBe(openers.reduce((n, o) => n + o.calls, 0));
     expect(totals.booked).toBe(8); // Ben 7 + Jane 1
-    expect(totals.attended).toBe(4);
+    expect(totals.attended).toBe(5);
     expect(totals.noShow).toBe(1);
-    expect(totals.showRate).toBeCloseTo(4 / 5);
+    expect(totals.showRate).toBeCloseTo(5 / 6);
   });
 
   it('groups periods consistently', () => {
@@ -155,34 +155,53 @@ describe('computeDashboardMetrics', () => {
   });
 });
 
-describe('shows require management confirmation', () => {
+describe('shows after the confirmation start date require management confirmation', () => {
+  // Added on or after 2026-10-12: a show only when management confirmed it.
   const raw = [
-    meeting('Follow Ups', 'Ben', '2026-08-10', { companyName: 'A' }),
-    meeting('Onboarded', 'Ben', '2026-08-10', { companyName: 'B' }),
-    meeting('No-Show', 'Ben', '2026-08-11', { companyName: 'C' }),
+    meeting('Follow Ups', 'Ben', '2026-10-12', { companyName: 'A' }),
+    meeting('Onboarded', 'Ben', '2026-10-12', { companyName: 'B' }),       // skipped Follow Ups: not a show until confirmed
+    meeting('No-Show', 'Ben', '2026-10-13', { companyName: 'C' }),
+    meeting('New Meetings', 'Ben', '2026-10-13', { companyName: 'D' }),
+    meeting('New Meetings', 'Ben', '2026-10-13', { companyName: 'R', status: 'Rescheduled' }), // not a new meeting
   ];
-  const range = { startDate: '2026-08-10', endDate: '2026-08-14' };
+  const range = { startDate: '2026-10-12', endDate: '2026-10-18' };
+  const run = (meetings = annotateMeetings(raw, new Map())) => computeDashboardMetrics([], meetings, {}, mappings, range);
 
-  it('counts no shows when nothing is confirmed, whatever the stage', () => {
-    const { openers, totals } = computeDashboardMetrics([], annotateMeetings(raw, new Map()), {}, mappings, range);
+  it('counts nothing as a show until it is confirmed; only Follow Ups is awaiting', () => {
+    const { openers, totals } = run();
+    expect(openers[0].booked).toBe(4);                // A, B, C, D (the rescheduled row is not a meeting)
     expect(openers[0].attended).toBe(0);
-    expect(openers[0].awaitingConfirmation).toBe(2);
+    expect(openers[0].awaitingConfirmation).toBe(1);  // A only
+    expect(openers[0].noShow).toBe(1);
     expect(totals.showRate).toBe(0);
   });
 
-  it('counts a show once confirmed, and keeps the key stable when the row changes stage', () => {
+  it('counts a confirmed meeting even after it moves to another tab, and keeps its key', () => {
     const key = annotateMeetings(raw, new Map())[0].meetingKey as string;
-    const confirmations = new Map([[key, { confirmedBy: 'Boss', confirmedAt: '2026-08-12T00:00:00Z' }]]);
-    const moved = [{ ...raw[0], stage: 'Contract Sent' }, raw[1], raw[2]]; // lead moved to another tab
+    const confirmations = new Map([[key, { confirmedBy: 'Boss', confirmedAt: '2026-10-13T00:00:00Z' }]]);
+    const moved = [{ ...raw[0], stage: 'Contract Sent' }, ...raw.slice(1)];
     const annotated = annotateMeetings(moved, confirmations);
     expect(annotated[0].meetingKey).toBe(key);
-    const { openers } = computeDashboardMetrics([], annotated, {}, mappings, range);
+    const { openers } = run(annotated);
     expect(openers[0].attended).toBe(1);
-    expect(openers[0].awaitingConfirmation).toBe(1);
+    expect(openers[0].awaitingConfirmation).toBe(0);
+  });
+
+  it('never counts No-Show as a show, even if it was confirmed', () => {
+    const keys = annotateMeetings(raw, new Map());
+    const confirmations = new Map([[keys[2].meetingKey as string, { confirmedBy: 'Boss', confirmedAt: '2026-10-13T00:00:00Z' }]]);
+    expect(run(annotateMeetings(raw, confirmations)).openers[0].attended).toBe(0);
+  });
+
+  it('only new meetings in a show tab can be confirmed; old ones already count by their tab', () => {
+    const m = annotateMeetings([...raw, meeting('Follow Ups', 'Ben', '2026-10-01', { companyName: 'OLD' })], new Map());
+    expect(m.map((x) => canBeConfirmed(x))).toEqual([true, true, false, false, false, false]);
+    expect(isConfirmedShow(m[5])).toBe(true);      // old meeting in Follow Ups
+    expect(isSkippedConfirmation(m[1])).toBe(true);
   });
 
   it('gives identical rows distinct keys', () => {
-    const dup = [meeting('Follow Ups', 'Ben', '2026-08-10', { companyName: 'X' }), meeting('Follow Ups', 'Ben', '2026-08-10', { companyName: 'X' })];
+    const dup = [meeting('Follow Ups', 'Ben', '2026-10-12', { companyName: 'X' }), meeting('Follow Ups', 'Ben', '2026-10-12', { companyName: 'X' })];
     const keys = annotateMeetings(dup, new Map()).map(m => m.meetingKey);
     expect(new Set(keys).size).toBe(2);
   });

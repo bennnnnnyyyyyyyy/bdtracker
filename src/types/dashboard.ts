@@ -25,6 +25,8 @@ export interface MeetingRecord {
   stage: string;
   opener: string;
   dateAdded: string; // ISO YYYY-MM-DD or parsed date
+  /** The tracker's Status column (e.g. "Rescheduled", "Follow Up"). */
+  status?: string;
   companyName?: string;
   authorizedPerson?: string;
   medB?: boolean;

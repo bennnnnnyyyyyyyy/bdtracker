@@ -1,3 +1,4 @@
+import { isConfirmedShow } from './meetings';
 import * as xlsx from 'xlsx';
 import { CallRecord, DashboardResponse, FilterState, PeriodicGroupSummary } from '../types/dashboard';
 import { downloadCsv } from './csv';
@@ -148,7 +149,7 @@ export function buildOverviewTable(data: DashboardResponse): ExportTable {
 
 /** Meetings in the selected range, with whether management confirmed the show. */
 export function buildMeetingsTable(data: DashboardResponse): ExportTable {
-  const headers = ['Date Added', 'Opener', 'Stage', 'Company Name', 'Authorized Person', 'Med B', 'PPO', 'Show Confirmed', 'Confirmed By', 'Confirmed At'];
+  const headers = ['Date Added', 'Opener', 'Stage', 'Company Name', 'Authorized Person', 'Med B', 'PPO', 'Show Confirmed', 'Confirmed By', 'Confirmed At', 'Counts As Show'];
   const rows = (data.meetings || []).map((m) => [
     m.dateAdded || '',
     m.opener || '',
@@ -160,6 +161,7 @@ export function buildMeetingsTable(data: DashboardResponse): ExportTable {
     m.showConfirmed ? 'Yes' : 'No',
     m.confirmedBy || '',
     m.confirmedAt || '',
+    isConfirmedShow(m) ? 'Yes' : 'No',
   ]);
   return { headers, rows };
 }

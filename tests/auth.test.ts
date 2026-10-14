@@ -66,7 +66,7 @@ vi.mock('../src/lib/supabase', () => {
 
 describe('confirmation store', () => {
   it('confirms, audits, loads and revokes', async () => {
-    const { applyConfirmations, loadConfirmations, initialImportCandidates } = await import('../src/lib/confirmations');
+    const { applyConfirmations, loadConfirmations } = await import('../src/lib/confirmations');
     const { annotateMeetings } = await import('../src/lib/meetings');
     const meetings = annotateMeetings([
       { stage: 'Follow Ups', opener: 'Ben', dateAdded: '2026-08-10', companyName: 'Acme' },
@@ -74,7 +74,6 @@ describe('confirmation store', () => {
     ], new Map());
     const boss = { id: 'u1', name: 'Boss', email: 'boss@example.com', role: 'manager' as const };
 
-    expect(initialImportCandidates(meetings)).toHaveLength(1); // only the show-stage meeting
     expect(await applyConfirmations('confirm', [meetings[0]], boss)).toBe(1);
 
     const loaded = await loadConfirmations();

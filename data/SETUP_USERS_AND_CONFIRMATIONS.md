@@ -24,7 +24,7 @@
    npm run create-user -- --email you@company.com --name "Your Name" --role admin
    ```
    It asks for a password (10+ characters). Then sign in and use **Manage users** (user menu, top right) to add everyone else. New users get a temporary password and must change it at first sign-in.
-4. **Confirm the history once.** Signed in as an admin, open **Confirm shows** and press **One-time: confirm existing show-stage meetings**. It confirms every meeting currently in a show stage, recorded as an "initial-import" under your name. Without this, historical show rates start at 0%.
+4. **Nothing to import.** Meetings added before 2026-10-12 count by the tab they sit in (see HOW_NUMBERS_WORK.md); from 2026-10-12 on, shows are confirmed in the **Confirm shows** tab.
 
 Local development without `AUTH_SECRET` runs signed in as a built-in admin ("Local development") so you can work without Supabase; confirmations then show as unavailable.
 

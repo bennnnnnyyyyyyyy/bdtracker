@@ -199,3 +199,8 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 43. Attendance tab access message
 - The sheet's script runs as the Google account that deploys/clicks it (not as the dashboard service account), so that account needs access to the attendance workbook. The error now names the account to share it with.
+
+## 45. Show rules from 2026-10-12
+- Reverted the activity-log event dating: meetings, shows and no-shows use only Date Added.
+- Meetings added before 2026-10-12 count by tab: every tab counts as a meeting; Follow Ups, Contract Sent, Invoice Sent, Onboarded and Temporary Inactive count as shows without confirmation; No-Show is a no-show; Dead Leads / New Meetings are meetings but not shows. Meetings added from 2026-10-12: a meeting is booked on Date Added unless its Status is Rescheduled; it is a show only when management confirmed it in the dashboard (candidates are the rows in Follow Ups; rows that jumped straight to a later show tab are listed as "Skipped Follow Ups" and can be confirmed too); a confirmed meeting stays a show when its row later moves (except into No-Show).
+- Removed the one-time bulk confirmation (button, route, helper): old meetings no longer need it. `CONFIRMATION_START_DATE` in `src/lib/stages.ts`.

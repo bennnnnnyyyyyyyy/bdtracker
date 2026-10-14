@@ -14,8 +14,8 @@ For every active opener (BD agent), over a chosen date range, the dashboard repo
 | :--- | :--- |
 | **Calls** | Outbound + Inbound call records (`type` = `OUT-Bound` / `IN-Bound`, exact match). |
 | **Connection rate** | `answered / calls` (`outcome === 'ANSWERED'`). `answerRate` is identical. |
-| **Meetings booked** | Sum of rows across all 8 tracker stage tabs in the range. |
-| **Attended (show)** | Meetings confirmed by management (and not in No-Show / Dead Leads). Unconfirmed meetings in `LIKELY_SHOW_STAGES` are reported as *awaiting confirmation*. |
+| **Meetings booked** | Rows across the 8 tracker stage tabs by Date Added, except rows whose Status is *Rescheduled*. |
+| **Attended (show)** | Meetings added before 2026-10-12: those in Follow Ups, Contract Sent, Invoice Sent, Onboarded or Temporary Inactive (no confirmation). Meetings added from 2026-10-12: only those management confirmed in the dashboard (candidates are the ones in Follow Ups; *awaiting confirmation*). Never No-Show. |
 | **No-show** | Rows in the `No-Show` tab. |
 | **Show rate (everywhere: openers, periods, Team card, totals)** | `attended / (attended + noShow)`. Unconfirmed meetings and Dead Leads are **not** counted as attended. |
 | **Closing rate** | `onboarded / booked`. |
@@ -71,7 +71,6 @@ Per-user accounts (`app_users` in Supabase; scrypt-hashed passwords; roles admin
 | `/api/auth/login`, `/api/auth/logout`, `/api/auth/password` | POST | Sign in, sign out, change own password. |
 | `/api/admin/users`, `/api/admin/users/[id]` | GET, POST, PATCH | Admin only: list, create, edit role / disable / reset password. |
 | `/api/confirmations` | POST | Admin/manager: confirm or undo shows (validated against current tracker data). |
-| `/api/confirmations/bulk` | POST | Admin: one-time confirmation of existing show-stage meetings. |
 | `/api/upload` | POST | Admin/manager. An Ultatel *Total Calls Per Extension* report (CSV or Excel; one day, a period, or one extension's days) is stored by the call-log sheet's Apps Script web app (`IMPORT_WEBHOOK_URL`) in `Daily Totals`. Attendance / department workbooks are local-only files. |
 | (same route) other workbooks | POST | Local-only (returns 501 on Vercel). Accepts an `.xlsx` (≤ 15 MB), detects Ultatel report vs. attendance workbook and overwrites the corresponding local file. |
 

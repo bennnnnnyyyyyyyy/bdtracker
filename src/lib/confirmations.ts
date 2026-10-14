@@ -1,5 +1,4 @@
 import { getSupabaseService } from './supabase';
-import { CONFIG } from './config';
 import type { ConfirmationInfo } from './meetings';
 import type { MeetingRecord, ViewerInfo } from '../types/dashboard';
 
@@ -69,9 +68,4 @@ export async function applyConfirmations(
     assertOk(await db.from('show_confirmation_events').insert(events.slice(i, i + 500)), 'Writing audit log');
   }
   return keys.length;
-}
-
-/** Meetings that the one-time import should confirm: everything currently in a likely-show stage. */
-export function initialImportCandidates(meetings: MeetingRecord[]): MeetingRecord[] {
-  return meetings.filter((m) => m.showConfirmed !== true && CONFIG.LIKELY_SHOW_STAGES.includes(m.stage));
 }

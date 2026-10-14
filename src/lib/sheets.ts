@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
 import * as xlsx from 'xlsx';
+import { isRescheduledStatus } from './meetings';
 import { CONFIG, isExcludedAgent } from './config';
 import { CallRecord, AgentMapping, MeetingRecord, DataSourceInfo } from '../types/dashboard';
 import { parseAgentName, durationToSeconds, parseDateToISO } from './analytics';
@@ -254,6 +255,7 @@ export async function fetchBDTrackerData(): Promise<{
     if (personIdx === -1) {
       personIdx = headers.findIndex((h, i) => h.includes('name') && i !== companyIdx && !h.includes('company') && !h.includes('business'));
     }
+    const statusIdx = headers.findIndex(h => h === 'status');
     const medbIdx = headers.findIndex(h => h.includes('medb') || h.includes('med b') || h.includes('med_b'));
     const ppoIdx = headers.findIndex(h => h === 'ppo' || h.includes('ppo'));
 
@@ -270,8 +272,12 @@ export async function fetchBDTrackerData(): Promise<{
       const opener = String(row[openerIdx] || '').trim();
       if (!opener || isExcludedAgent(opener)) continue;
 
-      if (!counts[opener]) counts[opener] = {};
-      counts[opener][tabName] = (counts[opener][tabName] || 0) + 1;
+      const status = statusIdx !== -1 ? String(row[statusIdx] || '').trim() : '';
+      // A rescheduled meeting is not a new meeting: it is counted when it is finally held (its status changes).
+      if (!isRescheduledStatus(status)) {
+        if (!counts[opener]) counts[opener] = {};
+        counts[opener][tabName] = (counts[opener][tabName] || 0) + 1;
+      }
 
       let dateAdded: string | null = null;
       if (dateIdx !== -1 && row[dateIdx] !== undefined) {
@@ -292,6 +298,7 @@ export async function fetchBDTrackerData(): Promise<{
       meetings.push({
         stage: tabName,
         opener,
+        status,
         dateAdded: dateAdded || '',
         companyName: companyIdx !== -1 ? String(row[companyIdx] || '') : '',
         authorizedPerson: personIdx !== -1 ? String(row[personIdx] || '') : '',

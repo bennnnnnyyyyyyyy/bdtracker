@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/api-auth';
 import { loadDashboardInputs } from '@/lib/dashboard-data';
 import { applyConfirmations } from '@/lib/confirmations';
-import { CONFIG } from '@/lib/config';
+import { canBeConfirmed } from '@/lib/meetings';
 
 export const runtime = 'nodejs';
 
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const wanted = Array.from(new Set(keys as string[]));
     const found = wanted.map((k) => byKey.get(k)).filter((m): m is NonNullable<typeof m> => Boolean(m));
 
-    const blocked = action === 'confirm' ? found.filter((m) => CONFIG.NEVER_SHOW_STAGES.includes(m.stage)) : [];
+    const blocked = action === 'confirm' ? found.filter((m) => !canBeConfirmed(m)) : [];
     const targets = found.filter((m) => !blocked.includes(m) && (action === 'confirm' ? !m.showConfirmed : m.showConfirmed));
 
     const changed = await applyConfirmations(action, targets, guard.user);
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       success: true,
       changed,
       skipped: wanted.length - changed,
-      message: blocked.length > 0 ? `${blocked.length} meeting(s) in No-Show / Dead Leads cannot be confirmed as shows.` : undefined,
+      message: blocked.length > 0 ? `${blocked.length} meeting(s) cannot be confirmed: only meetings added since 10/12 that sit in Follow Ups (or a later show tab) can be.` : undefined,
     });
   } catch (error) {
     console.error('Confirmation failed:', error);

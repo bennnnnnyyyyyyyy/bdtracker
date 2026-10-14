@@ -1,4 +1,4 @@
-import { LIKELY_SHOW_STAGES, NEVER_SHOW_STAGES } from './stages';
+import { CONFIRMATION_QUEUE_STAGE, CONFIRMATION_START_DATE, LIKELY_SHOW_STAGES, NEVER_SHOW_STAGES } from './stages';
 
 export const CONFIG = {
   // Call Dashboard Sheet (Daily Totals, Totals, Call Logs, Agent Mapping, BD Dashboard)
@@ -30,6 +30,8 @@ export const CONFIG = {
   // Stage rules live in ./stages (client-safe); keep apps-script/Code.js in mind when changing them.
   NEVER_SHOW_STAGES,
   LIKELY_SHOW_STAGES,
+  CONFIRMATION_START_DATE,
+  CONFIRMATION_QUEUE_STAGE,
 
   DAILY_TOTALS_SHEET: 'Daily Totals',
   CALL_LOG_SHEET: 'Call Logs',

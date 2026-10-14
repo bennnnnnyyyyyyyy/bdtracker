@@ -105,8 +105,9 @@ Opener = one person. Org = the "Team" figures in the top cards and totals rows.
 | :--- | :--- |
 | **Stage counts** | Rows per stage tab for the opener in the date range (by *Date Added*). |
 | **Booked** | Sum of all 8 stage counts. |
-| **Attended (a "show")** | Meetings that **management confirmed** in the dashboard (Confirm shows tab) and that are not in No-Show or Dead Leads. The stage alone never makes a show; New Meetings or Temporary Inactive count once confirmed. |
-| **Awaiting confirmation** | Unconfirmed meetings sitting in Follow Ups, Contract Sent, Invoice Sent, Onboarded or Temporary Inactive: the follow-up queue for management. |
+| **Attended (a "show")** | Two rules, split at **2026-10-12** (Date Added). *Added before 10/12*: a meeting counts as a show when its row is in Follow Ups, Contract Sent, Invoice Sent, Onboarded or Temporary Inactive (no confirmation). *Added from 10/12*: only meetings **management confirmed** in the dashboard count, wherever the row sits now; moving to another tab never makes a show by itself. No-Show never counts. Dead Leads and New Meetings do not count before 10/12 either. |
+| **Awaiting confirmation** | Meetings added from 10/12 that reached the **Follow Ups** tab and are not confirmed yet. (Ones that skipped Follow Ups for a later show tab are listed separately as "Skipped Follow Ups" in the Confirm shows tab so they can still be confirmed.) |
+| **Meetings booked** | Rows in the 8 tabs by **Date Added** (the only date used for meetings, shows and no-shows), except rows whose Status is **Rescheduled**: those are counted when the meeting is finally held and the status changes. |
 | **No-show** | Rows in the No-Show tab. |
 | **Show rate (every card, row and total)** | `attended ÷ (attended + no-show)`. Unconfirmed meetings and Dead Leads are not counted either way. The same formula is used for each person, each period, the Team card and the totals row. |
 | **Onboarded / Close rate** | `Onboarded ÷ booked`. |

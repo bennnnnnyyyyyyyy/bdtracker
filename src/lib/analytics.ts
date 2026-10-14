@@ -9,7 +9,7 @@ import {
   PeriodicAgentMetrics
 } from '../types/dashboard';
 import { AttendanceDataset, calculateAgentPresentDays } from './attendance';
-import { isAwaitingConfirmation, isConfirmedShow } from './meetings';
+import { isAwaitingConfirmation, isConfirmedShow, isRescheduledStatus } from './meetings';
 
 /**
  * Extracts agent name from Ultatel extension cell.
@@ -367,6 +367,7 @@ export function computeDashboardMetrics(
   // Normalize and filter meetings
   let filteredMeetings: MeetingRecord[] = [];
   rawMeetings.forEach(m => {
+    if (isRescheduledStatus(m.status)) return; // not a new meeting until it is held
     const opener = resolve(m.opener);
     if (!opener || isExcludedAgent(opener)) return;
     filteredMeetings.push({ ...m, opener });

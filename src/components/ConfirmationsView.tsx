@@ -3,7 +3,8 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle2, ChevronLeft, ChevronRight, Search, Undo2 } from 'lucide-react';
 import { MeetingRecord, ViewerInfo } from '@/types/dashboard';
-import { LIKELY_SHOW_STAGES, NEVER_SHOW_STAGES } from '@/lib/stages';
+import { CONFIRMATION_START_DATE } from '@/lib/stages';
+import { canBeConfirmed, isAwaitingConfirmation, isSkippedConfirmation } from '@/lib/meetings';
 
 interface Props {
   meetings: MeetingRecord[];
@@ -12,7 +13,7 @@ interface Props {
   onChanged: () => void;
 }
 
-type StatusFilter = 'awaiting' | 'confirmed' | 'all';
+type StatusFilter = 'awaiting' | 'skipped' | 'confirmed' | 'all';
 const PAGE_SIZE = 20;
 
 async function post(url: string, body: unknown): Promise<{ ok: boolean; json: { error?: string; changed?: number; message?: string; count?: number } }> {
@@ -29,22 +30,20 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // No-Show and Dead Leads can never be shows, so they are not reviewed here.
-  const reviewable = useMemo(() => meetings.filter((m) => m.meetingKey && !NEVER_SHOW_STAGES.includes(m.stage)), [meetings]);
+  // Only meetings added since the start date are reviewed here (older ones count by their tab). A meeting is
+  // confirmable while it sits in Follow Ups (or a later show tab); confirmed ones stay listed so they can be undone.
+  const reviewable = useMemo(() => meetings.filter((m) => m.meetingKey && (canBeConfirmed(m) || m.showConfirmed)), [meetings]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return reviewable
-      .filter((m) => (status === 'all' ? true : status === 'confirmed' ? m.showConfirmed : !m.showConfirmed))
+      .filter((m) => (status === 'all' ? true : status === 'confirmed' ? m.showConfirmed : status === 'skipped' ? isSkippedConfirmation(m) : isAwaitingConfirmation(m)))
       .filter((m) => !q || [m.opener, m.companyName, m.authorizedPerson, m.stage].some((v) => (v || '').toLowerCase().includes(q)))
-      .sort((a, b) => {
-        const likelyA = LIKELY_SHOW_STAGES.includes(a.stage) ? 0 : 1;
-        const likelyB = LIKELY_SHOW_STAGES.includes(b.stage) ? 0 : 1;
-        return likelyA - likelyB || (b.dateAdded || '').localeCompare(a.dateAdded || '');
-      });
+      .sort((a, b) => (b.dateAdded || '').localeCompare(a.dateAdded || ''));
   }, [reviewable, status, search]);
 
-  const awaitingCount = reviewable.filter((m) => !m.showConfirmed && LIKELY_SHOW_STAGES.includes(m.stage)).length;
+  const awaitingCount = reviewable.filter(isAwaitingConfirmation).length;
+  const skippedCount = reviewable.filter(isSkippedConfirmation).length;
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const pageRows = rows.slice((Math.min(page, totalPages) - 1) * PAGE_SIZE, Math.min(page, totalPages) * PAGE_SIZE);
 
@@ -65,29 +64,6 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
     }
   };
 
-  const bulkImport = async () => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const dry = await post('/api/confirmations/bulk', { dryRun: true });
-      if (!dry.ok) throw new Error(dry.json.error || 'Could not check');
-      const count = dry.json.count ?? 0;
-      if (count === 0) {
-        setMessage({ ok: true, text: 'Nothing to import: every meeting in a show stage is already confirmed.' });
-        return;
-      }
-      if (!window.confirm(`Confirm ALL ${count} existing meetings that are in Follow Ups, Contract Sent, Invoice Sent, Onboarded or Temporary Inactive (any date) as shows? This is recorded in the audit log under your name.`)) return;
-      const res = await post('/api/confirmations/bulk', { confirm: true });
-      if (!res.ok) throw new Error(res.json.error || 'Import failed');
-      setMessage({ ok: true, text: `${res.json.changed ?? 0} existing meetings confirmed.` });
-      onChanged();
-    } catch (e) {
-      setMessage({ ok: false, text: e instanceof Error ? e.message : 'Import failed' });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const toggle = (key: string) => setSelected((prev) => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -103,7 +79,7 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
           <div className="sec-tag mb-0.5">Management review</div>
           <h3 className="font-serif text-base font-bold text-white">Confirm shows</h3>
           <p className="label-caps mt-0.5">
-            A meeting only counts as a show once it is confirmed here · {awaitingCount} in show stages awaiting confirmation (current date range)
+            Meetings added since {CONFIRMATION_START_DATE} only count as shows once confirmed here · {awaitingCount} in Follow Ups awaiting confirmation{skippedCount > 0 ? ` · ${skippedCount} skipped Follow Ups and were never confirmed` : ''} (current date range)
           </p>
         </div>
 
@@ -117,9 +93,9 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-lg bg-white/4 border border-white/7 p-0.5 text-xs font-semibold">
-            {(['awaiting', 'confirmed', 'all'] as StatusFilter[]).map((s) => (
+            {(['awaiting', 'skipped', 'confirmed', 'all'] as StatusFilter[]).map((s) => (
               <button key={s} onClick={() => { setStatus(s); setPage(1); }} className={`px-3 min-h-8 rounded-md ${status === s ? 'bg-white text-black' : 'text-text-dim'}`}>
-                {s === 'awaiting' ? 'Awaiting' : s === 'confirmed' ? 'Confirmed' : 'All'}
+                {s === 'awaiting' ? 'Awaiting' : s === 'skipped' ? 'Skipped Follow Ups' : s === 'confirmed' ? 'Confirmed' : 'All'}
               </button>
             ))}
           </div>
@@ -139,11 +115,6 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
                 Undo selected
               </button>
             </>
-          )}
-          {viewer?.role === 'admin' && (
-            <button disabled={busy} onClick={bulkImport} className="min-h-9 px-3 rounded-lg text-xs font-semibold border border-white/10 text-text-dim disabled:opacity-40 ml-auto">
-              One-time: confirm existing show-stage meetings
-            </button>
           )}
         </div>
       </div>
@@ -171,7 +142,7 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
                   <td className="p-3 whitespace-nowrap">
                     {m.showConfirmed
                       ? <span className="inline-flex items-center gap-1 text-[#4ade80]"><CheckCircle2 className="w-3.5 h-3.5" />Confirmed by {m.confirmedBy}{m.confirmedAt ? ` · ${new Date(m.confirmedAt).toLocaleDateString()}` : ''}</span>
-                      : <span className={LIKELY_SHOW_STAGES.includes(m.stage) ? 'text-[#e8c56a]' : 'text-[#71717a]'}>{LIKELY_SHOW_STAGES.includes(m.stage) ? 'Awaiting confirmation' : 'Not confirmed'}</span>}
+                      : <span className={isAwaitingConfirmation(m) || isSkippedConfirmation(m) ? 'text-[#e8c56a]' : 'text-[#71717a]'}>{isAwaitingConfirmation(m) ? 'Awaiting confirmation' : isSkippedConfirmation(m) ? 'Skipped Follow Ups, not confirmed' : 'Not confirmed'}</span>}
                   </td>
                   {canConfirm && (
                     <td className="p-3 text-right">
