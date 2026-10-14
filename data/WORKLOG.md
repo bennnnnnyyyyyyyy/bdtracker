@@ -174,3 +174,7 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 36. Calls outside the four columns
 - A report's Total Calls can exceed Out/In Answered + Unanswered (other outcomes such as busy/failed). The dashboard now counts the difference as calls (type/outcome `OTHER`: in Calls and Calls per day, not in answered, unanswered, out or in), so its Calls figure equals Ultatel's Total Calls. The Totals tab already used the Total Calls column. Period spreads keep the difference too.
+
+## 37. Totals tab readability
+- The Totals tab now groups by Opener name (as the dashboard does; "Kaity James" shows under "Jane", with the Ultatel name next to it), leaves out agents whose Opener is `ignore`, writes month headings as text (Sheets was turning them into dates), drops the empty Department column and adds a "This week" column (Monday to the newest day with data) for comparing with the dashboard.
+- Checked a real copy of the sheet: every Daily Totals row has Total Calls = the four columns added up, so the "Calls outside the four columns" change (36) did not apply there; it stays as a harmless safeguard.

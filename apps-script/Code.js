@@ -444,8 +444,10 @@ function rebuildTotalsMenu() {
 }
 
 /**
- * Rebuilds the easy-to-read "Totals" tab from "Daily Totals": one line per agent with calls per month and overall
- * figures, and an ALL AGENTS line right under the headings. Plain values (not formulas), rewritten after every upload.
+ * Rebuilds the easy-to-read "Totals" tab from "Daily Totals": one line per Opener (the names the dashboard uses, so
+ * "Kaity James" shows as "Jane") with calls per month, this week and overall figures, and an ALL AGENTS line right
+ * under the headings. Agents whose Opener is "ignore" are left out. Plain values (not formulas), rewritten after every
+ * upload. Month headings are written as text so Sheets does not turn them into dates.
  */
 function rebuildTotalsSummary_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -456,60 +458,82 @@ function rebuildTotalsSummary_() {
   const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+  // Opener names from Agent Mapping (agent name or "103 (MMS-Name)" -> opener).
+  const openers = new Map();
+  const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
+  if (mapping && mapping.getLastRow() > 1) {
+    mapping.getRange(2, 1, mapping.getLastRow() - 1, 2).getValues().forEach(r => {
+      const agent = String(r[0] || '').trim();
+      const opener = String(r[1] || '').trim();
+      if (agent && opener) { openers.set(agent.toLowerCase(), opener); openers.set(parseAgentName_(agent).toLowerCase(), opener); }
+    });
+  }
+
+  // The newest day with data decides "this week" (Monday to that day).
+  let newest = '0000';
+  rows.forEach(r => { const d = dayOf(r[0]); if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d > newest) newest = d; });
+  const newestDate = new Date(newest + 'T00:00:00Z');
+  const weekStartDate = new Date(newestDate.getTime() - ((newestDate.getUTCDay() + 6) % 7) * 86400000);
+  const weekStart = weekStartDate.toISOString().slice(0, 10);
+
   const monthSet = new Set();
-  const agents = new Map();
-  const all = { months: {}, oa: 0, ou: 0, ia: 0, iu: 0, total: 0, sec: 0, days: new Set() };
+  const groups = new Map();
+  const blank = () => ({ months: {}, week: 0, oa: 0, ou: 0, ia: 0, iu: 0, total: 0, sec: 0, days: new Set(), names: new Set() });
+  const all = blank();
   let first = '9999';
-  let last = '0000';
-  const add = (t, month, r) => {
+  const add = (t, month, day, r) => {
     t.months[month] = (t.months[month] || 0) + num(r[8]);
+    if (day >= weekStart) t.week += num(r[8]);
     t.oa += num(r[4]); t.ou += num(r[5]); t.ia += num(r[6]); t.iu += num(r[7]);
     t.total += num(r[8]); t.sec += num(r[9]);
+    t.days.add(day);
   };
   rows.forEach(r => {
     const day = dayOf(r[0]);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    const name = String(r[2] || parseAgentName_(String(r[1] || ''))).trim();
+    if (!name || isExcludedAgent_(name)) return;
+    const opener = openers.get(name.toLowerCase()) || name;
+    if (/^(ignore|ignored|-)$/i.test(opener)) return;
     const month = day.slice(0, 7);
     monthSet.add(month);
     if (day < first) first = day;
-    if (day > last) last = day;
-    const name = String(r[2] || r[1] || '').trim();
-    if (!name) return;
-    if (!agents.has(name)) agents.set(name, { name, dept: String(r[3] || ''), months: {}, oa: 0, ou: 0, ia: 0, iu: 0, total: 0, sec: 0, days: new Set() });
-    const a = agents.get(name);
-    if (!a.dept) a.dept = String(r[3] || '');
-    add(a, month, r);
-    a.days.add(day);
-    add(all, month, r);
-    all.days.add(day);
+    if (!groups.has(opener)) groups.set(opener, blank());
+    const g = groups.get(opener);
+    g.names.add(name);
+    add(g, month, day, r);
+    add(all, month, day, r);
   });
   const months = Array.from(monthSet).sort();
   const monthLabel = m => MONTHS[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(0, 4);
-  const header = ['Agent', 'Department'].concat(months.map(monthLabel), ['Total calls', 'Out answered', 'Out unanswered', 'In answered', 'In unanswered', 'Connection %', 'Talk time (hours)', 'Days with data']);
-  const line = (label, dept, t) => [label, dept].concat(
+  const header = ['Agent (Opener)', 'Ultatel name'].concat(months.map(monthLabel), ['This week (' + weekStart + ' to ' + newest + ')', 'Total calls', 'Out answered', 'Out unanswered', 'In answered', 'In unanswered', 'Connection %', 'Talk time (hours)', 'Days with data']);
+  const line = (label, names, t) => [label, names].concat(
     months.map(m => t.months[m] || 0),
-    [t.total, t.oa, t.ou, t.ia, t.iu, t.total > 0 ? (t.oa + t.ia) / t.total : 0, Math.round(t.sec / 36) / 100, t.days.size]
+    [t.week, t.total, t.oa, t.ou, t.ia, t.iu, t.total > 0 ? (t.oa + t.ia) / t.total : 0, Math.round(t.sec / 36) / 100, t.days.size]
   );
-  const list = Array.from(agents.values()).sort((a, b) => b.total - a.total);
-  const body = [line('ALL AGENTS', '', all)].concat(list.map(a => line(a.name, a.dept, a)));
+  const list = Array.from(groups.entries()).sort((a, b) => b[1].total - a[1].total);
+  const body = [line('ALL AGENTS', '', all)].concat(list.map(([opener, g]) => {
+    const names = Array.from(g.names).join(', ');
+    return line(opener, names.toLowerCase() === opener.toLowerCase() ? '' : names, g);
+  }));
 
   let sheet = ss.getSheetByName(CONFIG.TOTALS_SHEET);
   if (!sheet) sheet = ss.insertSheet(CONFIG.TOTALS_SHEET);
   sheet.clear();
   const width = header.length;
   sheet.getRange(1, 1).setValue('Call totals by agent').setFontWeight('bold').setFontSize(14);
-  sheet.getRange(2, 1).setValue('From the "Daily Totals" tab (Ultatel Total Calls Per Extension reports), ' + first + ' to ' + last + ', ' + all.days.size + ' day(s). Rebuilt after every upload; do not type here. Calls per month are Total Calls (outgoing + incoming).');
-  sheet.getRange(4, 1, 1, width).setValues([header]).setFontWeight('bold').setBackground('#e8e8e8');
+  sheet.getRange(2, 1).setValue('From the "Daily Totals" tab (Ultatel Total Calls Per Extension reports), ' + first + ' to ' + newest + '. Rebuilt after every upload; do not type here. Calls = Total Calls (outgoing + incoming). Agents are shown under their Opener name.');
+  sheet.getRange(4, 1, 1, width).setNumberFormat('@').setValues([header]).setFontWeight('bold').setBackground('#e8e8e8').setWrap(true);
   sheet.getRange(5, 1, body.length, width).setValues(body);
   sheet.getRange(5, 1, 1, width).setFontWeight('bold').setBackground('#fff2cc');
   const monthCols = months.length;
-  sheet.getRange(5, 3, body.length, monthCols + 5).setNumberFormat('#,##0');
-  sheet.getRange(5, 3 + monthCols + 5, body.length, 1).setNumberFormat('0.0%');
-  sheet.getRange(5, 3 + monthCols + 6, body.length, 1).setNumberFormat('0.0');
+  sheet.getRange(5, 3, body.length, monthCols + 6).setNumberFormat('#,##0');
+  sheet.getRange(5, 3 + monthCols + 6, body.length, 1).setNumberFormat('0.0%');
+  sheet.getRange(5, 3 + monthCols + 7, body.length, 1).setNumberFormat('0.0');
   sheet.setFrozenRows(5);
   sheet.setFrozenColumns(1);
-  sheet.setColumnWidth(1, 170);
-  sheet.setColumnWidth(2, 190);
+  sheet.setColumnWidth(1, 150);
+  sheet.setColumnWidth(2, 170);
 }
 
 
