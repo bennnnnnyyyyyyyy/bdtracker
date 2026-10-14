@@ -6,7 +6,7 @@ import { CONFIG } from '@/lib/config';
 import { invalidateDashboardCache } from '@/lib/sheets';
 import { requireUser } from '@/lib/api-auth';
 import { looksLikeCallExport, parseCallExportFile, parseCsv } from '@/lib/ultatelFile';
-import { dateFromFileName, dateRangeFromTable, looksLikeDailyTotals, parseDailyTotalsRows, readTable, spreadOverDays, workingDaysBetween } from '@/lib/dailyTotals';
+import { dateFromFileName, dateRangeFromTable, looksLikeDailyTotals, looksLikeDateDistribution, parseDailyTotalsRows, parseDateDistribution, readTable, spreadOverDays, workingDaysBetween } from '@/lib/dailyTotals';
 import { isImportConfigured, missingImportSettings, sendDailyToSheet, sendRowsToSheet, startReplace } from '@/lib/importWebhook';
 
 export const runtime = 'nodejs';
@@ -30,6 +30,30 @@ export async function POST(request: NextRequest) {
       // Ultatel "Total Calls Per Extension" report: one row per extension for one day.
       let table: unknown[][] = [];
       try { table = readTable(buf, upload.name); } catch { table = []; }
+      // One extension, one row per day.
+      if (looksLikeDateDistribution(table)) {
+        if (!isImportConfigured()) {
+          return NextResponse.json({ error: `Uploading reports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}.` }, { status: 501 });
+        }
+        const parsed = parseDateDistribution(table);
+        if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 400 });
+        const today = new Date().toISOString().slice(0, 10);
+        const future = parsed.days.find((d) => d.date > today);
+        if (future) return NextResponse.json({ error: `The report contains a future date (${future.date}).` }, { status: 400 });
+        const result = await sendDailyToSheet(parsed.days.map((d) => ({ date: d.date, rows: [d.row] })), 'daily');
+        invalidateDashboardCache();
+        const total = parsed.days.reduce((sum, d) => sum + d.row.totalCalls, 0);
+        const first = parsed.days[0].date;
+        const last = parsed.days[parsed.days.length - 1].date;
+        return NextResponse.json({
+          success: true,
+          fileType: 'daily_totals',
+          date: first,
+          message: `Extension ${parsed.extensionNumber}${result.resolved ? ` (${result.resolved})` : ''}: ${parsed.days.length} day(s) saved (${first} to ${last}), ${total} calls.`,
+          newAgents: result.newAgents,
+        });
+      }
+
       if (looksLikeDailyTotals(table)) {
         if (!isImportConfigured()) {
           return NextResponse.json({ error: `Uploading reports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}.` }, { status: 501 });
@@ -73,7 +97,7 @@ export async function POST(request: NextRequest) {
           fileType: 'daily_totals',
           date: from,
           message: isPeriod
-            ? `Report saved for ${from} to ${to}: ${total} calls spread evenly over ${dates.length} working days (daily numbers inside the period are approximate; weekly and monthly totals are exact).`
+            ? `Report saved for ${from} to ${to}: ${total} calls spread evenly over ${dates.length} working days (daily numbers inside the period are approximate; weekly and monthly totals are exact).${result.protectedDays > 0 ? ` ${result.protectedDays} extension-day(s) already uploaded as real daily numbers were kept.` : ''}`
             : `Daily totals for ${from} saved: ${parsed.rows.length} extension(s), ${total} calls${result.replaced > 0 ? ' (replaced the earlier upload of that day)' : ''}.`,
           newAgents: result.newAgents,
         });

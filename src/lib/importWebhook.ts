@@ -162,10 +162,10 @@ export async function sendDailyToSheet(
   days: { date: string; rows: DailyTotalRow[] }[],
   source: string,
   fetchFn: Fetch = fetch,
-): Promise<{ days: number; rows: number; replaced: number; newAgents: string[] }> {
-  const reply = await postToSheet<{ ok?: boolean; error?: string; days: number; rows: number; replaced: number; newAgents: string[] }>(
+): Promise<{ days: number; rows: number; replaced: number; newAgents: string[]; resolved?: string; protectedDays: number }> {
+  const reply = await postToSheet<{ ok?: boolean; error?: string; days: number; rows: number; replaced: number; newAgents: string[]; resolved?: string; protectedRows?: number }>(
     { action: 'importDaily', days, source },
     fetchFn,
   );
-  return { days: reply.days, rows: reply.rows, replaced: reply.replaced, newAgents: reply.newAgents ?? [] };
+  return { days: reply.days, rows: reply.rows, replaced: reply.replaced, newAgents: reply.newAgents ?? [], resolved: reply.resolved, protectedDays: reply.protectedRows ?? 0 };
 }

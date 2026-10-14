@@ -565,7 +565,7 @@ const DAILY_HEADERS_ = ['Date', 'Extension', 'Agent', 'Department', 'Out Answere
  * Agent Mapping yet are added there so they can be given an Opener name.
  * @param {{date: string, rows: {extension: string, agent: string, department: string, outAnswered: number, outUnanswered: number, inAnswered: number, inUnanswered: number, totalCalls: number, durationSec: number, acd: number}[]}[]} days
  * @param {string} source text saved in the Source column ("daily" or a description of the spread period)
- * @returns {{days: number, rows: number, replaced: number, newAgents: string[]}}
+ * @returns {{days: number, rows: number, replaced: number, protectedRows: number, resolved: string, newAgents: string[]}}
  */
 function importDays_(days, source) {
   days.forEach(d => { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date))) throw new Error('A report date is missing or invalid.'); });
@@ -578,37 +578,80 @@ function importDays_(days, source) {
   }
   const width = DAILY_HEADERS_.length;
   const dayOf = v => (v instanceof Date ? Utilities.formatDate(v, ssTz_(), 'yyyy-MM-dd') : String(v == null ? '' : v).slice(0, 10));
-  const replaceDates = new Set(days.map(d => d.date));
+  const extNo = v => { const m = String(v == null ? '' : v).match(/^\s*(\d+)/); return m ? m[1] : String(v == null ? '' : v).trim(); };
   const existing = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues() : [];
-  const kept = existing.filter(r => !replaceDates.has(dayOf(r[0]))).map(r => [dayOf(r[0])].concat(r.slice(1)));
+
+  // A report of one extension only names the number ("103"): find the full "103 (MMS-Name)" and department.
+  const known = new Map();
+  existing.forEach(r => { if (/\(MMS-/.test(String(r[1]))) known.set(extNo(r[1]), { extension: String(r[1]), agent: String(r[2]), department: String(r[3]) }); });
+  let callLogExtensions = null;
+  const lookup = no => {
+    if (known.has(no)) return known.get(no);
+    if (callLogExtensions === null) {
+      callLogExtensions = new Map();
+      const log = ss.getSheetByName(CONFIG.CALL_LOG_SHEET);
+      if (log && log.getLastRow() > 1) {
+        log.getRange(2, 5, log.getLastRow() - 1, 1).getValues().forEach(r => {
+          const t = String(r[0] || '');
+          if (/\(MMS-/.test(t) && !callLogExtensions.has(extNo(t))) callLogExtensions.set(extNo(t), t);
+        });
+      }
+    }
+    const full = callLogExtensions.get(no);
+    return full ? { extension: full, agent: parseAgentName_(full), department: '' } : null;
+  };
+  let resolved = '';
+  days.forEach(d => d.rows.forEach(r => {
+    if (/\(MMS-/.test(String(r.extension || ''))) return;
+    const hit = lookup(extNo(r.extension));
+    if (!hit) throw new Error('Extension ' + extNo(r.extension) + ' is not known yet. Upload an all-extensions "Total Calls Per Extension" report once so the sheet learns who it belongs to, then upload this one again.');
+    r.extension = hit.extension;
+    r.agent = hit.agent;
+    r.department = r.department || hit.department;
+    resolved = hit.agent || hit.extension;
+  }));
+
   const now = Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm:ss');
   const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+  const isPeriod = /^period/.test(source);
+  // Rows are replaced per day AND extension. A period spread never overwrites a real daily row.
+  const existingKeys = new Map();
+  existing.forEach(r => existingKeys.set(dayOf(r[0]) + '|' + extNo(r[1]), String(r[12] || '')));
+  let protectedRows = 0;
   const added = [];
-  days.forEach(d => d.rows.forEach(r => added.push([
-    d.date, String(r.extension || ''), String(r.agent || ''), String(r.department || ''),
-    num(r.outAnswered), num(r.outUnanswered), num(r.inAnswered), num(r.inUnanswered),
-    num(r.totalCalls), Math.round(num(r.durationSec)), num(r.acd), now, source
-  ])));
+  days.forEach(d => d.rows.forEach(r => {
+    const key = d.date + '|' + extNo(r.extension);
+    if (isPeriod && existingKeys.has(key) && !/^period/.test(existingKeys.get(key))) { protectedRows++; return; }
+    added.push([
+      d.date, String(r.extension || ''), String(r.agent || ''), String(r.department || ''),
+      num(r.outAnswered), num(r.outUnanswered), num(r.inAnswered), num(r.inUnanswered),
+      num(r.totalCalls), Math.round(num(r.durationSec)), num(r.acd), now, source
+    ]);
+  }));
+  const addedKeys = new Set(added.map(a => a[0] + '|' + extNo(a[1])));
+  const kept = existing.filter(r => !addedKeys.has(dayOf(r[0]) + '|' + extNo(r[1]))).map(r => [dayOf(r[0])].concat(r.slice(1)));
   const all = kept.concat(added).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : String(a[1]).localeCompare(String(b[1]))));
   if (existing.length > 0) sheet.getRange(2, 1, existing.length, width).clearContent();
-  sheet.getRange(2, 1, all.length, 2).setNumberFormat('@');
-  sheet.getRange(2, 1, all.length, width).setValues(all.map(r => { const row = r.slice(0, width); while (row.length < width) row.push(''); return row; }));
+  if (all.length > 0) {
+    sheet.getRange(2, 1, all.length, 2).setNumberFormat('@');
+    sheet.getRange(2, 1, all.length, width).setValues(all.map(r => { const row = r.slice(0, width); while (row.length < width) row.push(''); return row; }));
+  }
 
   const mapping = ss.getSheetByName(CONFIG.MAPPING_SHEET);
   const newAgents = [];
   if (mapping) {
-    const known = new Set(mapping.getLastRow() > 1 ? mapping.getRange(2, 1, mapping.getLastRow() - 1, 1).getValues().map(r => String(r[0]).trim()) : []);
+    const knownAgents = new Set(mapping.getLastRow() > 1 ? mapping.getRange(2, 1, mapping.getLastRow() - 1, 1).getValues().map(r => String(r[0]).trim()) : []);
     added.forEach(r => {
       const agent = String(r[2] || '').trim();
       const dept = String(r[3] || '').trim();
-      if (!agent || known.has(agent) || isExcludedAgent_(agent)) return;
+      if (!agent || knownAgents.has(agent) || isExcludedAgent_(agent)) return;
       if (dept && !/business development/i.test(dept)) return;
-      known.add(agent);
+      knownAgents.add(agent);
       newAgents.push(agent);
     });
     if (newAgents.length > 0) mapping.getRange(mapping.getLastRow() + 1, 1, newAgents.length, 2).setValues(newAgents.map(a => [a, '']));
   }
-  return { days: days.length, rows: added.length, replaced: existing.length - kept.length, newAgents };
+  return { days: days.length, rows: added.length, replaced: existing.length - kept.length, protectedRows, resolved, newAgents };
 }
 
 // ---- Replace mode runs in the background (a time-driven trigger), because cleaning big tabs takes longer than a web request may ----

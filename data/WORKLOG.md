@@ -160,3 +160,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 32. Dates inside the report
 - The Total Calls Per Extension report now carries "Date from / Date to" cells above the table. The upload reads them (a month file is spread over its working days); dates typed in the upload window override them; the file name is the last resort. The window no longer pre-fills a date from the file name.
+
+## 33. One-extension Date Distribution reports
+- "Total Calls Per Extension ( 103 ) - Date Distribution" (one extension, a row per real day, extension number in the title) is read too. The sheet resolves "103" to the full "103 (MMS-Name)" from Daily Totals or the Call Logs extension column; an unknown number asks for an all-extensions report first. Rows are now replaced per day AND extension (previously per day), and a period spread never overwrites a real daily row (reported as "kept").

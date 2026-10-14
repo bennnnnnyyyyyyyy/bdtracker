@@ -92,7 +92,7 @@ export function readTable(buffer: Buffer, filename: string): unknown[][] {
 
 export { dateFromFileName } from './fileDate';
 
-function cellToIso(v: unknown): string | null {
+export function cellToIso(v: unknown): string | null {
   if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
   if (typeof v === 'number' && v > 30000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10); // Excel date number
   const t = String(v ?? '').trim();
@@ -116,6 +116,52 @@ export function dateRangeFromTable(table: unknown[][]): { from: string; to: stri
     if (from && to) return to >= from ? { from, to } : { from: to, to: from };
   }
   return null;
+}
+
+/**
+ * "Total Calls Per Extension ( 103 ) - Date Distribution": the days of ONE extension, a row per day (no extension
+ * or department columns; the extension number is in the title).
+ */
+export function looksLikeDateDistribution(table: unknown[][]): boolean {
+  return table.some((row) => {
+    const cells = (row ?? []).map(normHeader);
+    return cells[0] === 'date' && REQUIRED.slice(1).every((h) => cells.includes(h));
+  });
+}
+
+export function parseDateDistribution(table: unknown[][]): { extensionNumber: string; days: { date: string; row: DailyTotalRow }[]; error?: string } {
+  const headerAt = table.findIndex((row) => normHeader((row ?? [])[0]) === 'date' && REQUIRED.slice(1).every((h) => (row ?? []).map(normHeader).includes(h)));
+  let extensionNumber = '';
+  for (let r = 0; r < Math.max(headerAt, 0) && !extensionNumber; r++) {
+    for (const cell of table[r] ?? []) {
+      const m = String(cell ?? '').match(/\(\s*(\d{2,5})\s*\)/);
+      if (m) { extensionNumber = m[1]; break; }
+    }
+  }
+  if (headerAt < 0) return { extensionNumber, days: [], error: 'This is not a "Date Distribution" report.' };
+  if (!extensionNumber) return { extensionNumber, days: [], error: 'The extension number was not found in the report title (expected "( 103 )").' };
+  const cells = table[headerAt].map(normHeader);
+  const col = (name: string) => cells.indexOf(name);
+  const idx = { oa: col('out answered calls'), ou: col('out unanswered calls'), ia: col('in answered calls'), iu: col('in unanswered calls'), total: col('total calls'), dur: col('total duration'), acd: col('acd') };
+  const days: { date: string; row: DailyTotalRow }[] = [];
+  for (let r = headerAt + 1; r < table.length; r++) {
+    const row = table[r] ?? [];
+    const date = cellToIso(row[0]);
+    if (!date) continue;
+    const outAnswered = num(row[idx.oa]); const outUnanswered = num(row[idx.ou]);
+    const inAnswered = num(row[idx.ia]); const inUnanswered = num(row[idx.iu]);
+    days.push({
+      date,
+      row: {
+        extension: extensionNumber, agent: '', department: '',
+        outAnswered, outUnanswered, inAnswered, inUnanswered,
+        totalCalls: idx.total >= 0 ? num(row[idx.total]) : outAnswered + outUnanswered + inAnswered + inUnanswered,
+        durationSec: idx.dur >= 0 ? durationToSeconds(row[idx.dur]) : 0,
+        acd: idx.acd >= 0 ? num(row[idx.acd]) : 0,
+      },
+    });
+  }
+  return days.length === 0 ? { extensionNumber, days, error: 'The report has no dated rows.' } : { extensionNumber, days };
 }
 
 const BD_DEPARTMENT = /business development/i;

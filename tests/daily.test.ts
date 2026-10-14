@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dailyRowsToCalls, dateRangeFromTable, dateFromFileName, looksLikeDailyTotals, parseDailyTotalsRows, spreadOverDays, workingDaysBetween } from '../src/lib/dailyTotals';
+import { looksLikeDateDistribution, parseDateDistribution, dailyRowsToCalls, dateRangeFromTable, dateFromFileName, looksLikeDailyTotals, parseDailyTotalsRows, spreadOverDays, workingDaysBetween } from '../src/lib/dailyTotals';
 import { computeDashboardMetrics } from '../src/lib/analytics';
 
 const table: unknown[][] = [
@@ -73,5 +73,21 @@ describe('Total Calls Per Extension report', () => {
     expect(dateRangeFromTable([[null, 'Date from', 'Date to'], [null, '07/01/2026', '07/31/2026']])).toEqual({ from: '2026-07-01', to: '2026-07-31' });
     expect(dateRangeFromTable(table)).toBeNull();
     expect(looksLikeDailyTotals(withDates)).toBe(true);
+  });
+
+  it('reads a one-extension Date Distribution report', () => {
+    const dist: unknown[][] = [
+      ['Total Calls Per Extension ( 103 ) - Date Distribution'],
+      ['Date', 'Out Answered Calls', 'Out UnAnswered Calls', 'In Answered Calls', 'In Unanswered Calls', 'Total Calls', 'Total Duration', 'ACD'],
+      ['2026-07-21', 93, 54, 4, 0, 151, '1 H , 22.86 M', 1.26],
+      ['2026-07-22', 98, 46, 1, 0, 145, '1 H , 2.99 M', 0.81],
+    ];
+    expect(looksLikeDateDistribution(dist)).toBe(true);
+    expect(looksLikeDateDistribution(table)).toBe(false);
+    expect(looksLikeDailyTotals(dist)).toBe(false);
+    const p = parseDateDistribution(dist);
+    expect(p.extensionNumber).toBe('103');
+    expect(p.days.map((d) => d.date)).toEqual(['2026-07-21', '2026-07-22']);
+    expect(p.days[0].row).toMatchObject({ extension: '103', outAnswered: 93, totalCalls: 151 });
   });
 });
