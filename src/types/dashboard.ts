@@ -185,6 +185,8 @@ export interface DashboardResponse {
   callsIncluded?: boolean;
   callsTotal?: number;
   meetings?: MeetingRecord[];
+  /** Every reviewable meeting regardless of the selected dates (the Confirm shows tab). */
+  confirmationQueue?: MeetingRecord[];
   agentMappings: AgentMapping[];
   stages: string[];
   lastUpdated: string;

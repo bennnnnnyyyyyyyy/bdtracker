@@ -408,7 +408,7 @@ export default function DashboardPage() {
             )}
             {activeTab === 'confirm' && (
               <ConfirmationsView
-                meetings={data.meetings || []}
+                meetings={data.confirmationQueue || []}
                 viewer={data.viewer}
                 confirmationsAvailable={data.confirmationsAvailable !== false}
                 onChanged={() => fetchData(false, true)}

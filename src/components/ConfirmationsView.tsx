@@ -79,7 +79,7 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
           <div className="sec-tag mb-0.5">Management review</div>
           <h3 className="font-serif text-base font-bold text-white">Confirm shows</h3>
           <p className="label-caps mt-0.5">
-            Meetings added since {CONFIRMATION_START_DATE} only count as shows once confirmed here · {awaitingCount} awaiting confirmation{reviewCount > 0 ? ` · ${reviewCount} confirmed but moved back to New Meetings (check if they became No-Shows)` : ''} (current date range)
+            Meetings added since {CONFIRMATION_START_DATE} only count as shows once confirmed here · {awaitingCount} awaiting confirmation{reviewCount > 0 ? ` · ${reviewCount} confirmed but moved back to New Meetings (check if they became No-Shows)` : ''}
           </p>
         </div>
 
@@ -155,7 +155,7 @@ export const ConfirmationsView: React.FC<Props> = ({ meetings, viewer, confirmat
                 </tr>
               );
             })}
-            {pageRows.length === 0 && <tr><td className="p-6 text-center text-[#71717a]" colSpan={8}>{status === 'awaiting' ? 'Nothing is waiting for confirmation in this date range.' : 'No meetings match.'}</td></tr>}
+            {pageRows.length === 0 && <tr><td className="p-6 text-center text-[#71717a]" colSpan={8}>{status === 'awaiting' ? 'Nothing is waiting for confirmation .' : 'No meetings match.'}</td></tr>}
           </tbody>
         </table>
       </div>

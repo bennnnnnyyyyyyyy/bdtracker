@@ -7,6 +7,7 @@ import { DashboardResponse } from '@/types/dashboard';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
 import { loadDashboardInputs } from '@/lib/dashboard-data';
 import { getRequestUser } from '@/lib/api-auth';
+import { canBeConfirmed, isRescheduledStatus } from '@/lib/meetings';
 
 function latestCallDate(calls: { callDate?: unknown }[]): string | undefined {
   let latest = '';
@@ -16,6 +17,7 @@ function latestCallDate(calls: { callDate?: unknown }[]): string | undefined {
   }
   return latest || undefined;
 }
+
 
 export async function GET(request: NextRequest) {
   try {
@@ -50,6 +52,7 @@ export async function GET(request: NextRequest) {
       callsIncluded: includeCalls,
       callsTotal: filteredCalls.reduce((sum, c) => sum + (c.weight ?? 1), 0),
       meetings: filteredMeetings,
+      confirmationQueue: rawData.meetings.filter((m) => m.meetingKey && !isRescheduledStatus(m.status) && (canBeConfirmed(m) || m.showConfirmed)),
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,
       lastUpdated: new Date().toISOString(),
