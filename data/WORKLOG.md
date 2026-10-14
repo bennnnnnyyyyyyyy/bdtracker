@@ -157,3 +157,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Stored in the sheet tab `Daily Totals` (Apps Script action `importDaily`, `importDays_`). The web app reads it (`fetchDailyTotals`) and turns each row into weighted call records (`CallRecord.weight`), so all formulas are unchanged. For days covered by daily totals, per-call rows are ignored (no double counting). Per-call exports and the Call Logs sheet still work for days without daily totals.
 - Agents whose department is not Business Development (OPS, Fulfillment, BOO, …) are left out unless given an Opener name in Agent Mapping; blank department stays in. New BD/blank-department agents are added to Agent Mapping.
 - Supabase fallback snapshot stores per-call rows only; daily totals are not in it.
+
+## 32. Dates inside the report
+- The Total Calls Per Extension report now carries "Date from / Date to" cells above the table. The upload reads them (a month file is spread over its working days); dates typed in the upload window override them; the file name is the last resort. The window no longer pre-fills a date from the file name.

@@ -1,6 +1,5 @@
 'use client';
 
-import { dateFromFileName } from '@/lib/fileDate';
 import React, { useState, useRef } from 'react';
 import { Upload, X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
@@ -70,7 +69,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
   const selectFiles = (picked: File[]) => {
     setFile(picked[0]);
     setFiles(picked);
-    setReportDate(picked.length === 1 ? (dateFromFileName(picked[0].name) ?? '') : '');
+    setReportDate('');
     setReportEnd('');
     setStatusMessage(null);
     setDetails([]);
@@ -311,7 +310,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
             </div>
             <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
               <span className="font-semibold text-[#4ade80]">Total Calls Per Extension (daily report, CSV or Excel)</span>
-              <span className="text-[11px] text-slate-400">One file per day (or per period), e.g. <code>Total_Calls_Per_Extension_JULY_1.xlsx</code>. The first date is read from the file name or chosen below. Several single-day files can be selected at once. Uploading a day again replaces that day.</span>
+              <span className="text-[11px] text-slate-400">One file per day (or per period), e.g. <code>Total_Calls_Per_Extension_JULY_1.xlsx</code>. The dates are read from “Date from / Date to” above the table, or typed below. Several files can be selected at once. Uploading a day again replaces that day.</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="p-3 rounded-lg bg-white/3 border border-white/6 flex flex-col gap-1">
@@ -340,12 +339,12 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
           {files.length <= 1 && (
             <div className="text-xs text-slate-300 mb-2 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                Daily / period report covers
+                Report dates (only needed when the file has no “Date from / Date to” cells)
                 <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} className="bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white" />
                 to
                 <input type="date" value={reportEnd} onChange={(e) => setReportEnd(e.target.value)} className="bg-transparent border border-white/10 rounded-lg px-2 py-1 text-xs text-white" />
               </div>
-              <div className="text-[11px] text-slate-500">Leave the second date empty for a single day. For a longer period the totals are spread evenly over its working days.</div>
+              <div className="text-[11px] text-slate-500">Normally leave both empty: the dates are read from the file (“Date from / Date to” above the table). Dates typed here override it. One date = a single day; two dates = a period whose totals are spread evenly over its working days.</div>
             </div>
           )}
           <label className="flex items-start gap-2 text-xs text-slate-300 mb-2">

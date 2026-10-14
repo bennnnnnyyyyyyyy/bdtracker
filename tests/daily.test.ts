@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dailyRowsToCalls, dateFromFileName, looksLikeDailyTotals, parseDailyTotalsRows, spreadOverDays, workingDaysBetween } from '../src/lib/dailyTotals';
+import { dailyRowsToCalls, dateRangeFromTable, dateFromFileName, looksLikeDailyTotals, parseDailyTotalsRows, spreadOverDays, workingDaysBetween } from '../src/lib/dailyTotals';
 import { computeDashboardMetrics } from '../src/lib/analytics';
 
 const table: unknown[][] = [
@@ -65,5 +65,13 @@ describe('Total Calls Per Extension report', () => {
     expect(sum((r) => r.outAnswered)).toBe(440 + 1334 + 9);
     expect(sum((r) => r.durationSec)).toBe(rows.reduce((t, r) => t + r.durationSec, 0));
     expect(Math.max(...spread.map((d) => d.rows.find((r) => r.agent === 'Rick Nelson')?.totalCalls ?? 0))).toBeLessThanOrEqual(32);
+  });
+
+  it('reads Date from / Date to above the table', () => {
+    const withDates: unknown[][] = [[null, 'Date from', 'Date to'], [null, 46204, 46234], ...table];
+    expect(dateRangeFromTable(withDates)).toEqual({ from: '2026-07-01', to: '2026-07-31' });
+    expect(dateRangeFromTable([[null, 'Date from', 'Date to'], [null, '07/01/2026', '07/31/2026']])).toEqual({ from: '2026-07-01', to: '2026-07-31' });
+    expect(dateRangeFromTable(table)).toBeNull();
+    expect(looksLikeDailyTotals(withDates)).toBe(true);
   });
 });

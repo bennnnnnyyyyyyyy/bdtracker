@@ -6,7 +6,7 @@ import { CONFIG } from '@/lib/config';
 import { invalidateDashboardCache } from '@/lib/sheets';
 import { requireUser } from '@/lib/api-auth';
 import { looksLikeCallExport, parseCallExportFile, parseCsv } from '@/lib/ultatelFile';
-import { dateFromFileName, looksLikeDailyTotals, parseDailyTotalsRows, readTable, spreadOverDays, workingDaysBetween } from '@/lib/dailyTotals';
+import { dateFromFileName, dateRangeFromTable, looksLikeDailyTotals, parseDailyTotalsRows, readTable, spreadOverDays, workingDaysBetween } from '@/lib/dailyTotals';
 import { isImportConfigured, missingImportSettings, sendDailyToSheet, sendRowsToSheet, startReplace } from '@/lib/importWebhook';
 
 export const runtime = 'nodejs';
@@ -34,14 +34,25 @@ export async function POST(request: NextRequest) {
         if (!isImportConfigured()) {
           return NextResponse.json({ error: `Uploading reports is not set up yet: the server does not see ${missingImportSettings().join(' and ')}.` }, { status: 501 });
         }
+        // Which days: dates typed in the upload window win, then "Date from / Date to" inside the file, then the file name.
         const typed = String(peek.get('date') ?? '').trim();
         const typedEnd = String(peek.get('endDate') ?? '').trim();
         const iso = /^\d{4}-\d{2}-\d{2}$/;
-        const from = iso.test(typed) ? typed : dateFromFileName(upload.name);
-        if (!from) {
-          return NextResponse.json({ error: 'Which day is this report for? The file name has no date: choose the date and upload again.', needsDate: true }, { status: 400 });
+        const inFile = dateRangeFromTable(table);
+        let from: string | null = null;
+        let to: string | null = null;
+        if (iso.test(typed)) {
+          from = typed;
+          to = iso.test(typedEnd) && typedEnd > typed ? typedEnd : typed;
+        } else if (inFile) {
+          ({ from, to } = inFile);
+        } else {
+          from = dateFromFileName(upload.name);
+          to = from;
         }
-        const to = iso.test(typedEnd) && typedEnd > from ? typedEnd : from;
+        if (!from || !to) {
+          return NextResponse.json({ error: 'Which days is this report for? The file has no "Date from / Date to" and its name has no date: choose the dates in the upload window and upload again.', needsDate: true }, { status: 400 });
+        }
         const today = new Date().toISOString().slice(0, 10);
         if (from > today || to > today) {
           return NextResponse.json({ error: `The report date ${to > today ? to : from} is in the future.` }, { status: 400 });

@@ -92,6 +92,32 @@ export function readTable(buffer: Buffer, filename: string): unknown[][] {
 
 export { dateFromFileName } from './fileDate';
 
+function cellToIso(v: unknown): string | null {
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  if (typeof v === 'number' && v > 30000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10); // Excel date number
+  const t = String(v ?? '').trim();
+  let m = t.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = t.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/); // US order, as in Ultatel's own exports
+  if (m) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  return null;
+}
+
+/** The "Date from" / "Date to" cells above the table, when the report has them. */
+export function dateRangeFromTable(table: unknown[][]): { from: string; to: string } | null {
+  for (let r = 0; r < Math.min(table.length, 15); r++) {
+    const cells = (table[r] ?? []).map(normHeader);
+    const f = cells.indexOf('date from');
+    const t = cells.indexOf('date to');
+    if (f < 0 || t < 0) continue;
+    const next = table[r + 1] ?? [];
+    const from = cellToIso(next[f]);
+    const to = cellToIso(next[t]);
+    if (from && to) return to >= from ? { from, to } : { from: to, to: from };
+  }
+  return null;
+}
+
 const BD_DEPARTMENT = /business development/i;
 
 /**
