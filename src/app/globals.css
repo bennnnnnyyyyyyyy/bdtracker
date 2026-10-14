@@ -58,7 +58,6 @@ html { height: 100%; }
 
 body {
   background-color: #09090b;
-  background-image: radial-gradient(circle at 8% 0%, rgba(53,229,138,0.055), transparent 28rem), radial-gradient(circle at 94% 22%, rgba(255,102,117,0.045), transparent 26rem);
   color: #f4f4f5;
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -80,10 +79,10 @@ body {
 
 .label-caps {
   font-family: var(--font-jetbrains), monospace;
-  font-size: 9px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: #71717a;
+  letter-spacing: 0.1em;
+  color: #8b8b94;
 }
 
 /* ── Card base ───────────────────────────────────────── */
@@ -155,10 +154,10 @@ body {
   align-items: center;
   gap: 8px;
   font-family: var(--font-jetbrains), monospace;
-  font-size: 10px;
-  letter-spacing: 0.15em;
+  font-size: 11px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #52525b;
+  color: #8b8b94;
 }
 .sec-tag::before {
   content: '';

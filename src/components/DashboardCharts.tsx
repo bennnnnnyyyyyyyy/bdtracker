@@ -19,20 +19,20 @@ interface DashboardChartsProps {
 }
 
 const STAGE_COLORS: Record<string, string> = {
-  'New Meetings': '#3B82F6', // Blue
-  'Follow Ups': '#6366F1', // Indigo
-  'Contract Sent': '#8B5CF6', // Purple
-  'Invoice Sent': '#EC4899', // Pink
-  'Onboarded': '#10B981', // Emerald
-  'No-Show': '#F59E0B', // Amber
-  'Dead Leads': '#EF4444', // Red
-  'Temporary Inactive': '#64748B' // Slate
+  'New Meetings': '#71717a', // Blue
+  'Follow Ups': '#a1a1aa', // Indigo
+  'Contract Sent': '#c9a84c', // Purple
+  'Invoice Sent': '#e8c56a', // Pink
+  'Onboarded': '#35e58a', // Emerald
+  'No-Show': '#fb923c', // Amber
+  'Dead Leads': '#ff6675', // Red
+  'Temporary Inactive': '#3f3f46' // Slate
 };
 
 export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers }) => {
   if (!openers || openers.length === 0) {
     return (
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
+      <div className="card p-8 text-center text-text-dim">
         No opener data available for chart rendering.
       </div>
     );
@@ -72,49 +72,49 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers }) => 
       {/* Top Row: Calls vs Booked & Rates */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 1. Calls Made vs Meetings Booked */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <div className="card p-5">
           <div className="mb-4">
-            <h3 className="text-base font-semibold text-white">Calls Made vs Meetings Booked</h3>
-            <p className="text-xs text-slate-400">Comparing call volume against resulting booked meetings by opener</p>
+            <h3 className="font-serif text-base font-bold text-white">Calls Made vs Meetings Booked</h3>
+            <p className="text-xs text-text-dim mt-0.5">Comparing call volume against resulting booked meetings by opener</p>
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={callsVsBookedData} margin={{ top: 10, right: 10, left: -10, bottom: 25 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                <XAxis dataKey="opener" stroke="#94A3B8" fontSize={11} angle={-25} textAnchor="end" />
-                <YAxis stroke="#94A3B8" fontSize={11} />
+              <BarChart data={callsVsBookedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" vertical={false} />
+                <XAxis dataKey="opener" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11}  />
+                <YAxis stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#F8FAFC' }}
+                  contentStyle={{ backgroundColor: '#1e1e23', borderColor: 'rgba(255,255,255,0.12)', borderRadius: '8px', color: '#f4f4f5' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   itemStyle={{ fontSize: '12px' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Bar dataKey="Calls Made" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Meetings Booked" fill="#10B981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Calls Made" fill="#c9a84c" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Meetings Booked" fill="#35e58a" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* 2. Show Rate vs Close Rate */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <div className="card p-5">
           <div className="mb-4">
-            <h3 className="text-base font-semibold text-white">Show Rate vs Close Rate</h3>
-            <p className="text-xs text-slate-400">Meeting attendance rate vs final deal onboarding close rate (%)</p>
+            <h3 className="font-serif text-base font-bold text-white">Show Rate vs Close Rate</h3>
+            <p className="text-xs text-text-dim mt-0.5">Meeting attendance rate vs final deal onboarding close rate (%)</p>
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ratesData} margin={{ top: 10, right: 10, left: -10, bottom: 25 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                <XAxis dataKey="opener" stroke="#94A3B8" fontSize={11} angle={-25} textAnchor="end" />
-                <YAxis stroke="#94A3B8" fontSize={11} unit="%" />
+              <BarChart data={ratesData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" vertical={false} />
+                <XAxis dataKey="opener" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11}  />
+                <YAxis stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} unit="%" />
                 <Tooltip
                   formatter={(val: unknown) => [`${val}%`, '']}
-                  contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#F8FAFC' }}
+                  contentStyle={{ backgroundColor: '#1e1e23', borderColor: 'rgba(255,255,255,0.12)', borderRadius: '8px', color: '#f4f4f5' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   itemStyle={{ fontSize: '12px' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Bar dataKey="Show Rate (%)" fill="#6366F1" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Close Rate (%)" fill="#EC4899" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Show Rate (%)" fill="#e8c56a" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Close Rate (%)" fill="#35e58a" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -124,19 +124,19 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers }) => 
       {/* Bottom Row: Pipeline Stage Stacked Bar & Calls/Meeting */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 3. Pipeline Stages Stacked Bar (2 cols) */}
-        <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <div className="lg:col-span-2 card p-5">
           <div className="mb-4">
-            <h3 className="text-base font-semibold text-white">Pipeline Stage Breakdown by Opener</h3>
-            <p className="text-xs text-slate-400">Distribution of leads across all 8 pipeline stages from BD Tracker</p>
+            <h3 className="font-serif text-base font-bold text-white">Pipeline Stage Breakdown by Opener</h3>
+            <p className="text-xs text-text-dim mt-0.5">Distribution of leads across all 8 pipeline stages from BD Tracker</p>
           </div>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={pipelineData} margin={{ top: 10, right: 10, left: -10, bottom: 25 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                <XAxis dataKey="opener" stroke="#94A3B8" fontSize={11} angle={-25} textAnchor="end" />
-                <YAxis stroke="#94A3B8" fontSize={11} />
+              <BarChart data={pipelineData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" vertical={false} />
+                <XAxis dataKey="opener" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11}  />
+                <YAxis stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#F8FAFC' }}
+                  contentStyle={{ backgroundColor: '#1e1e23', borderColor: 'rgba(255,255,255,0.12)', borderRadius: '8px', color: '#f4f4f5' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   itemStyle={{ fontSize: '12px' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -154,23 +154,23 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers }) => 
         </div>
 
         {/* 4. Efficiency: Calls per Meeting Booked (1 col) */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <div className="card p-5">
           <div className="mb-4">
-            <h3 className="text-base font-semibold text-white">Efficiency: Calls / Meeting</h3>
-            <p className="text-xs text-slate-400">Lower numbers indicate higher conversion efficiency</p>
+            <h3 className="font-serif text-base font-bold text-white">Efficiency: Calls / Meeting</h3>
+            <p className="text-xs text-text-dim mt-0.5">Lower numbers indicate higher conversion efficiency</p>
           </div>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={efficiencyData} margin={{ top: 10, right: 10, left: -10, bottom: 25 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                <XAxis dataKey="opener" stroke="#94A3B8" fontSize={11} angle={-25} textAnchor="end" />
-                <YAxis stroke="#94A3B8" fontSize={11} />
+              <BarChart data={efficiencyData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" vertical={false} />
+                <XAxis dataKey="opener" stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11}  />
+                <YAxis stroke="#8b8b94" tickLine={false} axisLine={false} fontSize={11} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#F8FAFC' }}
+                  contentStyle={{ backgroundColor: '#1e1e23', borderColor: 'rgba(255,255,255,0.12)', borderRadius: '8px', color: '#f4f4f5' }} cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   itemStyle={{ fontSize: '12px' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Bar dataKey="Calls per Meeting" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Calls per Meeting" fill="#c9a84c" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

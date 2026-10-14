@@ -6,13 +6,14 @@ import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
 import { CallLogsView } from '@/components/CallLogsView';
 import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
+import { DashboardCharts } from '@/components/DashboardCharts';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
 import { exportDashboardAnalyticsXlsx } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse } from '@/types/dashboard';
-import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3 } from 'lucide-react';
+import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, PieChart } from 'lucide-react';
 
-type ActiveTab = 'agents' | 'periods' | 'table' | 'calls';
+type ActiveTab = 'overview' | 'agents' | 'periods' | 'table' | 'calls';
 
 const DASHBOARD_UI_CACHE_KEY = 'bd-tracker-dashboard-ui-cache-v1';
 const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -24,6 +25,7 @@ type DashboardUiCache = {
 };
 
 const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'overview', label: 'Overview', icon: <PieChart className="w-4 h-4" /> },
   { id: 'agents', label: 'Team', icon: <LayoutGrid className="w-4 h-4" /> },
   { id: 'periods', label: 'Trends', icon: <BarChart3 className="w-4 h-4" /> },
   { id: 'table', label: 'Details', icon: <TableIcon className="w-4 h-4" /> },
@@ -109,7 +111,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('agents');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
 
@@ -210,7 +212,7 @@ export default function DashboardPage() {
         onSuccess={() => fetchData(true)}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {error && (
           <div
             className="rounded-xl p-4 flex items-center justify-between text-sm"
@@ -246,7 +248,7 @@ export default function DashboardPage() {
                   role="tab"
                   aria-selected={activeTab === tab.id}
                   onClick={() => handleTabChange(tab.id)}
-                  className="pb-3 pt-1 px-4 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap"
+                  className="pb-3 pt-1 px-5 flex items-center gap-2 cursor-pointer transition-all border-b-2 whitespace-nowrap"
                   style={
                     activeTab === tab.id
                       ? { borderColor: '#c9a84c', color: '#e8c56a', fontWeight: 600 }
@@ -259,6 +261,7 @@ export default function DashboardPage() {
               ))}
             </div>
 
+            {activeTab === 'overview' && <DashboardCharts openers={data.openers} />}
             {activeTab === 'agents' && (
               <AgentDashboardView
                 openers={data.openers}

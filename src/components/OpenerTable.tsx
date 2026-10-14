@@ -21,11 +21,53 @@ interface OpenerTableProps {
 
 type SortField = keyof OpenerStats | string;
 
+type ColumnGroup = 'activity' | 'meetings' | 'pipeline';
+
+interface Column {
+  key: string;
+  label: string;
+  group: ColumnGroup;
+  title?: string;
+  strong?: boolean;
+  cell: (o: OpenerStats) => React.ReactNode;
+  total: (t: OrgTotals) => React.ReactNode;
+  cellTitle?: (o: OpenerStats) => string;
+}
+
+const GROUPS: { id: ColumnGroup; label: string }[] = [
+  { id: 'activity', label: 'Call activity' },
+  { id: 'meetings', label: 'Meetings & closing' },
+  { id: 'pipeline', label: 'Pipeline stages' },
+];
+
+const COLUMNS: Column[] = [
+  { key: 'calls', label: 'Calls', group: 'activity', strong: true, cell: o => o.calls.toLocaleString(), total: t => t.calls.toLocaleString() },
+  { key: 'presentDays', label: 'Present days', group: 'activity', title: 'Weighted present days from Attendance Sheet', cell: o => o.presentDays > 0 ? o.presentDays : '—', total: t => t.totalPresentDays.toLocaleString() },
+  { key: 'callsPerPresentDay', label: 'Calls / day', group: 'activity', strong: true, title: 'Total calls / present days', cell: o => o.presentDays > 0 ? o.callsPerPresentDay : '—', total: t => t.callsPerPresentDay },
+  { key: 'outbound', label: 'Out', group: 'activity', cell: o => o.outbound, total: t => t.outbound.toLocaleString() },
+  { key: 'inbound', label: 'In', group: 'activity', cell: o => o.inbound, total: t => t.inbound.toLocaleString() },
+  { key: 'answered', label: 'Answered', group: 'activity', cell: o => o.answered, total: t => t.answered.toLocaleString() },
+  { key: 'noAnswer', label: 'No answer', group: 'activity', cell: o => o.noAnswer, total: t => t.noAnswer.toLocaleString() },
+  { key: 'answerRate', label: 'Answer %', group: 'activity', strong: true, cell: o => formatPercent(o.answerRate), total: t => formatPercent(t.answerRate) },
+  { key: 'totalTalkSec', label: 'Talk time', group: 'activity', cell: o => formatMinutes(o.totalTalkSec), total: t => formatMinutes(t.totalTalkSec) },
+  { key: 'avgCallSec', label: 'Avg call', group: 'activity', cell: o => `${o.avgCallSec}s`, total: t => `${t.avgCallSec}s` },
+  { key: 'booked', label: 'Booked', group: 'meetings', strong: true, cell: o => o.booked, total: t => t.booked.toLocaleString() },
+  { key: 'medBRate', label: 'Med B %', group: 'meetings', title: 'Med B share of booked meetings', cell: o => o.booked > 0 ? `${(o.medBRate || 0).toFixed(1)}%` : '—', total: t => t.booked > 0 ? `${(t.medBRate || 0).toFixed(1)}%` : '—', cellTitle: o => `${o.medBCount || 0} Med B meetings` },
+  { key: 'ppoRate', label: 'PPO %', group: 'meetings', title: 'PPO share of booked meetings', cell: o => o.booked > 0 ? `${(o.ppoRate || 0).toFixed(1)}%` : '—', total: t => t.booked > 0 ? `${(t.ppoRate || 0).toFixed(1)}%` : '—', cellTitle: o => `${o.ppoCount || 0} PPO meetings` },
+  { key: 'attended', label: 'Attended', group: 'meetings', cell: o => o.attended, total: t => t.attended.toLocaleString() },
+  { key: 'noShow', label: 'No-show', group: 'meetings', cell: o => o.noShow, total: t => t.noShow.toLocaleString() },
+  { key: 'showRate', label: 'Show %', group: 'meetings', strong: true, cell: o => formatPercent(o.showRate), total: t => formatPercent(t.showRate) },
+  { key: 'onboarded', label: 'Onboarded', group: 'meetings', strong: true, cell: o => o.onboarded, total: t => t.onboarded.toLocaleString() },
+  { key: 'closeRate', label: 'Close %', group: 'meetings', strong: true, cell: o => formatPercent(o.closeRate), total: t => formatPercent(t.closeRate) },
+  { key: 'callsPerMeeting', label: 'Calls / meeting', group: 'meetings', cell: o => o.callsPerMeeting, total: t => t.callsPerMeeting },
+];
+
 export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }) => {
 
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('calls');
   const [sortAsc, setSortAsc] = useState(false);
+  const [visibleGroups, setVisibleGroups] = useState<Set<ColumnGroup>>(() => new Set<ColumnGroup>(['activity', 'meetings']));
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -140,201 +182,113 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
 
   const renderSortIcon = (field: SortField) => {
     if (sortField !== field) {
-      return <ArrowUpDown className="w-3 h-3 text-slate-500 opacity-40 group-hover:opacity-100 transition-opacity ml-1 inline" />;
+      return <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-80 transition-opacity ml-1 inline" />;
     }
-    return sortAsc ? (
-      <ChevronUp className="w-3.5 h-3.5 text-blue-400 ml-1 inline" />
-    ) : (
-      <ChevronDown className="w-3.5 h-3.5 text-blue-400 ml-1 inline" />
-    );
+    return sortAsc
+      ? <ChevronUp className="w-3.5 h-3.5 text-gold-light ml-1 inline" />
+      : <ChevronDown className="w-3.5 h-3.5 text-gold-light ml-1 inline" />;
   };
+
+  const visibleColumns = COLUMNS.filter(c => visibleGroups.has(c.group));
+  const stageColumns = visibleGroups.has('pipeline') ? CONFIG.BD_TABS : [];
+
+  const toggleGroup = (g: ColumnGroup) => setVisibleGroups(prev => {
+    const next = new Set(prev);
+    if (next.has(g)) next.delete(g); else next.add(g);
+    return next;
+  });
+
+  const th = 'py-3 px-3 cursor-pointer hover:text-white text-right group select-none';
 
   return (
     <div className="card overflow-hidden">
-      {/* Header with Search and Export */}
-      <div className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="p-4 sm:px-6 flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-white/7">
         <div>
-          <div className="sec-tag mb-0.5">Summary Report</div>
-          <h3 className="font-serif text-base font-bold text-white">Full Agent Breakdown</h3>
+          <div className="sec-tag mb-1">Summary report</div>
+          <h3 className="font-serif text-lg font-bold text-white">Full agent breakdown</h3>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Column groups" className="flex gap-0.5 p-1 rounded-lg bg-white/4 border border-white/7">
+            {GROUPS.map(g => (
+              <button
+                key={g.id}
+                type="button"
+                aria-pressed={visibleGroups.has(g.id)}
+                onClick={() => toggleGroup(g.id)}
+                className={`min-h-8 px-3 rounded-md text-xs font-semibold cursor-pointer transition-colors ${visibleGroups.has(g.id) ? 'bg-white text-black' : 'text-text-dim hover:text-text-primary'}`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-[#71717a] absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-text-dim absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search opener..."
+              placeholder="Search agent…"
+              aria-label="Search agent"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#f4f4f5] placeholder-[#52525b] focus:outline-none w-44 font-num"
-              style={{ background: '#09090b', border: '1px solid rgba(255,255,255,0.08)' }}
+              className="rounded-lg pl-8 pr-3 min-h-9 text-xs text-text-primary placeholder-text-dim focus:outline-none w-40 bg-base border border-white/10"
             />
           </div>
-
           <button
             onClick={exportCSV}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer"
-            style={{ background: '#1a1608', border: '1px solid rgba(201,168,76,0.3)', color: '#e8c56a' }}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 min-h-9 rounded-lg cursor-pointer bg-gold-dim border border-gold-border text-gold-light"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
+            Export CSV
           </button>
         </div>
       </div>
 
-      {/* Table Content */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs whitespace-nowrap font-num">
-          <thead className="bg-[#111113] text-[#71717a] border-b border-[rgba(255,255,255,0.07)] font-medium">
+        <table className="w-full text-left text-[13px] whitespace-nowrap font-num">
+          <thead className="bg-surface text-text-dim text-[11px] uppercase tracking-wider border-b border-white/7 font-medium">
             <tr>
-              <th onClick={() => handleSort('opener')} className="py-3 px-4 cursor-pointer hover:text-white sticky left-0 bg-[#111113] z-10 font-serif">
-                Opener {renderSortIcon('opener')}
+              <th onClick={() => handleSort('opener')} className="py-3 px-4 cursor-pointer hover:text-white sticky left-0 bg-surface z-10 group select-none">
+                Agent {renderSortIcon('opener')}
               </th>
-              <th onClick={() => handleSort('calls')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Calls Made {renderSortIcon('calls')}
-              </th>
-              <th onClick={() => handleSort('presentDays')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#38bdf8]" title="Weighted present days from Attendance Sheet">
-                Pres. Days {renderSortIcon('presentDays')}
-              </th>
-              <th onClick={() => handleSort('callsPerPresentDay')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#38bdf8]" title="Total Calls / Present Days">
-                Calls / Pres. Day {renderSortIcon('callsPerPresentDay')}
-              </th>
-              <th onClick={() => handleSort('callsPerCalendarDay')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#a1a1aa]" title="Total Calls / Active Calendar Days (As-Is)">
-                Calls / Day {renderSortIcon('callsPerCalendarDay')}
-              </th>
-              <th onClick={() => handleSort('outbound')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Out {renderSortIcon('outbound')}
-              </th>
-              <th onClick={() => handleSort('inbound')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                In {renderSortIcon('inbound')}
-              </th>
-              <th onClick={() => handleSort('answered')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Answered {renderSortIcon('answered')}
-              </th>
-              <th onClick={() => handleSort('noAnswer')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                No Answer {renderSortIcon('noAnswer')}
-              </th>
-              <th onClick={() => handleSort('answerRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Answer Rate {renderSortIcon('answerRate')}
-              </th>
-              <th onClick={() => handleSort('totalTalkSec')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Total Talk {renderSortIcon('totalTalkSec')}
-              </th>
-              <th onClick={() => handleSort('avgCallSec')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Avg Call {renderSortIcon('avgCallSec')}
-              </th>
-              <th onClick={() => handleSort('booked')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#e8c56a]">
-                Booked {renderSortIcon('booked')}
-              </th>
-              <th onClick={() => handleSort('medBRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#c084fc]" title="Med B percentage of booked meetings">
-                Med B % {renderSortIcon('medBRate')}
-              </th>
-              <th onClick={() => handleSort('ppoRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#38bdf8]" title="PPO percentage of booked meetings">
-                PPO % {renderSortIcon('ppoRate')}
-              </th>
-              <th onClick={() => handleSort('noShow')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#f87171]">
-                No-Show {renderSortIcon('noShow')}
-              </th>
-              <th onClick={() => handleSort('attended')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#4ade80]">
-                Attended {renderSortIcon('attended')}
-              </th>
-              <th onClick={() => handleSort('showRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Show Rate {renderSortIcon('showRate')}
-              </th>
-              <th onClick={() => handleSort('onboarded')} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#c9a84c]">
-                Onboarded {renderSortIcon('onboarded')}
-              </th>
-              <th onClick={() => handleSort('closeRate')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Close Rate {renderSortIcon('closeRate')}
-              </th>
-              <th onClick={() => handleSort('callsPerMeeting')} className="py-3 px-3 cursor-pointer hover:text-white text-right">
-                Calls / Mtg {renderSortIcon('callsPerMeeting')}
-              </th>
-              {CONFIG.BD_TABS.map(tab => (
-                <th key={tab} onClick={() => handleSort(tab)} className="py-3 px-3 cursor-pointer hover:text-white text-right text-[#71717a]">
+              {visibleColumns.map(c => (
+                <th key={c.key} onClick={() => handleSort(c.key)} title={c.title} className={th}>
+                  {c.label} {renderSortIcon(c.key)}
+                </th>
+              ))}
+              {stageColumns.map(tab => (
+                <th key={tab} onClick={() => handleSort(tab)} className={th}>
                   {tab} {renderSortIcon(tab)}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[rgba(255,255,255,0.05)] text-[#d4d4d8]">
-            {sorted.map((o) => (
-              <tr key={o.opener} className="hover:bg-[rgba(255,255,255,0.03)] transition-colors">
-                <td className="py-2.5 px-4 font-serif font-medium text-white sticky left-0 bg-[#17171a] z-10 border-r border-[rgba(255,255,255,0.06)]">
-                  {o.opener}
+          <tbody className="divide-y divide-white/5 text-text-primary">
+            {sorted.map((o, idx) => (
+              <tr key={o.opener} className="hover:bg-white/3 transition-colors">
+                <td className="py-3 px-4 font-semibold text-white sticky left-0 bg-card z-10 border-r border-white/6">
+                  <span className="text-text-dim font-normal mr-2">{idx + 1}</span>{o.opener}
                 </td>
-                <td className="py-2.5 px-3 text-right font-semibold text-white">{o.calls.toLocaleString()}</td>
-                <td className="py-2.5 px-3 text-right font-medium text-[#38bdf8]">{o.presentDays > 0 ? o.presentDays : '—'}</td>
-                <td className="py-2.5 px-3 text-right font-bold text-[#38bdf8]">{o.presentDays > 0 ? o.callsPerPresentDay : '—'}</td>
-                <td className="py-2.5 px-3 text-right text-[#a1a1aa]">{o.callsPerCalendarDay ?? o.dailyAverages?.calls ?? 0}</td>
-                <td className="py-2.5 px-3 text-right text-[#71717a]">{o.outbound}</td>
-                <td className="py-2.5 px-3 text-right text-[#71717a]">{o.inbound}</td>
-                <td className="py-2.5 px-3 text-right text-[#4ade80]">{o.answered}</td>
-                <td className="py-2.5 px-3 text-right text-[#52525b]">{o.noAnswer}</td>
-                <td className="py-2.5 px-3 text-right">
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                    o.answerRate >= 0.5 ? 'pill-success' : 'text-[#a1a1aa]'
-                  }`}>
-                    {formatPercent(o.answerRate)}
-                  </span>
-                </td>
-                <td className="py-2.5 px-3 text-right text-[#a1a1aa]">{formatMinutes(o.totalTalkSec)}</td>
-                <td className="py-2.5 px-3 text-right text-[#71717a]">{o.avgCallSec}s</td>
-                <td className="py-2.5 px-3 text-right font-bold text-[#e8c56a]">{o.booked}</td>
-                <td className="py-2.5 px-3 text-right text-[#c084fc]" title={`${o.medBCount || 0} Med B meetings`}>
-                  {o.booked > 0 ? `${(o.medBRate || 0).toFixed(1)}%` : '—'}
-                </td>
-                <td className="py-2.5 px-3 text-right text-[#38bdf8]" title={`${o.ppoCount || 0} PPO meetings`}>
-                  {o.booked > 0 ? `${(o.ppoRate || 0).toFixed(1)}%` : '—'}
-                </td>
-                <td className="py-2.5 px-3 text-right text-[#f87171]">{o.noShow}</td>
-                <td className="py-2.5 px-3 text-right text-[#4ade80]">{o.attended}</td>
-                <td className="py-2.5 px-3 text-right font-medium text-[#e8c56a]">{formatPercent(o.showRate)}</td>
-                <td className="py-2.5 px-3 text-right font-bold text-[#c9a84c]">{o.onboarded}</td>
-                <td className="py-2.5 px-3 text-right font-medium text-[#c9a84c]">{formatPercent(o.closeRate)}</td>
-                <td className="py-2.5 px-3 text-right text-[#e8c56a]">{o.callsPerMeeting}</td>
-                {CONFIG.BD_TABS.map(tab => (
-                  <td key={tab} className="py-2.5 px-3 text-right text-[#71717a]">
-                    {o.stageCounts[tab] || 0}
+                {visibleColumns.map(c => (
+                  <td key={c.key} className={`py-3 px-3 text-right ${c.strong ? 'font-bold text-white' : 'text-text-muted'}`} title={c.cellTitle?.(o)}>
+                    {c.cell(o)}
                   </td>
+                ))}
+                {stageColumns.map(tab => (
+                  <td key={tab} className="py-3 px-3 text-right text-text-muted">{o.stageCounts[tab] || 0}</td>
                 ))}
               </tr>
             ))}
           </tbody>
-          {/* Totals Footer Row */}
-          <tfoot className="bg-[#111113] text-white font-bold border-t-2 border-[rgba(255,255,255,0.12)]">
+          <tfoot className="bg-surface text-white font-bold border-t-2 border-white/12">
             <tr>
-              <td className="py-3 px-4 font-serif sticky left-0 bg-[#111113] z-10 border-r border-[rgba(255,255,255,0.12)]">
-                TOTAL ({openers.length} Openers)
+              <td className="py-3 px-4 sticky left-0 bg-surface z-10 border-r border-white/12">
+                Total <span className="text-text-dim font-normal">({openers.length} agents)</span>
               </td>
-              <td className="py-3 px-3 text-right text-white">{totals.calls.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#38bdf8]">{totals.totalPresentDays.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#38bdf8]">{totals.callsPerPresentDay}</td>
-              <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.callsPerCalendarDay ?? 0}</td>
-              <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.outbound.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.inbound.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#4ade80]">{totals.answered.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#52525b]">{totals.noAnswer.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#4ade80]">{formatPercent(totals.answerRate)}</td>
-              <td className="py-3 px-3 text-right text-[#d4d4d8]">{formatMinutes(totals.totalTalkSec)}</td>
-              <td className="py-3 px-3 text-right text-[#a1a1aa]">{totals.avgCallSec}s</td>
-              <td className="py-3 px-3 text-right text-[#e8c56a]">{totals.booked.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#c084fc]">
-                {totals.booked > 0 ? `${(totals.medBRate || 0).toFixed(1)}%` : '—'}
-              </td>
-              <td className="py-3 px-3 text-right text-[#38bdf8]">
-                {totals.booked > 0 ? `${(totals.ppoRate || 0).toFixed(1)}%` : '—'}
-              </td>
-              <td className="py-3 px-3 text-right text-[#f87171]">{totals.noShow.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#4ade80]">{totals.attended.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#e8c56a]">{formatPercent(totals.showRate)}</td>
-              <td className="py-3 px-3 text-right text-[#c9a84c]">{totals.onboarded.toLocaleString()}</td>
-              <td className="py-3 px-3 text-right text-[#c9a84c]">{formatPercent(totals.closeRate)}</td>
-              <td className="py-3 px-3 text-right text-[#e8c56a]">{totals.callsPerMeeting}</td>
-              {CONFIG.BD_TABS.map(tab => (
-                <td key={tab} className="py-3 px-3 text-right text-[#a1a1aa]">
-                  {(totals.stageCounts[tab] || 0).toLocaleString()}
-                </td>
+              {visibleColumns.map(c => (
+                <td key={c.key} className="py-3 px-3 text-right">{c.total(totals)}</td>
+              ))}
+              {stageColumns.map(tab => (
+                <td key={tab} className="py-3 px-3 text-right">{(totals.stageCounts[tab] || 0).toLocaleString()}</td>
               ))}
             </tr>
           </tfoot>
