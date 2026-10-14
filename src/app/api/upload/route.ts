@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
         const today = new Date().toISOString().slice(0, 10);
         const future = parsed.days.find((d) => d.date > today);
         if (future) return NextResponse.json({ error: `The report contains a future date (${future.date}).` }, { status: 400 });
-        const result = await sendDailyToSheet(parsed.days.map((d) => ({ date: d.date, rows: [d.row] })), 'daily');
+        const result = await sendDailyToSheet(parsed.days.map((d) => ({ date: d.date, rows: [d.row] })), 'daily', fetch, { defer: peek.get('more') === '1' });
         invalidateDashboardCache();
         const total = parsed.days.reduce((sum, d) => sum + d.row.totalCalls, 0);
         const first = parsed.days[0].date;
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         if (dates.length === 0) return NextResponse.json({ error: 'That period has no working days (Monday to Friday).' }, { status: 400 });
         const days = isPeriod ? spreadOverDays(parsed.rows, dates) : [{ date: from, rows: parsed.rows }];
         const source = isPeriod ? `period ${from}..${to} spread over ${dates.length} working days` : 'daily';
-        const result = await sendDailyToSheet(days, source);
+        const result = await sendDailyToSheet(days, source, fetch, { defer: peek.get('more') === '1' });
         invalidateDashboardCache();
         const total = parsed.rows.reduce((sum, r) => sum + r.totalCalls, 0);
         return NextResponse.json({

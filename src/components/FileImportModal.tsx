@@ -61,6 +61,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({ isOpen, onClos
         formData.append('file', files[i]);
         if (files.length === 1 && from) formData.append('date', from);
         if (files.length === 1 && to) formData.append('endDate', to);
+        if (i < files.length - 1) formData.append('more', '1'); // the sheet tabs are rebuilt once, after the last file
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const text = await res.text();
         let body: Record<string, unknown> = {};

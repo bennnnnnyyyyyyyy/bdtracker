@@ -15,6 +15,9 @@
  */
 const CONFIG = {
   // BD Tracker Spreadsheet ID (leave empty if tabs live in the current spreadsheet)
+  // The BD French attendance workbook (tab "Attendance"). Override with the script property ATTENDANCE_SHEET_ID.
+  ATTENDANCE_SHEET_ID: '1OifBiymAAVSm8JNpIULtU7V4k_b_7Mj9Puo6Ag_suHw',
+  ATTENDANCE_SHEET_NAME: 'Attendance',
   BD_TRACKER_ID: '1uicpBruuFeno2ES4hNw-TIAwNkGEI37gw8Z-A4yMpC8',
 
   // BD Pipeline Stages (Tabs)
@@ -343,9 +346,10 @@ const DAILY_HEADERS_ = ['Date', 'Extension', 'Agent', 'Department', 'Out Answere
  * Agent Mapping yet are added there so they can be given an Opener name.
  * @param {{date: string, rows: {extension: string, agent: string, department: string, outAnswered: number, outUnanswered: number, inAnswered: number, inUnanswered: number, totalCalls: number, durationSec: number, acd: number}[]}[]} days
  * @param {string} source text saved in the Source column ("daily" or a description of the spread period)
+ * @param {{defer?: boolean}} [opts] defer = more files follow: skip the Totals tab, formatting and BD Dashboard refresh
  * @returns {{days: number, rows: number, replaced: number, protectedRows: number, resolved: string, newAgents: string[]}}
  */
-function importDays_(days, source) {
+function importDays_(days, source, opts) {
   days.forEach(d => { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date))) throw new Error('A report date is missing or invalid.'); });
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
@@ -427,11 +431,14 @@ function importDays_(days, source) {
     });
     if (newAgents.length > 0) mapping.getRange(mapping.getLastRow() + 1, 1, newAgents.length, 2).setValues(newAgents.map(a => [a, '']));
   }
-  try {
-    formatDailyTotalsSheet_(sheet);
-    rebuildTotalsSummary_();
-  } catch (err) {
-    console.error('Formatting/Totals summary failed:', err); // the upload itself succeeded
+  if (!(opts && opts.defer)) {
+    try {
+      formatDailyTotalsSheet_(sheet);
+      rebuildTotalsSummary_();
+      refreshDashboard(); // the in-sheet BD Dashboard mirror (calls, present days, pipeline)
+    } catch (err) {
+      console.error('Formatting/Totals/Dashboard refresh failed:', err); // the upload itself succeeded
+    }
   }
   return { days: days.length, rows: added.length, replaced: existing.length - kept.length, protectedRows, resolved, newAgents };
 }
@@ -480,13 +487,65 @@ function relayoutDailyTotals_() {
   formatDailyTotalsSheet_(sheet);
 }
 
+/**
+ * Reads the BD French attendance workbook: blocks that start with a row whose first cell is "Date" (dates in the
+ * cells to its right), followed by one row per person with a code per day. Codes: P, L1, L2 = 1 day, Q = 0.75,
+ * H = 0.5, anything else = 0. The same date in two blocks keeps the larger mark.
+ * @returns {Object<string, Object<string, number>>} person (lower case) -> yyyy-MM-dd -> weight
+ */
+function readAttendance_() {
+  const id = PropertiesService.getScriptProperties().getProperty('ATTENDANCE_SHEET_ID') || CONFIG.ATTENDANCE_SHEET_ID;
+  const book = SpreadsheetApp.openById(id);
+  const sheet = book.getSheetByName(CONFIG.ATTENDANCE_SHEET_NAME);
+  if (!sheet) throw new Error('the attendance workbook has no tab named "' + CONFIG.ATTENDANCE_SHEET_NAME + '"');
+  const tz = book.getSpreadsheetTimeZone();
+  const lastRow = sheet.getLastRow();
+  const lastCol = Math.min(sheet.getLastColumn(), 46);
+  if (lastRow < 1 || lastCol < 2) return {};
+  const values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  const weights = { P: 1, L1: 1, L2: 1, Q: 0.75, H: 0.5 };
+  const byPerson = {};
+  let dates = null;
+  values.forEach(row => {
+    const first = String(row[0] == null ? '' : row[0]).trim();
+    const low = first.toLowerCase();
+    if (low === 'date') {
+      dates = row.map((c, i) => (i > 0 && c instanceof Date ? Utilities.formatDate(c, tz, 'yyyy-MM-dd') : null));
+      return;
+    }
+    if (!first) { dates = null; return; }
+    if (!dates || low === 'month' || low === 'day') return;
+    const key = first.replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!key) return;
+    if (!byPerson[key]) byPerson[key] = {};
+    for (let i = 1; i < row.length; i++) {
+      if (!dates[i]) continue;
+      const w = weights[String(row[i] == null ? '' : row[i]).trim().toUpperCase()] || 0;
+      if (w > (byPerson[key][dates[i]] || 0) || byPerson[key][dates[i]] === undefined) byPerson[key][dates[i]] = w;
+    }
+  });
+  return byPerson;
+}
+
+/** Present days of one or more people (lower-case names) between two yyyy-MM-dd dates, inclusive. */
+function presentDays_(attendance, names, from, to) {
+  let total = 0;
+  names.forEach(n => {
+    const days = attendance[String(n).toLowerCase()];
+    if (!days) return;
+    Object.keys(days).forEach(d => { if (d >= from && d <= to) total += days[d]; });
+  });
+  return total;
+}
+
 /** Menu item: rebuild the Totals tab now. */
 function rebuildTotalsMenu() {
   withLock_(() => {
     relayoutDailyTotals_();
     rebuildTotalsSummary_();
+    refreshDashboard();
   }, 50000);
-  SpreadsheetApp.getUi().alert('The Daily Totals and Totals tabs were re-formatted and rebuilt.');
+  SpreadsheetApp.getUi().alert('Daily Totals, Totals and the BD Dashboard tab were rebuilt.');
 }
 
 /**
@@ -552,15 +611,35 @@ function rebuildTotalsSummary_() {
   });
   const months = Array.from(monthSet).sort();
   const monthLabel = m => MONTHS[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(0, 4);
-  const header = ['Agent (Opener)', 'Ultatel name'].concat(months.map(monthLabel), ['This week (' + weekStart + ' to ' + newest + ')', 'Total calls', 'Out answered', 'Out unanswered', 'In answered', 'In unanswered', 'Connection %', 'Talk time (hours)', 'Days with data']);
-  const line = (label, names, t) => [label, names].concat(
+
+  // Attendance (present days) from the BD French workbook; a failure only blanks those columns.
+  let attendance = null;
+  let attendanceNote = '';
+  try {
+    attendance = readAttendance_();
+  } catch (err) {
+    attendanceNote = ' Attendance columns are empty: ' + String(err && err.message ? err.message : err) + '.';
+  }
+  const attColumns = ['Present days (this week)', 'Calls / present day (this week)', 'Present days (all)', 'Calls / present day (all)'];
+  const attValues = (names, t) => {
+    if (!attendance) return ['', '', '', ''];
+    const list = Array.from(names);
+    const pw = presentDays_(attendance, list, weekStart, newest);
+    const pa = presentDays_(attendance, list, first, newest);
+    return [pw, pw > 0 ? t.week / pw : '', pa, pa > 0 ? t.total / pa : ''];
+  };
+  const header = ['Agent (Opener)', 'Ultatel name'].concat(months.map(monthLabel), ['This week (' + weekStart + ' to ' + newest + ')', 'Total calls', 'Out answered', 'Out unanswered', 'In answered', 'In unanswered', 'Connection %', 'Talk time (hours)', 'Days with data'], attColumns);
+  const line = (label, names, t, nameSet) => [label, names].concat(
     months.map(m => t.months[m] || 0),
-    [t.week, t.total, t.oa, t.ou, t.ia, t.iu, t.total > 0 ? (t.oa + t.ia) / t.total : 0, Math.round(t.sec / 36) / 100, t.days.size]
+    [t.week, t.total, t.oa, t.ou, t.ia, t.iu, t.total > 0 ? (t.oa + t.ia) / t.total : 0, Math.round(t.sec / 36) / 100, t.days.size],
+    attValues(nameSet, t)
   );
   const list = Array.from(groups.entries()).sort((a, b) => b[1].total - a[1].total);
-  const body = [line('ALL AGENTS', '', all)].concat(list.map(([opener, g]) => {
+  const allNames = new Set();
+  list.forEach(([, g]) => g.names.forEach(n => allNames.add(n)));
+  const body = [line('ALL AGENTS', '', all, allNames)].concat(list.map(([opener, g]) => {
     const names = Array.from(g.names).join(', ');
-    return line(opener, names.toLowerCase() === opener.toLowerCase() ? '' : names, g);
+    return line(opener, names.toLowerCase() === opener.toLowerCase() ? '' : names, g, g.names);
   }));
 
   let sheet = ss.getSheetByName(CONFIG.TOTALS_SHEET);
@@ -568,7 +647,7 @@ function rebuildTotalsSummary_() {
   sheet.clear();
   const width = header.length;
   sheet.getRange(1, 1).setValue('Call totals by agent').setFontWeight('bold').setFontSize(14);
-  sheet.getRange(2, 1).setValue('From the "Daily Totals" tab (Ultatel Total Calls Per Extension reports), ' + first + ' to ' + newest + '. Rebuilt after every upload; do not type here. Calls = Total Calls (outgoing + incoming). Agents are shown under their Opener name.');
+  sheet.getRange(2, 1).setValue('From the "Daily Totals" tab (Ultatel Total Calls Per Extension reports), ' + first + ' to ' + newest + '. Rebuilt after every upload; do not type here. Calls = Total Calls (outgoing + incoming). Agents are shown under their Opener name. Present days come from the BD French attendance workbook.' + attendanceNote);
   sheet.getRange(4, 1, 1, width).setNumberFormat('@').setValues([header]).setFontWeight('bold').setBackground('#e8e8e8').setWrap(true);
   sheet.getRange(5, 1, body.length, width).setValues(body);
   formatTotalsSheet_(sheet, body.length, width, months.length);
@@ -584,7 +663,7 @@ function formatTotalsSheet_(sheet, bodyRows, width, monthCols) {
   const weekCol = 3 + monthCols;
   const totalCol = weekCol + 1;
   const rateCol = totalCol + 5;
-  const last = 4 + bodyRows;
+  const attCol = rateCol + 3;
 
   sheet.setHiddenGridlines(true);
   sheet.setFrozenRows(5);
@@ -605,6 +684,7 @@ function formatTotalsSheet_(sheet, bodyRows, width, monthCols) {
   sheet.getRange(4, weekCol, 1, 1).setBackground('#2f855a');
   sheet.getRange(4, totalCol, 1, 5).setBackground(NAVY);
   sheet.getRange(4, rateCol, 1, 3).setBackground('#553c9a');
+  sheet.getRange(4, attCol, 1, 4).setBackground('#0f766e');
 
   // Body: banded rows, numbers right-aligned, formats.
   const body = sheet.getRange(5, 1, bodyRows, width);
@@ -617,6 +697,7 @@ function formatTotalsSheet_(sheet, bodyRows, width, monthCols) {
   sheet.getRange(5, rateCol, bodyRows, 1).setNumberFormat('0.0%');
   sheet.getRange(5, rateCol + 1, bodyRows, 1).setNumberFormat('0.0');
   sheet.getRange(5, rateCol + 2, bodyRows, 1).setNumberFormat('0');
+  sheet.getRange(5, attCol, bodyRows, 4).setNumberFormat('#,##0.0#');
   if (bodyRows > 1) sheet.getRange(6, weekCol, bodyRows - 1, 1).setBackground('#e6f4ea');
   sheet.getRange(5, weekCol, 1, 1).setBackground('#d4edda');
   sheet.getRange(5, 1, bodyRows, 1).setFontWeight('bold');
@@ -626,7 +707,7 @@ function formatTotalsSheet_(sheet, bodyRows, width, monthCols) {
 
   // Dividers: thin grey between rows, medium navy between the blocks, a heavier line under the headings and ALL AGENTS.
   sheet.getRange(4, 1, bodyRows + 1, width).setBorder(null, null, null, null, false, true, '#d9dee5', SpreadsheetApp.BorderStyle.SOLID);
-  [3, weekCol, totalCol, rateCol].forEach(c => {
+  [3, weekCol, totalCol, rateCol, attCol].forEach(c => {
     sheet.getRange(4, c, bodyRows + 1, 1).setBorder(null, true, null, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   });
   sheet.getRange(4, 1, 1, width).setBorder(true, null, true, null, null, null, NAVY, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
@@ -834,6 +915,7 @@ function runSheetAction_(body) {
       return withLock_(() => {
         relayoutDailyTotals_();
         rebuildTotalsSummary_();
+        refreshDashboard();
         return {};
       }, 50000);
     case 'autoArchiveOn':
@@ -883,7 +965,7 @@ function doPost(e) {
     if (body.action === 'importDaily') {
       if (!Array.isArray(body.days) || body.days.length === 0 || body.days.length > 70) return jsonOut_({ ok: false, error: 'Bad request' });
       const source = String(body.source || 'daily').slice(0, 80);
-      return jsonOut_({ ok: true, ...withLock_(() => importDays_(body.days, source), 50000) });
+      return jsonOut_({ ok: true, ...withLock_(() => importDays_(body.days, source, { defer: body.defer === true }), 50000) });
     }
     return jsonOut_({ ok: true, ...runSheetAction_(body) });
   } catch (err) {
@@ -1400,40 +1482,66 @@ function refreshDashboard() {
       const opener = String(r[1] ?? '').trim();
       if (agent && !isExcludedAgent_(agent) && !isExcludedAgent_(opener)) {
         agentToOpener[agent] = opener;
+        agentToOpener[parseAgentName_(agent)] = opener; // "111 (MMS-Nora Atkins)" and "Nora Atkins" both work
       }
     });
   }
 
-  // 2. Aggregate Call Log Statistics
-  const clLastRow = callLog.getLastRow();
+  // 2. Aggregate call statistics: Daily Totals first, the older Call Logs only for days without daily totals.
   const stats = {};
+  const agentsOf = {}; // opener -> PBX names (for attendance)
+  const blankStats = () => ({ calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, totalSec: 0 });
+  const addTo = (agentName, calls, out, inn, answered, noAnswer, sec) => {
+    const opener = agentToOpener[agentName] || agentToOpener[parseAgentName_(agentName)] || agentName || 'Unmapped';
+    if (isExcludedAgent_(opener) || /^(ignore|ignored|-)$/i.test(opener)) return;
+    if (!stats[opener]) { stats[opener] = blankStats(); agentsOf[opener] = new Set(); }
+    agentsOf[opener].add(agentName);
+    const st = stats[opener];
+    st.calls += calls; st.out += out; st.in += inn; st.answered += answered; st.noAnswer += noAnswer; st.totalSec += sec;
+  };
+
+  const dailyDays = new Set();
+  let firstDay = '9999-99-99';
+  let lastDay = '0000-00-00';
+  const daily = ss.getSheetByName(CONFIG.DAILY_TOTALS_SHEET);
+  if (daily && daily.getLastRow() > 1) {
+    daily.getRange(2, 1, daily.getLastRow() - 1, 13).getValues().forEach(r => {
+      const day = r[0] instanceof Date ? Utilities.formatDate(r[0], ssTz_(), 'yyyy-MM-dd') : String(r[0] == null ? '' : r[0]).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+      const name = String(r[2] || parseAgentName_(String(r[1] || ''))).trim();
+      if (!name || isExcludedAgent_(name)) return;
+      const dept = String(r[3] || '').trim();
+      if (dept && !/business development/i.test(dept) && !agentToOpener[name]) return;
+      dailyDays.add(day);
+      if (day < firstDay) firstDay = day;
+      if (day > lastDay) lastDay = day;
+      const sum4 = (Number(r[4]) || 0) + (Number(r[5]) || 0) + (Number(r[6]) || 0) + (Number(r[7]) || 0);
+      addTo(name, Number(r[8]) || sum4, (Number(r[4]) || 0) + (Number(r[5]) || 0), (Number(r[6]) || 0) + (Number(r[7]) || 0),
+        (Number(r[4]) || 0) + (Number(r[6]) || 0), (Number(r[5]) || 0) + (Number(r[7]) || 0), Number(r[9]) || 0);
+    });
+  }
+
+  const clLastRow = callLog.getLastRow();
   if (clLastRow > 1) {
     const data = callLog.getRange(2, 1, clLastRow - 1, CONFIG.RAW_HEADERS.length + CONFIG.CALL_LOG_EXTRA.length).getValues();
     data.forEach(r => {
+      const day = r[0] instanceof Date ? Utilities.formatDate(r[0], ssTz_(), 'yyyy-MM-dd') : String(r[0] == null ? '' : r[0]).slice(0, 10);
+      if (dailyDays.has(day)) return; // covered by daily totals
       const type = String(r[8] ?? '');
       const outcome = String(r[9] ?? '');
-      const durSec = Number(r[14]) || 0;
       const rawAgent = String(r[13] ?? '').trim();
-      
       if (isExcludedAgent_(rawAgent)) return;
-
-      const opener = agentToOpener[rawAgent] || rawAgent || 'Unmapped';
-      if (isExcludedAgent_(opener)) return;
-
-      if (!stats[opener]) {
-        stats[opener] = { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, totalSec: 0 };
+      if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+        if (day < firstDay) firstDay = day;
+        if (day > lastDay) lastDay = day;
       }
-      const s = stats[opener];
-      s.calls++;
-      if (type === 'OUT-Bound') s.out++;
-      else if (type === 'IN-Bound') s.in++;
-
-      if (outcome === 'ANSWERED') s.answered++;
-      else if (outcome === 'NO ANSWER') s.noAnswer++;
-
-      s.totalSec += durSec;
+      addTo(rawAgent, 1, type === 'OUT-Bound' ? 1 : 0, type === 'IN-Bound' ? 1 : 0, outcome === 'ANSWERED' ? 1 : 0, outcome === 'NO ANSWER' ? 1 : 0, Number(r[14]) || 0);
     });
   }
+
+  // Attendance (present days) over the period the calls cover; blank when the workbook cannot be read.
+  let attendance = null;
+  try { attendance = readAttendance_(); } catch (err) { console.error('Attendance unavailable:', err); }
 
   // 3. Pull BD Tracker Pipeline Counts
   const trackerCounts = getBDCounts_();
@@ -1461,6 +1569,8 @@ function refreshDashboard() {
     'Onboarded',
     'Close Rate',
     'Calls / Meeting',
+    'Present Days',
+    'Calls / Present Day',
     ...CONFIG.BD_TABS
   ];
 
@@ -1469,6 +1579,7 @@ function refreshDashboard() {
 
   sortedOpeners.forEach(op => {
     const s = stats[op] ?? { calls: 0, out: 0, in: 0, answered: 0, noAnswer: 0, totalSec: 0 };
+    const present = attendance && agentsOf[op] ? presentDays_(attendance, Array.from(agentsOf[op]), firstDay, lastDay) : '';
     const connectionRate = s.calls > 0 ? s.answered / s.calls : 0;
     const avgSec = s.calls > 0 ? Math.round(s.totalSec / s.calls) : 0;
 
@@ -1500,6 +1611,8 @@ function refreshDashboard() {
       onboarded,
       closeRate,
       callsPerMeeting,
+      present,
+      present > 0 ? Number((s.calls / present).toFixed(1)) : '',
       ...bdCols
     ]);
   });
@@ -1521,6 +1634,7 @@ function refreshDashboard() {
     dash.getRange(2, 13, rows.length, 1).setNumberFormat('0.0%');  // Show Rate
     dash.getRange(2, 15, rows.length, 1).setNumberFormat('0.0%');  // Close Rate
     dash.getRange(2, 16, rows.length, 1).setNumberFormat('0.0');   // Calls / Meeting
+    dash.getRange(2, 17, rows.length, 2).setNumberFormat('#,##0.0#'); // Present days, Calls / present day
 
     // Alternating row styling
     for (let i = 2; i <= rows.length + 1; i++) {

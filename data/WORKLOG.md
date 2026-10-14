@@ -189,3 +189,7 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 40. Attendance diagnostics
 - Checked the real BD French workbook (`Attendance` tab): the parser reads 13 people and dates from 2025-12-28 to 2026-11-28; present days for the week of Oct 12 came out as expected (e.g. Rick 2, Selene 2, Nora 1.75). The remaining way attendance fails live is access/config, so the dashboard banner now says why: no access (with the service-account e-mail to share the sheet with), sheet not found (ATTENDANCE_SHEET_ID), no tab named "Attendance", empty tab, or no attendance blocks found.
+
+## 41. Attendance written to the sheet
+- The Apps Script now reads the BD French attendance workbook itself (`readAttendance_`, `ATTENDANCE_SHEET_ID` script property, default the same workbook; the script owner needs access to it). Totals tab: new columns Present days and Calls / present day, for this week and overall, per Opener (names summed) and for ALL AGENTS. The in-sheet `BD Dashboard` mirror now takes calls from Daily Totals (Call Logs only for days without daily totals) and gains Present Days and Calls / Present Day columns. If the workbook cannot be opened the columns stay empty and the Totals note says why.
+- Uploads rebuild Totals + BD Dashboard after the last file of a batch (earlier files in a multi-file selection are saved with `defer` to keep each request short). **Rebuild Totals + format tabs** (menu) and the `rebuildTotals` action do everything on demand.
