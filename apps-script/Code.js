@@ -501,7 +501,14 @@ let ATTENDANCE_CACHE_ = null; // one read of the attendance workbook per script 
 function parseAttendanceBook_() {
   if (ATTENDANCE_CACHE_) return ATTENDANCE_CACHE_;
   const id = PropertiesService.getScriptProperties().getProperty('ATTENDANCE_SHEET_ID') || CONFIG.ATTENDANCE_SHEET_ID;
-  const book = SpreadsheetApp.openById(id);
+  let book;
+  try {
+    book = SpreadsheetApp.openById(id);
+  } catch (err) {
+    let who = '';
+    try { who = Session.getEffectiveUser().getEmail() || Session.getActiveUser().getEmail(); } catch (e) { /* not available in every context */ }
+    throw new Error('this script runs as ' + (who || 'your Google account') + ', not as the dashboard service account, and that account cannot open the attendance workbook. Share the workbook with ' + (who || 'that account') + ' (Viewer is enough)');
+  }
   const sheet = book.getSheetByName(CONFIG.ATTENDANCE_SHEET_NAME);
   if (!sheet) throw new Error('the attendance workbook has no tab named "' + CONFIG.ATTENDANCE_SHEET_NAME + '"');
   const tz = book.getSpreadsheetTimeZone();

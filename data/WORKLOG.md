@@ -196,3 +196,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 42. Attendance tab
 - The `Attendance` tab of the call-log spreadsheet is written by the Apps Script (`writeAttendanceTab_`) from the BD French attendance workbook: a title and colour legend, then one block per calendar month (newest first, up to the current month) with a navy month banner, day numbers and weekdays (weekends shaded), one row per person with a coloured code per day (P green, L1/L2 late blue, Q yellow, H orange, A red, Off grey, D purple, N dark red, T teal) and Present days / Absent / Days off totals, with borders around each block and between the days and totals. People with only days off in a month are not listed for it. Refreshed with every (final) upload, by **Update Attendance tab** and by **Rebuild Totals + format tabs**. It refuses to run if `ATTENDANCE_SHEET_ID` points at this same spreadsheet. The web dashboard keeps reading the workbook directly.
+
+## 43. Attendance tab access message
+- The sheet's script runs as the Google account that deploys/clicks it (not as the dashboard service account), so that account needs access to the attendance workbook. The error now names the account to share it with.
