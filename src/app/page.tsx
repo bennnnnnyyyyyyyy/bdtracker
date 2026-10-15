@@ -12,7 +12,7 @@ import { FileImportModal } from '@/components/FileImportModal';
 import { SheetToolsModal } from '@/components/SheetToolsModal';
 import { ConfirmationsView } from '@/components/ConfirmationsView';
 import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXlsx';
-import { FilterState, DashboardResponse, CallRecord } from '@/types/dashboard';
+import { FilterState, DashboardResponse, CallRecord, OrgTotals } from '@/types/dashboard';
 import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2, PieChart } from 'lucide-react';
 
 type ActiveTab = 'overview' | 'agents' | 'periods' | 'table' | 'confirm' | 'calls';
@@ -66,6 +66,19 @@ const DEFAULT_FILTERS: FilterState = {
   searchQuery: '',
   preset: 'this_week'
 };
+
+function shiftToPreviousRange(startDate: string, endDate: string): { startDate: string; endDate: string } | null {
+  if (!startDate || !endDate) return null;
+  const parse = (v: string) => { const [y, m, d] = v.split('-').map(Number); return new Date(y, m - 1, d); };
+  const fmt = (d: Date) => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+  const start = parse(startDate);
+  const end = parse(endDate);
+  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  if (!Number.isFinite(days) || days < 1) return null;
+  const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1);
+  const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - (days - 1));
+  return { startDate: fmt(prevStart), endDate: fmt(prevEnd) };
+}
 
 function readJsonStorage<T>(storageKey: string): T | null {
   if (typeof window === 'undefined') return null;
@@ -122,6 +135,7 @@ function DashboardLoadingScreen() {
 export default function DashboardPage() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [data, setData] = useState<DashboardResponse | null>(null);
+  const [prevTotals, setPrevTotals] = useState<OrgTotals | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -188,6 +202,21 @@ export default function DashboardPage() {
       setData(json);
       setError(null);
       setPollFailed(false);
+
+      // Previous period of the same length, used for KPI comparison. Best effort only.
+      const prev = shiftToPreviousRange(filters.startDate, filters.endDate);
+      if (prev) {
+        const prevParams = new URLSearchParams(params);
+        prevParams.set('startDate', prev.startDate);
+        prevParams.set('endDate', prev.endDate);
+        prevParams.delete('refresh');
+        fetch('/api/dashboard?' + prevParams.toString(), { cache: 'no-store' })
+          .then(r => (r.ok ? r.json() : null))
+          .then((prevJson: DashboardResponse | null) => setPrevTotals(prevJson?.totals ?? null))
+          .catch(() => setPrevTotals(null));
+      } else {
+        setPrevTotals(null);
+      }
     } catch (err: unknown) {
       console.error('Error fetching dashboard:', err);
       if (silent) {
@@ -359,7 +388,7 @@ export default function DashboardPage() {
 
         {data && (
           <>
-            <KpiGrid totals={data.totals} />
+            <KpiGrid totals={data.totals} previous={prevTotals} />
 
             <div
               role="tablist"
