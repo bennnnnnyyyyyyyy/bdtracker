@@ -12,9 +12,10 @@ interface KpiCardProps {
   sub: string;
   tone?: 'neutral' | 'success' | 'gold';
   delta?: { text: string; direction: 'up' | 'down' | 'flat' } | null;
+  goal?: { actual: number; target: number } | null;
 }
 
-function KpiCard({ icon, label, value, sub, tone = 'neutral', delta }: KpiCardProps) {
+function KpiCard({ icon, label, value, sub, tone = 'neutral', delta, goal }: KpiCardProps) {
   const valueClass = tone === 'success' ? 'text-success' : tone === 'gold' ? 'text-gold-light' : 'text-white';
   return (
     <div className="card p-5 flex flex-col gap-3">
@@ -34,6 +35,14 @@ function KpiCard({ icon, label, value, sub, tone = 'neutral', delta }: KpiCardPr
         )}
       </div>
       <span className="text-xs text-text-muted">{sub}</span>
+      {goal && goal.target > 0 && (
+        <div>
+          <div className="bar-track" role="img" aria-label={`${Math.round((goal.actual / goal.target) * 100)}% of target`}>
+            <div className={`bar-fill ${goal.actual >= goal.target ? 'bar-fill-success' : 'bar-fill-gold'}`} style={{ width: `${Math.min(100, (goal.actual / goal.target) * 100)}%` }} />
+          </div>
+          <div className="mt-1.5 text-[11px] text-text-dim font-num">{Math.round((goal.actual / goal.target) * 100)}% of {goal.target.toLocaleString()} target</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -52,13 +61,13 @@ function rateDelta(curr: number, prev?: number): Delta {
   return { text: `${Math.abs(pts)} pts`, direction: pts > 0 ? 'up' : pts < 0 ? 'down' : 'flat' };
 }
 
-export const KpiGrid: React.FC<{ totals: OrgTotals; previous?: OrgTotals | null }> = React.memo(({ totals, previous }) => (
+export const KpiGrid: React.FC<{ totals: OrgTotals; previous?: OrgTotals | null; goals?: { calls: number; meetings: number; onboarded: number } | null }> = React.memo(({ totals, previous, goals }) => (
   <section aria-label="Team summary" className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-    <KpiCard label="Calls" value={totals.calls.toLocaleString()} sub={`${totals.callsPerPresentDay} per present day`} icon={<PhoneCall className="w-4 h-4" />} delta={countDelta(totals.calls, previous?.calls)} />
+    <KpiCard label="Calls" value={totals.calls.toLocaleString()} sub={`${totals.callsPerPresentDay} per present day`} icon={<PhoneCall className="w-4 h-4" />} delta={countDelta(totals.calls, previous?.calls)} goal={goals?.calls ? { actual: totals.calls, target: goals.calls } : null} />
     <KpiCard label="Answer rate" value={formatPercent(totals.answerRate)} sub={`${totals.answered.toLocaleString()} answered`} icon={<PhoneIncoming className="w-4 h-4" />} delta={rateDelta(totals.answerRate, previous?.answerRate)} />
-    <KpiCard label="Meetings booked" value={totals.booked.toLocaleString()} sub={`${totals.medBCount} Med B · ${totals.ppoCount} PPO`} icon={<CalendarCheck className="w-4 h-4" />} tone="gold" delta={countDelta(totals.booked, previous?.booked)} />
+    <KpiCard label="Meetings booked" value={totals.booked.toLocaleString()} sub={`${totals.medBCount} Med B · ${totals.ppoCount} PPO`} icon={<CalendarCheck className="w-4 h-4" />} tone="gold" delta={countDelta(totals.booked, previous?.booked)} goal={goals?.meetings ? { actual: totals.booked, target: goals.meetings } : null} />
     <KpiCard label="Show rate" value={formatPercent(totals.showRate)} sub={`${totals.attended} confirmed · ${totals.noShow} no-show${totals.awaitingConfirmation > 0 ? ` · ${totals.awaitingConfirmation} awaiting confirmation` : ''}`} icon={<TrendingUp className="w-4 h-4" />} tone="success" delta={rateDelta(totals.showRate, previous?.showRate)} />
-    <KpiCard label="Onboarded" value={totals.onboarded.toLocaleString()} sub="Closed deals" icon={<CheckCircle className="w-4 h-4" />} tone="gold" delta={countDelta(totals.onboarded, previous?.onboarded)} />
+    <KpiCard label="Onboarded" value={totals.onboarded.toLocaleString()} sub="Closed deals" icon={<CheckCircle className="w-4 h-4" />} tone="gold" delta={countDelta(totals.onboarded, previous?.onboarded)} goal={goals?.onboarded ? { actual: totals.onboarded, target: goals.onboarded } : null} />
     <KpiCard label="Close rate" value={formatPercent(totals.closeRate)} sub={`${totals.callsPerMeeting} calls per meeting`} icon={<Target className="w-4 h-4" />} tone="success" delta={rateDelta(totals.closeRate, previous?.closeRate)} />
   </section>
 ));

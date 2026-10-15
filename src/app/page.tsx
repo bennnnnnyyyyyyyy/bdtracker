@@ -11,9 +11,15 @@ import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
 import { SheetToolsModal } from '@/components/SheetToolsModal';
 import { ConfirmationsView } from '@/components/ConfirmationsView';
+import { FunnelChart } from '@/components/FunnelChart';
+import { AttentionPanel } from '@/components/AttentionPanel';
+import { TargetsModal } from '@/components/TargetsModal';
+import { PrintReport } from '@/components/PrintReport';
+import { needsAttention } from '@/lib/insights';
+import { Targets, loadTargets, saveTargets, periodDays, scaledTarget, activeAgents } from '@/lib/targets';
 import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse, CallRecord, OrgTotals } from '@/types/dashboard';
-import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2, PieChart } from 'lucide-react';
+import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2, PieChart, Clock } from 'lucide-react';
 
 type ActiveTab = 'overview' | 'agents' | 'periods' | 'table' | 'confirm' | 'calls';
 
@@ -78,6 +84,41 @@ function shiftToPreviousRange(startDate: string, endDate: string): { startDate: 
   const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1);
   const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - (days - 1));
   return { startDate: fmt(prevStart), endDate: fmt(prevEnd) };
+}
+
+const VALID_TABS: ActiveTab[] = ['overview', 'agents', 'periods', 'table', 'confirm', 'calls'];
+const VALID_PRESETS = ['today', 'this_week', 'this_month', 'last_30_days', 'custom'] as const;
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const STALE_AFTER_MS = 30 * 60 * 1000;
+
+/** Filters and tab from a shared link, e.g. ?start=2026-10-12&end=2026-10-18&agent=Fabrice&tab=agents */
+function readUrlState(): { filters: Partial<FilterState>; tab?: ActiveTab } | null {
+  if (typeof window === 'undefined') return null;
+  const q = new URLSearchParams(window.location.search);
+  const start = q.get('start');
+  const end = q.get('end');
+  const agent = q.get('agent');
+  const tab = q.get('tab') as ActiveTab | null;
+  const preset = q.get('preset') as FilterState['preset'] | null;
+  const filters: Partial<FilterState> = {};
+  if (start && end && YMD.test(start) && YMD.test(end)) {
+    filters.startDate = start;
+    filters.endDate = end;
+    filters.preset = preset && (VALID_PRESETS as readonly string[]).includes(preset) ? preset : 'custom';
+  }
+  if (agent) filters.selectedOpener = agent;
+  const validTab = tab && VALID_TABS.includes(tab) ? tab : undefined;
+  return Object.keys(filters).length || validTab ? { filters, tab: validTab } : null;
+}
+
+function buildShareQuery(filters: FilterState, tab: ActiveTab): string {
+  const q = new URLSearchParams();
+  if (filters.startDate) q.set('start', filters.startDate);
+  if (filters.endDate) q.set('end', filters.endDate);
+  if (filters.preset) q.set('preset', filters.preset);
+  if (filters.selectedOpener && filters.selectedOpener !== 'ALL') q.set('agent', filters.selectedOpener);
+  q.set('tab', tab);
+  return q.toString();
 }
 
 function readJsonStorage<T>(storageKey: string): T | null {
@@ -146,6 +187,10 @@ export default function DashboardPage() {
   const [callLogs, setCallLogs] = useState<{ key: string; calls: CallRecord[] } | null>(null);
   const [callLogsError, setCallLogsError] = useState<string | null>(null);
   const [pollFailed, setPollFailed] = useState(false);
+  const [targets, setTargets] = useState<Targets | null>(null);
+  const [targetsOpen, setTargetsOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -156,6 +201,13 @@ export default function DashboardPage() {
       if (cachedUi?.activeTab) {
         setActiveTab(cachedUi.activeTab);
       }
+      // A shared link wins over whatever this browser last had open.
+      const fromUrl = readUrlState();
+      if (fromUrl) {
+        if (Object.keys(fromUrl.filters).length) setFilters(prev => ({ ...(cachedUi?.filters ?? prev), ...fromUrl.filters }));
+        if (fromUrl.tab) setActiveTab(fromUrl.tab);
+      }
+      setTargets(loadTargets());
       setHasHydrated(true);
     });
 
@@ -165,7 +217,40 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!hasHydrated) return;
     writeUiCache(filters, activeTab);
+    // Keep the address bar in sync so the page URL is always a shareable link to this exact view.
+    try {
+      window.history.replaceState(null, '', `${window.location.pathname}?${buildShareQuery(filters, activeTab)}`);
+    } catch {
+      // History can be unavailable in sandboxed frames; sharing then falls back to the plain URL.
+    }
   }, [filters, activeTab, hasHydrated]);
+
+  // Re-evaluate "how old is the data" once a minute without refetching.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const handleCopyLink = useCallback(async () => {
+    const url = `${window.location.origin}${window.location.pathname}?${buildShareQuery(filters, activeTab)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setToast('Link copied to clipboard');
+    } catch {
+      setToast('Could not copy automatically — copy the address bar instead');
+    }
+  }, [filters, activeTab]);
+
+  const handleSaveTargets = useCallback((t: Targets | null) => {
+    setTargets(t);
+    saveTargets(t);
+  }, []);
 
   const fetchData = useCallback(async (forceRefresh = false, silent = false) => {
     // Silent (background) refreshes keep the current screen; only manual loads show the spinner.
@@ -299,12 +384,25 @@ export default function DashboardPage() {
     setActiveTab(tab);
   };
 
+  const agentsInView = data ? activeAgents(data.openers) : [];
+  const days = periodDays(filters.startDate, filters.endDate);
+  const agentGoals = targets
+    ? { calls: scaledTarget(targets.calls, days, 1), meetings: scaledTarget(targets.meetings, days, 1), onboarded: scaledTarget(targets.onboarded, days, 1) }
+    : null;
+  const teamGoals = targets
+    ? { calls: scaledTarget(targets.calls, days, agentsInView.length), meetings: scaledTarget(targets.meetings, days, agentsInView.length), onboarded: scaledTarget(targets.onboarded, days, agentsInView.length) }
+    : null;
+  const attention = data ? needsAttention(agentsInView, { targets, startDate: filters.startDate, endDate: filters.endDate }) : [];
+  const dataAsOfMs = data ? Date.parse(data.dataAsOf || data.lastUpdated || '') : NaN;
+  const staleMinutes = Number.isFinite(dataAsOfMs) && now - dataAsOfMs > STALE_AFTER_MS ? Math.round((now - dataAsOfMs) / 60000) : null;
+
   if (!hasHydrated || (loading && !data)) {
     return <DashboardLoadingScreen />;
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#09090b', color: '#f4f4f5' }}>
+    <div className="min-h-screen flex flex-col bg-base text-text-primary print:bg-white print:text-black">
+      <div className="contents print:hidden">
       <Header
         filters={filters}
         onFilterChange={handleFilterChange}
@@ -313,6 +411,8 @@ export default function DashboardPage() {
         onOpenImportModal={() => setImportModalOpen(true)}
         onOpenSheetTools={data?.viewer && (data.viewer.role === 'admin' || data.viewer.role === 'manager') ? () => setSheetToolsOpen(true) : undefined}
         onPrint={() => window.print()}
+        onCopyLink={handleCopyLink}
+        onOpenTargets={() => setTargetsOpen(true)}
         onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
         onExportCsv={data ? (kind) => exportDashboardCsv(data, filters, kind) : undefined}
         loading={loading}
@@ -330,6 +430,8 @@ export default function DashboardPage() {
         onChanged={() => fetchData(true, true)}
       />
 
+      <TargetsModal isOpen={targetsOpen} current={targets} onClose={() => setTargetsOpen(false)} onSave={handleSaveTargets} />
+
       <FileImportModal
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
@@ -337,6 +439,16 @@ export default function DashboardPage() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {staleMinutes !== null && (
+          <div role="status" className="rounded-xl p-3 flex flex-wrap items-center gap-2 text-xs bg-warn-dim border border-warn-border text-warn">
+            <Clock className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>
+              Data last synced {staleMinutes >= 120 ? `${Math.round(staleMinutes / 60)} hours` : `${staleMinutes} minutes`} ago{pollFailed ? ' and live updates are paused' : ''}. Numbers may be out of date.
+            </span>
+            <button onClick={() => fetchData(true)} className="btn btn-primary !min-h-7 !px-3">Refresh now</button>
+          </div>
+        )}
+
         {error && (
           <div
             className="rounded-xl p-4 flex items-center justify-between text-sm"
@@ -388,7 +500,7 @@ export default function DashboardPage() {
 
         {data && (
           <>
-            <KpiGrid totals={data.totals} previous={prevTotals} />
+            <KpiGrid totals={data.totals} previous={prevTotals} goals={teamGoals} />
 
             <div
               role="tablist"
@@ -420,11 +532,20 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {activeTab === 'overview' && <DashboardCharts openers={data.openers} daily={data.dailyBreakdown} />}
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="lg:col-span-2"><FunnelChart totals={data.totals} /></div>
+                  <AttentionPanel openers={agentsInView} attention={attention} targetsSet={Boolean(targets)} />
+                </div>
+                <DashboardCharts openers={data.openers} daily={data.dailyBreakdown} />
+              </div>
+            )}
             {activeTab === 'agents' && (
               <AgentDashboardView
                 openers={data.openers}
                 filters={filters}
+                agentGoals={agentGoals}
               />
             )}
             {activeTab === 'periods' && (
@@ -478,6 +599,15 @@ export default function DashboardPage() {
       >
         BD Call &amp; Pipeline Dashboard
       </footer>
+      </div>
+
+      {data && <PrintReport data={data} filters={filters} previous={prevTotals} attention={attention} />}
+
+      {toast && (
+        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-elevated border border-white/12 px-4 py-2.5 text-sm shadow-2xl print:hidden">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

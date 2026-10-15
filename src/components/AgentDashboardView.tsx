@@ -7,6 +7,8 @@ import { FilterState, OpenerStats } from '@/types/dashboard';
 interface AgentDashboardViewProps {
   openers: OpenerStats[];
   filters: FilterState;
+  /** Per-agent goals for the selected period, if targets are set. */
+  agentGoals?: { calls: number; meetings: number; onboarded: number } | null;
 }
 
 type SortKey = 'calls' | 'booked' | 'showRate' | 'closeRate';
@@ -50,14 +52,14 @@ function Metric({ label, value, ratio, tone = 'neutral', hint }: { label: string
     <div className="bg-card px-4 py-3">
       <div className="label-caps">{label}</div>
       <div className={`font-num text-2xl font-bold mt-1 ${TONE_TEXT[tone]}`}>{value}</div>
-      {ratio !== undefined
-        ? <div className="bar-track mt-2" aria-hidden="true"><div className={`bar-fill ${TONE_BAR[tone]}`} style={{ width: `${Math.min(100, Math.max(0, ratio * 100))}%` }} /></div>
-        : hint && <div className="text-[11px] text-text-dim mt-1.5">{hint}</div>}
+      {ratio !== undefined && <div className="bar-track mt-2" aria-hidden="true"><div className={`bar-fill ${TONE_BAR[tone]}`} style={{ width: `${Math.min(100, Math.max(0, ratio * 100))}%` }} /></div>}
+      {hint && <div className="text-[11px] text-text-dim mt-1.5">{hint}</div>}
     </div>
   );
 }
 
-const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, teamShowRate }: {
+const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, teamShowRate, goals }: {
+  goals?: { calls: number; meetings: number; onboarded: number } | null;
   agent: OpenerStats;
   rank: number;
   maxCalls: number;
@@ -87,11 +89,13 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, te
       </header>
 
       <div className="grid grid-cols-2 gap-px bg-white/5">
-        <Metric label="Calls" value={agent.calls.toLocaleString()} ratio={agent.calls / maxCalls} />
-        <Metric label="Booked" value={agent.booked.toLocaleString()} ratio={agent.booked / maxBooked} tone="gold" />
+        <Metric label="Calls" value={agent.calls.toLocaleString()} ratio={goals?.calls ? agent.calls / goals.calls : agent.calls / maxCalls}
+          tone={goals?.calls && agent.calls >= goals.calls ? 'success' : 'neutral'} hint={goals?.calls ? `${Math.round((agent.calls / goals.calls) * 100)}% of ${goals.calls.toLocaleString()} target` : undefined} />
+        <Metric label="Booked" value={agent.booked.toLocaleString()} ratio={goals?.meetings ? agent.booked / goals.meetings : agent.booked / maxBooked}
+          tone={goals?.meetings && agent.booked >= goals.meetings ? 'success' : 'gold'} hint={goals?.meetings ? `${Math.round((agent.booked / goals.meetings) * 100)}% of ${goals.meetings} target` : undefined} />
         <Metric label="Show rate" value={formatRate(agent.showRate)} tone={agent.showRate >= 0.6 ? 'success' : agent.showRate >= 0.4 ? 'gold' : 'danger'}
           hint={showDelta === null ? `${agent.attended} attended · ${agent.noShow} no-show` : `${showDelta >= 0 ? '+' : ''}${showDelta} pts vs team · ${agent.attended}/${agent.attended + agent.noShow}`} />
-        <Metric label="Close rate" value={formatRate(agent.closeRate)} tone={agent.closeRate >= 0.2 ? 'success' : 'neutral'} hint={`${agent.onboarded} onboarded`} />
+        <Metric label="Close rate" value={formatRate(agent.closeRate)} tone={agent.closeRate >= 0.2 ? 'success' : 'neutral'} hint={goals?.onboarded ? `${agent.onboarded} of ${goals.onboarded} onboarded target` : `${agent.onboarded} onboarded`} />
       </div>
 
       <footer className="flex items-center justify-between px-4 py-2.5 text-xs text-text-dim border-t border-white/6">
@@ -102,7 +106,7 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, te
   );
 });
 
-export function AgentDashboardView({ openers, filters }: AgentDashboardViewProps) {
+export function AgentDashboardView({ openers, filters, agentGoals }: AgentDashboardViewProps) {
   const [sortKey, setSortKey] = useState<SortKey>('calls');
 
   const activeOpeners = useMemo(() => openers
@@ -141,7 +145,7 @@ export function AgentDashboardView({ openers, filters }: AgentDashboardViewProps
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} teamShowRate={teamShowRate} />)}
+          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} teamShowRate={teamShowRate} goals={agentGoals} />)}
         </div>
       )}
     </section>

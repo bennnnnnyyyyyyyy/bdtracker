@@ -187,11 +187,9 @@ summary::-webkit-details-marker { display: none; }
 
 /* ── Print / PDF export ──────────────────────────────── */
 @media print {
-  body { background: #fff !important; color: #111 !important; }
-  header, footer, [role="tablist"], details, button { display: none !important; }
-  .card { background: #fff !important; border-color: #ddd !important; box-shadow: none !important; break-inside: avoid; }
-  .card * { color: #111 !important; }
-  @page { margin: 12mm; }
+  html, body { background: #fff !important; color: #111 !important; }
+  @page { size: A4 landscape; margin: 10mm; }
+  .print-report { color: #111; font-family: var(--font-geist-sans), system-ui, sans-serif; }
 }
 
 /* ── Buttons & segmented controls ────────────────────── */
