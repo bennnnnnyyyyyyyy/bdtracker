@@ -89,7 +89,7 @@ function shiftToPreviousRange(startDate: string, endDate: string): { startDate: 
 }
 
 const VALID_TABS: ActiveTab[] = ['overview', 'agents', 'periods', 'table', 'confirm', 'calls'];
-const VALID_PRESETS = ['today', 'this_week', 'this_month', 'last_30_days', 'custom'] as const;
+const VALID_PRESETS = ['yesterday', 'this_week', 'this_month', 'last_30_days', 'custom'] as const;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const STALE_AFTER_MS = 30 * 60 * 1000;
 

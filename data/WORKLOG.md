@@ -231,3 +231,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 51. Uploader role
 - New role `uploader`: view-only like viewer, but can upload the daily Ultatel reports (`/api/upload`), save new agent names from the upload window (`setMapping`) and sees the missing-upload reminder and Import button. Cannot confirm shows or use call-log maintenance. Run the latest `supabase_schema.sql` (widens the role check).
+
+## 52. Yesterday preset
+- The "Today" date preset is now "Yesterday": the previous working day (Saturday and Sunday are skipped, so Monday shows Friday). Uploads arrive the day after, so today is never loaded.

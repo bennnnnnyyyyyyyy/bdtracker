@@ -20,16 +20,12 @@ const SORTS: { id: SortKey; label: string }[] = [
   { id: 'closeRate', label: 'Close rate' },
 ];
 
-function formatLocalDateYMD(date: Date): string {
-  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
-}
-
 function formatRate(rate: number): string {
   return Number.isFinite(rate) && rate > 0 ? `${Math.round(rate * 100)}%` : '—';
 }
 
 function getPeriodTitle(filters: FilterState): string {
-  if (filters.preset === 'today') return `Today · ${filters.startDate || formatLocalDateYMD(new Date())}`;
+  if (filters.preset === 'yesterday') return `Yesterday · ${filters.startDate || ''}`;
   if (filters.preset === 'this_week') return 'This week';
   if (filters.preset === 'this_month') return 'This month';
   if (filters.preset === 'last_30_days') return 'Last 30 days';

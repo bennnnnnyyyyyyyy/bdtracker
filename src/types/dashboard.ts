@@ -217,6 +217,6 @@ export interface FilterState {
   selectedOpener: string;
   searchQuery: string;
   granularity?: TimeGranularity;
-  preset?: 'today' | 'this_week' | 'this_month' | 'last_30_days' | 'custom';
+  preset?: 'yesterday' | 'this_week' | 'this_month' | 'last_30_days' | 'custom';
 }
 

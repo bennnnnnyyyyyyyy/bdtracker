@@ -35,7 +35,8 @@ function formatLocalDateYMD(date: Date): string {
 }
 
 const PRESETS: PresetOption[] = [
-  { label: 'Today', value: 'today', getRange: () => { const date = formatLocalDateYMD(new Date()); return { startDate: date, endDate: date }; } },
+  // Uploads arrive the day after, so "today" is never loaded: this is the previous working day (Saturday and Sunday are off).
+  { label: 'Yesterday', value: 'yesterday', getRange: () => { const d = new Date(); do { d.setDate(d.getDate() - 1); } while (d.getDay() === 0 || d.getDay() === 6); const date = formatLocalDateYMD(d); return { startDate: date, endDate: date }; } },
   { label: 'This week', value: 'this_week', getRange: () => { const now = new Date(); const monday = new Date(now); monday.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1)); const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); return { startDate: formatLocalDateYMD(monday), endDate: formatLocalDateYMD(sunday) }; } },
   { label: 'This month', value: 'this_month', getRange: () => { const now = new Date(); return { startDate: formatLocalDateYMD(new Date(now.getFullYear(), now.getMonth(), 1)), endDate: formatLocalDateYMD(new Date(now.getFullYear(), now.getMonth() + 1, 0)) }; } },
   { label: 'Last 30 days', value: 'last_30_days', getRange: () => { const end = new Date(); const start = new Date(end); start.setDate(end.getDate() - 29); return { startDate: formatLocalDateYMD(start), endDate: formatLocalDateYMD(end) }; } },
