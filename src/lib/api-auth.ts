@@ -32,9 +32,10 @@ type Guard = { user: ViewerInfo; response?: undefined } | { user?: undefined; re
  * For state-changing routes: requires a valid session AND re-checks the database so a user who
  * was disabled or demoted loses access immediately, not when their cookie expires.
  */
-export async function requireUser(request: NextRequest, roles?: UserRole[], opts: { form?: boolean } = {}): Promise<Guard> {
+export async function requireUser(request: NextRequest, roles?: UserRole[], opts: { form?: boolean; read?: boolean } = {}): Promise<Guard> {
   // File uploads are multipart forms; they must carry an Origin header that matches this site.
-  const sameOrigin = opts.form ? isSameOriginForm(request) : isSameOriginJson(request);
+  // Reads (GET) carry no Origin header; only state-changing calls need the same-origin check.
+  const sameOrigin = opts.read ? true : opts.form ? isSameOriginForm(request) : isSameOriginJson(request);
   if (!sameOrigin) {
     return { response: NextResponse.json({ error: 'Invalid request.' }, { status: 400 }) };
   }
