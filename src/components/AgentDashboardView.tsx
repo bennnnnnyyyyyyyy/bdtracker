@@ -38,8 +38,11 @@ function getPeriodTitle(filters: FilterState): string {
 }
 
 function coachingStatus(agent: OpenerStats): { label: string; className: string } {
-  if (agent.attended + agent.noShow > 0 && agent.showRate < 0.4) return { label: 'Low show rate', className: 'pill-danger' };
+  if (agent.calls === 0 && agent.booked === 0) return { label: 'No activity', className: '' };
+  // Show rate is only judged once there are enough settled results: an unconfirmed meeting is neither a show nor a no-show yet.
+  if (agent.attended + agent.noShow >= 3 && agent.awaitingConfirmation === 0 && agent.showRate < 0.4) return { label: 'Low show rate', className: 'pill-danger' };
   if (agent.presentDays > 0 && agent.callsPerPresentDay < 10) return { label: 'Low activity', className: 'pill-warn' };
+  if (agent.awaitingConfirmation > 0) return { label: 'Shows to confirm', className: 'pill-warn' };
   return { label: 'On track', className: 'pill-success' };
 }
 
