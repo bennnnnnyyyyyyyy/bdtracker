@@ -257,3 +257,9 @@ summary::-webkit-details-marker { display: none; }
 .field:focus-within { border-color: rgba(201,168,76,0.5); }
 .field select, .field input { background: transparent; color: #f4f4f5; outline: none; font-family: var(--font-jetbrains), monospace; font-size: 12px; }
 .field option { background: #111113; }
+
+/* Drop-down lists (native select popups) must match the app: dark background, light text, everywhere. */
+select { color-scheme: dark; }
+select option, select optgroup { background-color: #1e1e23; color: #f4f4f5; }
+select option:checked { background-color: #2b2b31; }
+select option:disabled { color: #71717a; }
