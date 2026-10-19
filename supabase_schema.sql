@@ -153,3 +153,15 @@ CREATE POLICY "Service role only" ON public.app_users FOR ALL TO service_role US
 CREATE POLICY "Service role only" ON public.show_confirmations FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role only" ON public.show_confirmation_events FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role only" ON public.rescheduled_meetings FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- Agents who have left: they stop appearing in date ranges that start after their last day.
+CREATE TABLE IF NOT EXISTS public.agent_retirements (
+  opener_key TEXT PRIMARY KEY,           -- lower-case opener name
+  opener TEXT NOT NULL,
+  last_day TEXT NOT NULL,                -- yyyy-MM-dd, the last day they worked
+  set_by TEXT,
+  set_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.agent_retirements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Service role only" ON public.agent_retirements;
+CREATE POLICY "Service role only" ON public.agent_retirements FOR ALL TO service_role USING (true) WITH CHECK (true);

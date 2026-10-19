@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Calendar, ChevronDown, FileSpreadsheet, FileText, LogOut, PhoneCall, Link2, Printer, RefreshCw, Target, Upload, User, Users, Wrench, X } from 'lucide-react';
+import { Calendar, ChevronDown, FileSpreadsheet, FileText, LogOut, PhoneCall, Link2, Printer, RefreshCw, Target, Upload, User, UserMinus, Users, Wrench, X } from 'lucide-react';
 import { DataSourceInfo, FilterState, OpenerStats, ViewerInfo } from '@/types/dashboard';
 import { CSV_KINDS, CsvKind } from '@/lib/exportXlsx';
 
@@ -15,6 +15,7 @@ interface HeaderProps {
   onExportXlsx?: () => void;
   onExportCsv?: (kind: CsvKind) => void;
   onOpenSheetTools?: () => void;
+  onOpenAgents?: () => void;
   onPrint?: () => void;
   onCopyLink?: () => void;
   onOpenTargets?: () => void;
@@ -42,7 +43,7 @@ const PRESETS: PresetOption[] = [
   { label: 'Last 30 days', value: 'last_30_days', getRange: () => { const end = new Date(); const start = new Date(end); start.setDate(end.getDate() - 29); return { startDate: formatLocalDateYMD(start), endDate: formatLocalDateYMD(end) }; } },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, onExportCsv, onOpenSheetTools, onPrint, onCopyLink, onOpenTargets, loading, lastUpdated, isMockData, dataSourceInfo, viewer, pollFailed }) => {
+export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers, onRefresh, onOpenImportModal, onExportXlsx, onExportCsv, onOpenSheetTools, onOpenAgents, onPrint, onCopyLink, onOpenTargets, loading, lastUpdated, isMockData, dataSourceInfo, viewer, pollFailed }) => {
   const updatedAt = lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
   const signOut = async () => {
     await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
@@ -66,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
   }, [menuOpen]);
 
   const runAction = (fn?: () => void) => () => { setMenuOpen(false); fn?.(); };
-  const hasActions = Boolean(onCopyLink || onOpenTargets || onExportXlsx || onExportCsv || onOpenImportModal || onPrint || onOpenSheetTools);
+  const hasActions = Boolean(onCopyLink || onOpenTargets || onExportXlsx || onExportCsv || onOpenImportModal || onPrint || onOpenSheetTools || onOpenAgents);
   const itemClass = 'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left text-xs font-medium hover:bg-white/6 cursor-pointer';
 
   return (
@@ -106,6 +107,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
                     {onOpenTargets && <button role="menuitem" onClick={runAction(onOpenTargets)} className={itemClass}><Target className="w-4 h-4 text-gold-light" />Weekly targets</button>}
                     {onPrint && <button role="menuitem" onClick={runAction(onPrint)} className={itemClass}><Printer className="w-4 h-4 text-text-muted" />Print / Save PDF</button>}
                     {onOpenSheetTools && <button role="menuitem" onClick={runAction(onOpenSheetTools)} className={itemClass}><Wrench className="w-4 h-4 text-gold-light" />Call log maintenance</button>}
+                    {onOpenAgents && <button role="menuitem" onClick={runAction(onOpenAgents)} className={itemClass}><UserMinus className="w-4 h-4 text-gold-light" />Manage agents</button>}
                     {onOpenImportModal && <button role="menuitem" onClick={runAction(onOpenImportModal)} className={itemClass}><Upload className="w-4 h-4 text-gold-light" />Import Excel</button>}
                   </div>
                 )}

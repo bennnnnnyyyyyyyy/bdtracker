@@ -311,3 +311,12 @@ describe('row status and edits', () => {
     expect(findEditedKeys([stored, 'ben|2026-10-01|acme|sam2'], [stored]).size).toBe(0);
   });
 });
+
+describe('retired agents', () => {
+  const run = (startDate: string) => computeDashboardMetrics([call({ callDate: '2026-08-10 09:00:00' })], [], {}, [...mappings, { agent: 'Jimmy Doe', opener: 'Jimmy' }], { startDate, endDate: '2026-08-31', retired: { jimmy: '2026-08-12' } });
+  it('hides an agent from ranges that start after their last day, not from earlier ones', () => {
+    expect(run('2026-08-13').openers.map((o) => o.opener)).not.toContain('Jimmy');
+    expect(run('2026-08-12').openers.map((o) => o.opener)).toContain('Jimmy');
+    expect(run('2026-08-01').openers.map((o) => o.opener)).toContain('Jimmy');
+  });
+});

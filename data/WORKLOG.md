@@ -234,3 +234,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 52. Yesterday preset
 - The "Today" date preset is now "Yesterday": the previous working day (Saturday and Sunday are skipped, so Monday shows Friday). Uploads arrive the day after, so today is never loaded.
+
+## 53. Manage agents (retire)
+- Actions > Manage agents (admin/manager): give an agent who has left a last working day. They stop appearing in date ranges that start after it; earlier ranges keep their history. Reinstate undoes it. Stored in the new Supabase table `agent_retirements` (run the latest `supabase_schema.sql`); API `/api/agents`.

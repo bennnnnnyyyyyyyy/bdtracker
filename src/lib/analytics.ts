@@ -311,6 +311,8 @@ export function computeDashboardMetrics(
     startDate?: string;
     endDate?: string;
     selectedOpener?: string;
+    /** Agents who have left: lower-case opener -> last day worked. Hidden from ranges that start after it. */
+    retired?: Record<string, string>;
   },
   attendance?: AttendanceDataset
 ): {
@@ -439,6 +441,15 @@ export function computeDashboardMetrics(
     const canonical = resolve(m.opener || m.agent);
     if (canonical && !isExcludedAgent(canonical) && (!selectedCanonicalOpener || canonical === selectedCanonicalOpener)) allOpeners.add(canonical);
   });
+
+  // An agent who has left disappears from ranges that start after their last day.
+  if (filter?.retired && filter.startDate) {
+    const from = filter.startDate;
+    Array.from(allOpeners).forEach((op) => {
+      const lastDay = filter.retired?.[op.toLowerCase()];
+      if (lastDay && from > lastDay) allOpeners.delete(op);
+    });
+  }
 
   // Calculate unique days for fallback and per-agent active days
   const distinctDays = new Set<string>();

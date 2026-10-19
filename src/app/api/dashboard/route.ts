@@ -6,6 +6,7 @@ import { CONFIG } from '@/lib/config';
 import { DashboardResponse } from '@/types/dashboard';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
 import { loadDashboardInputs } from '@/lib/dashboard-data';
+import { loadRetirements } from '@/lib/retirements';
 import { getRequestUser } from '@/lib/api-auth';
 import { canBeConfirmed, isRescheduledStatus } from '@/lib/meetings';
 
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
         rawData.meetings,
         rawData.trackerCounts,
         rawData.agentMappings,
-        { startDate, endDate, selectedOpener },
+        { startDate, endDate, selectedOpener, retired: (await loadRetirements()) ?? undefined },
         inputs.attendance
       );
 

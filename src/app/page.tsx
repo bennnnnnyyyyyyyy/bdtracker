@@ -9,6 +9,7 @@ import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { DashboardCharts } from '@/components/DashboardCharts';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
+import { AgentsModal } from '@/components/AgentsModal';
 import { SheetToolsModal } from '@/components/SheetToolsModal';
 import { ConfirmationsView } from '@/components/ConfirmationsView';
 import { FunnelChart } from '@/components/FunnelChart';
@@ -185,6 +186,7 @@ export default function DashboardPage() {
   const [periodView, setPeriodView] = useState<PeriodView>('daily');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [sheetToolsOpen, setSheetToolsOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [callLogs, setCallLogs] = useState<{ key: string; calls: CallRecord[] } | null>(null);
   const [callLogsError, setCallLogsError] = useState<string | null>(null);
@@ -412,6 +414,7 @@ export default function DashboardPage() {
         onRefresh={() => fetchData(true)}
         onOpenImportModal={!data?.viewer || canUpload(data.viewer.role) ? () => setImportModalOpen(true) : undefined}
         onOpenSheetTools={data?.viewer && (data.viewer.role === 'admin' || data.viewer.role === 'manager') ? () => setSheetToolsOpen(true) : undefined}
+        onOpenAgents={data?.viewer && (data.viewer.role === 'admin' || data.viewer.role === 'manager') ? () => setAgentsOpen(true) : undefined}
         onPrint={() => window.print()}
         onCopyLink={handleCopyLink}
         onOpenTargets={() => setTargetsOpen(true)}
@@ -424,6 +427,8 @@ export default function DashboardPage() {
         isMockData={data?.isMockData}
         dataSourceInfo={data?.dataSourceInfo}
       />
+
+      <AgentsModal isOpen={agentsOpen} onClose={() => setAgentsOpen(false)} onChanged={() => fetchData(true, true)} />
 
       <SheetToolsModal
         isOpen={sheetToolsOpen}
