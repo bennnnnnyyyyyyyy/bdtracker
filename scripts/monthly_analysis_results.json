@@ -1,0 +1,865 @@
+[
+  {
+    "month": "2026-05",
+    "totalCalls": 312,
+    "totalMeetings": 39,
+    "callsPerMeeting": 8,
+    "workingDaysCount": 18,
+    "rSame": -0.20284830318827216,
+    "rLag1": -0.4732711718394021,
+    "rLag2": 0,
+    "rRev": -0.09520188469496114,
+    "agentCalls": {
+      "Jane": 45,
+      "Ben": 113,
+      "Selene": 60,
+      "Jimmy": 93,
+      "Rick": 1
+    },
+    "agentMtgs": {
+      "Ben": 6,
+      "Jane": 11,
+      "Jimmy": 12,
+      "Selene": 10
+    },
+    "workingDaysData": [
+      {
+        "date": "2026-05-01",
+        "day": "Fri",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-05-04",
+        "day": "Mon",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-05-05",
+        "day": "Tue",
+        "calls": 0,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-05-06",
+        "day": "Wed",
+        "calls": 0,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-05-07",
+        "day": "Thu",
+        "calls": 0,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-05-08",
+        "day": "Fri",
+        "calls": 0,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-05-11",
+        "day": "Mon",
+        "calls": 0,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-05-12",
+        "day": "Tue",
+        "calls": 0,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-05-13",
+        "day": "Wed",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-05-14",
+        "day": "Thu",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-05-15",
+        "day": "Fri",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-05-18",
+        "day": "Mon",
+        "calls": 0,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-05-19",
+        "day": "Tue",
+        "calls": 0,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-05-20",
+        "day": "Wed",
+        "calls": 0,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-05-21",
+        "day": "Thu",
+        "calls": 0,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-05-22",
+        "day": "Fri",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-05-26",
+        "day": "Tue",
+        "calls": 216,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-05-29",
+        "day": "Fri",
+        "calls": 81,
+        "mtgs": 0
+      }
+    ]
+  },
+  {
+    "month": "2026-06",
+    "totalCalls": 6147,
+    "totalMeetings": 56,
+    "callsPerMeeting": 110,
+    "workingDaysCount": 21,
+    "rSame": -0.377696960239285,
+    "rLag1": -0.1237374717271222,
+    "rLag2": 0.007585766120241955,
+    "rRev": -0.4393132331185763,
+    "agentCalls": {
+      "Jane": 998,
+      "Nora": 1125,
+      "Selene": 1958,
+      "Ben": 691,
+      "Rick": 1082,
+      "Jimmy": 293
+    },
+    "agentMtgs": {
+      "Selene": 15,
+      "Ben": 6,
+      "Jane": 16,
+      "Jimmy": 12,
+      "Jasmine": 7
+    },
+    "workingDaysData": [
+      {
+        "date": "2026-06-01",
+        "day": "Mon",
+        "calls": 283,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-06-02",
+        "day": "Tue",
+        "calls": 267,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-06-03",
+        "day": "Wed",
+        "calls": 867,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-06-04",
+        "day": "Thu",
+        "calls": 709,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-06-05",
+        "day": "Fri",
+        "calls": 910,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-06-08",
+        "day": "Mon",
+        "calls": 627,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-06-09",
+        "day": "Tue",
+        "calls": 0,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-06-10",
+        "day": "Wed",
+        "calls": 0,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-06-11",
+        "day": "Thu",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-06-12",
+        "day": "Fri",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-06-15",
+        "day": "Mon",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-06-16",
+        "day": "Tue",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-06-17",
+        "day": "Wed",
+        "calls": 0,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-06-18",
+        "day": "Thu",
+        "calls": 0,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-06-22",
+        "day": "Mon",
+        "calls": 0,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-06-23",
+        "day": "Tue",
+        "calls": 361,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-06-24",
+        "day": "Wed",
+        "calls": 413,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-06-25",
+        "day": "Thu",
+        "calls": 466,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-06-26",
+        "day": "Fri",
+        "calls": 447,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-06-29",
+        "day": "Mon",
+        "calls": 328,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-06-30",
+        "day": "Tue",
+        "calls": 460,
+        "mtgs": 5
+      }
+    ]
+  },
+  {
+    "month": "2026-07",
+    "totalCalls": 4812,
+    "totalMeetings": 29,
+    "callsPerMeeting": 166,
+    "workingDaysCount": 22,
+    "rSame": -0.38804682420496056,
+    "rLag1": -0.08009153226020883,
+    "rLag2": 0.2251640803601959,
+    "rRev": 0.04955640454173816,
+    "agentCalls": {
+      "Rick": 988,
+      "Jimmy": 152,
+      "Jane": 726,
+      "Nora": 985,
+      "Selene": 1655,
+      "Ben": 306
+    },
+    "agentMtgs": {
+      "Selene": 8,
+      "Jimmy": 10,
+      "Jane": 9,
+      "Jasmine": 2
+    },
+    "workingDaysData": [
+      {
+        "date": "2026-07-01",
+        "day": "Wed",
+        "calls": 458,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-07-02",
+        "day": "Thu",
+        "calls": 1,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-03",
+        "day": "Fri",
+        "calls": 0,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-06",
+        "day": "Mon",
+        "calls": 3,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-07-07",
+        "day": "Tue",
+        "calls": 0,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-07-08",
+        "day": "Wed",
+        "calls": 0,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-09",
+        "day": "Thu",
+        "calls": 2,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-10",
+        "day": "Fri",
+        "calls": 0,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-13",
+        "day": "Mon",
+        "calls": 0,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-14",
+        "day": "Tue",
+        "calls": 438,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-07-15",
+        "day": "Wed",
+        "calls": 304,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-07-17",
+        "day": "Fri",
+        "calls": 0,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-07-20",
+        "day": "Mon",
+        "calls": 450,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-21",
+        "day": "Tue",
+        "calls": 503,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-07-22",
+        "day": "Wed",
+        "calls": 492,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-23",
+        "day": "Thu",
+        "calls": 293,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-07-24",
+        "day": "Fri",
+        "calls": 352,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-07-27",
+        "day": "Mon",
+        "calls": 462,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-07-28",
+        "day": "Tue",
+        "calls": 311,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-07-29",
+        "day": "Wed",
+        "calls": 239,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-07-30",
+        "day": "Thu",
+        "calls": 241,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-07-31",
+        "day": "Fri",
+        "calls": 245,
+        "mtgs": 3
+      }
+    ]
+  },
+  {
+    "month": "2026-08",
+    "totalCalls": 12170,
+    "totalMeetings": 56,
+    "callsPerMeeting": 217,
+    "workingDaysCount": 21,
+    "rSame": 0.008617270969076227,
+    "rLag1": 0.16413541788048341,
+    "rLag2": 0.023600499028666486,
+    "rRev": -0.007336364102776471,
+    "agentCalls": {
+      "Ben": 834,
+      "Jane": 1151,
+      "Rick": 2174,
+      "Nora": 3381,
+      "Jimmy": 182,
+      "Selene": 3254,
+      "Jasmine": 1194
+    },
+    "agentMtgs": {
+      "Jasmine": 6,
+      "Jimmy": 7,
+      "Selene": 12,
+      "Jane": 9,
+      "Nora": 20,
+      "Rick": 1,
+      "Ben": 1
+    },
+    "workingDaysData": [
+      {
+        "date": "2026-08-03",
+        "day": "Mon",
+        "calls": 508,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-08-04",
+        "day": "Tue",
+        "calls": 537,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-08-05",
+        "day": "Wed",
+        "calls": 488,
+        "mtgs": 5
+      },
+      {
+        "date": "2026-08-06",
+        "day": "Thu",
+        "calls": 267,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-08-07",
+        "day": "Fri",
+        "calls": 381,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-08-10",
+        "day": "Mon",
+        "calls": 607,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-08-11",
+        "day": "Tue",
+        "calls": 391,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-08-12",
+        "day": "Wed",
+        "calls": 476,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-08-13",
+        "day": "Thu",
+        "calls": 664,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-08-14",
+        "day": "Fri",
+        "calls": 502,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-08-17",
+        "day": "Mon",
+        "calls": 616,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-08-18",
+        "day": "Tue",
+        "calls": 758,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-08-19",
+        "day": "Wed",
+        "calls": 627,
+        "mtgs": 5
+      },
+      {
+        "date": "2026-08-20",
+        "day": "Thu",
+        "calls": 622,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-08-21",
+        "day": "Fri",
+        "calls": 600,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-08-24",
+        "day": "Mon",
+        "calls": 841,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-08-25",
+        "day": "Tue",
+        "calls": 717,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-08-26",
+        "day": "Wed",
+        "calls": 659,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-08-27",
+        "day": "Thu",
+        "calls": 659,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-08-28",
+        "day": "Fri",
+        "calls": 533,
+        "mtgs": 7
+      },
+      {
+        "date": "2026-08-31",
+        "day": "Mon",
+        "calls": 674,
+        "mtgs": 5
+      }
+    ]
+  },
+  {
+    "month": "2026-09",
+    "totalCalls": 13881,
+    "totalMeetings": 69,
+    "callsPerMeeting": 201,
+    "workingDaysCount": 21,
+    "rSame": -0.10334692309898905,
+    "rLag1": 0.18614798899968849,
+    "rLag2": -0.11462493164812648,
+    "rRev": 0.02224756662955913,
+    "agentCalls": {
+      "Rick": 2702,
+      "Nora": 3163,
+      "Ben": 962,
+      "Jimmy": 7,
+      "Selene": 3477,
+      "Jane": 959,
+      "Norman": 653,
+      "Jasmine": 1958
+    },
+    "agentMtgs": {
+      "Nora": 26,
+      "Jane": 14,
+      "Selene": 11,
+      "Rick": 8,
+      "Jasmine": 6,
+      "Ben": 4
+    },
+    "workingDaysData": [
+      {
+        "date": "2026-09-01",
+        "day": "Tue",
+        "calls": 567,
+        "mtgs": 7
+      },
+      {
+        "date": "2026-09-02",
+        "day": "Wed",
+        "calls": 470,
+        "mtgs": 8
+      },
+      {
+        "date": "2026-09-03",
+        "day": "Thu",
+        "calls": 619,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-09-04",
+        "day": "Fri",
+        "calls": 320,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-09-08",
+        "day": "Tue",
+        "calls": 711,
+        "mtgs": 5
+      },
+      {
+        "date": "2026-09-09",
+        "day": "Wed",
+        "calls": 693,
+        "mtgs": 6
+      },
+      {
+        "date": "2026-09-10",
+        "day": "Thu",
+        "calls": 661,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-09-11",
+        "day": "Fri",
+        "calls": 600,
+        "mtgs": 5
+      },
+      {
+        "date": "2026-09-14",
+        "day": "Mon",
+        "calls": 897,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-09-15",
+        "day": "Tue",
+        "calls": 623,
+        "mtgs": 5
+      },
+      {
+        "date": "2026-09-16",
+        "day": "Wed",
+        "calls": 903,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-09-17",
+        "day": "Thu",
+        "calls": 730,
+        "mtgs": 7
+      },
+      {
+        "date": "2026-09-18",
+        "day": "Fri",
+        "calls": 502,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-09-21",
+        "day": "Mon",
+        "calls": 741,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-09-22",
+        "day": "Tue",
+        "calls": 709,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-09-23",
+        "day": "Wed",
+        "calls": 666,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-09-24",
+        "day": "Thu",
+        "calls": 734,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-09-25",
+        "day": "Fri",
+        "calls": 703,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-09-28",
+        "day": "Mon",
+        "calls": 718,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-09-29",
+        "day": "Tue",
+        "calls": 624,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-09-30",
+        "day": "Wed",
+        "calls": 638,
+        "mtgs": 1
+      }
+    ]
+  },
+  {
+    "month": "2026-10",
+    "totalCalls": 12407,
+    "totalMeetings": 42,
+    "callsPerMeeting": 295,
+    "workingDaysCount": 12,
+    "rSame": -0.20393558135305578,
+    "rLag1": -0.19487600081485043,
+    "rLag2": 0.4862541347359598,
+    "rRev": 0.35059080383745506,
+    "agentCalls": {
+      "Rick": 1270,
+      "Nora": 1902,
+      "Ben": 1304,
+      "Selene": 3759,
+      "Jane": 866,
+      "Norman": 1781,
+      "Jasmine": 1525
+    },
+    "agentMtgs": {
+      "Rick": 7,
+      "Jane": 7,
+      "Nora": 9,
+      "Jasmine": 7,
+      "Selene": 8,
+      "Norman": 4
+    },
+    "workingDaysData": [
+      {
+        "date": "2026-10-01",
+        "day": "Thu",
+        "calls": 1097,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-10-02",
+        "day": "Fri",
+        "calls": 1021,
+        "mtgs": 6
+      },
+      {
+        "date": "2026-10-05",
+        "day": "Mon",
+        "calls": 1134,
+        "mtgs": 4
+      },
+      {
+        "date": "2026-10-06",
+        "day": "Tue",
+        "calls": 1145,
+        "mtgs": 3
+      },
+      {
+        "date": "2026-10-07",
+        "day": "Wed",
+        "calls": 1076,
+        "mtgs": 5
+      },
+      {
+        "date": "2026-10-08",
+        "day": "Thu",
+        "calls": 592,
+        "mtgs": 5
+      },
+      {
+        "date": "2026-10-09",
+        "day": "Fri",
+        "calls": 959,
+        "mtgs": 8
+      },
+      {
+        "date": "2026-10-12",
+        "day": "Mon",
+        "calls": 1456,
+        "mtgs": 1
+      },
+      {
+        "date": "2026-10-13",
+        "day": "Tue",
+        "calls": 1248,
+        "mtgs": 2
+      },
+      {
+        "date": "2026-10-14",
+        "day": "Wed",
+        "calls": 967,
+        "mtgs": 7
+      },
+      {
+        "date": "2026-10-15",
+        "day": "Thu",
+        "calls": 1017,
+        "mtgs": 0
+      },
+      {
+        "date": "2026-10-16",
+        "day": "Fri",
+        "calls": 674,
+        "mtgs": 0
+      }
+    ]
+  }
+]
