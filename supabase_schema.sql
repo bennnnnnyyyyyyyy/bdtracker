@@ -89,13 +89,17 @@ CREATE TABLE IF NOT EXISTS public.app_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
+  role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'uploader', 'viewer')),
   password_hash TEXT NOT NULL,
   active BOOLEAN NOT NULL DEFAULT TRUE,
   must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_login_at TIMESTAMPTZ
 );
+
+-- Existing installs: widen the role check to include 'uploader' (safe to re-run).
+ALTER TABLE public.app_users DROP CONSTRAINT IF EXISTS app_users_role_check;
+ALTER TABLE public.app_users ADD CONSTRAINT app_users_role_check CHECK (role IN ('admin', 'manager', 'uploader', 'viewer'));
 
 -- A meeting counts as a show only if a row exists here.
 CREATE TABLE IF NOT EXISTS public.show_confirmations (

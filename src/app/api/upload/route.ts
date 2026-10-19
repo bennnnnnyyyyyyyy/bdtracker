@@ -13,7 +13,7 @@ export const maxDuration = 60;
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
-  const guard = await requireUser(request, ['admin', 'manager'], { form: true });
+  const guard = await requireUser(request, ['admin', 'manager', 'uploader'], { form: true });
   if (guard.response) return guard.response;
 
   // Ultatel "Total Calls Per Extension" reports (CSV or Excel) go to the Daily Totals sheet through its Apps Script

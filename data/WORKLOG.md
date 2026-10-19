@@ -228,3 +228,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Apps Script `BD Dashboard` mirror reads official numbers from the new `/api/mirror` (script property `DASHBOARD_URL`), adds an Awaiting Confirmation column, and its fallback excludes cancelled / disqualified from the close rate.
 - Confirmations and reschedule markers follow a row edited in one field (`findEditedKeys`); the stored key is re-keyed.
 - `/api/sync` now also saves Rescheduled markers.
+
+## 51. Uploader role
+- New role `uploader`: view-only like viewer, but can upload the daily Ultatel reports (`/api/upload`), save new agent names from the upload window (`setMapping`) and sees the missing-upload reminder and Import button. Cannot confirm shows or use call-log maintenance. Run the latest `supabase_schema.sql` (widens the role check).

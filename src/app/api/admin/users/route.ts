@@ -5,7 +5,7 @@ import { hashPassword, validateNewPassword } from '@/lib/password';
 import type { UserRole } from '@/types/dashboard';
 
 export const runtime = 'nodejs';
-const ROLES: UserRole[] = ['admin', 'manager', 'viewer'];
+const ROLES: UserRole[] = ['admin', 'manager', 'uploader', 'viewer'];
 
 export async function GET(request: NextRequest) {
   const user = await getRequestUser(request);

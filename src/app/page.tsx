@@ -21,6 +21,8 @@ import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXl
 import { FilterState, DashboardResponse, CallRecord, OrgTotals } from '@/types/dashboard';
 import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2, PieChart, Clock } from 'lucide-react';
 
+const canUpload = (role?: string) => role === 'admin' || role === 'manager' || role === 'uploader';
+
 type ActiveTab = 'overview' | 'agents' | 'periods' | 'table' | 'confirm' | 'calls';
 
 // Live updates: the open dashboard re-reads the server every 30 s (the server caches sheet reads for ~30 s).
@@ -408,7 +410,7 @@ export default function DashboardPage() {
         onFilterChange={handleFilterChange}
         openers={data?.openers || []}
         onRefresh={() => fetchData(true)}
-        onOpenImportModal={() => setImportModalOpen(true)}
+        onOpenImportModal={!data?.viewer || canUpload(data.viewer.role) ? () => setImportModalOpen(true) : undefined}
         onOpenSheetTools={data?.viewer && (data.viewer.role === 'admin' || data.viewer.role === 'manager') ? () => setSheetToolsOpen(true) : undefined}
         onPrint={() => window.print()}
         onCopyLink={handleCopyLink}
@@ -467,7 +469,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {data?.missingUploadDay && (data.viewer?.role === 'admin' || data.viewer?.role === 'manager') && (
+        {data?.missingUploadDay && canUpload(data.viewer?.role) && (
           <div
             role="status"
             className="rounded-xl p-3 flex flex-wrap items-center gap-2 text-xs"

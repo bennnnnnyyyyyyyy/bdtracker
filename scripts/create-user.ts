@@ -29,7 +29,7 @@ async function main() {
   const email = (arg('email') || (await ask('Email: '))).trim().toLowerCase();
   const name = (arg('name') || (await ask('Name: '))).trim();
   const role = arg('role') || 'admin';
-  if (!['admin', 'manager', 'viewer'].includes(role)) throw new Error('Role must be admin, manager or viewer.');
+  if (!['admin', 'manager', 'uploader', 'viewer'].includes(role)) throw new Error('Role must be admin, manager, uploader or viewer.');
   const password = arg('password') || (await ask('Password (min 10 characters; visible as you type): '));
   const problem = validateNewPassword(password);
   if (problem) throw new Error(problem);

@@ -11,7 +11,7 @@ export const maxDuration = 60;
 const ROLES: Record<SheetAction, UserRole[]> = {
   status: ['admin', 'manager'],
   check: ['admin', 'manager'],
-  setMapping: ['admin', 'manager'],
+  setMapping: ['admin', 'manager', 'uploader'], // the upload window asks for names of new agents
   repair: ['admin'],
   archive: ['admin'],
   fixTimes: ['admin'],

@@ -11,6 +11,7 @@ interface UserRow {
 const ROLE_HELP: Record<UserRole, string> = {
   admin: 'Everything, including managing users',
   manager: 'Can confirm shows',
+  uploader: 'View only, plus uploads the daily call reports',
   viewer: 'View only',
 };
 

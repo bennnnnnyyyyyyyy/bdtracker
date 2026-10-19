@@ -41,7 +41,7 @@ export interface MeetingRecord {
   confirmedAt?: string;
 }
 
-export type UserRole = 'admin' | 'manager' | 'viewer';
+export type UserRole = 'admin' | 'manager' | 'uploader' | 'viewer';
 
 export interface ViewerInfo {
   id: string;

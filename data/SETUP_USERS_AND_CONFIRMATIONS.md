@@ -1,7 +1,7 @@
 # Setup: Accounts, Show Confirmations and Live Updates
 
 ## What management gets
-- **Per-person sign-in.** Every user has their own email + password. Roles: **admin** (everything, including managing users), **manager** (can confirm shows), **viewer** (read-only).
+- **Per-person sign-in.** Every user has their own email + password. Roles: **admin** (everything, including managing users), **manager** (can confirm shows and upload), **uploader** (read-only, plus uploads the daily call reports and sees the missing-upload reminder), **viewer** (read-only). Existing installs must re-run `supabase_schema.sql` once so the database accepts the `uploader` role.
 - **Shows need confirmation.** A meeting counts as a show only after an admin or manager confirms it in the dashboard (**Confirm shows** tab). Unconfirmed meetings never count, whatever tab they sit in. Meetings in **No-Show** or **Dead Leads** can never be confirmed as shows.
 - **Follow-up queue.** Meetings in Follow Ups / Contract Sent / Invoice Sent / Onboarded / Temporary Inactive that nobody has confirmed yet are counted as **awaiting confirmation** on the Show rate card, on each person's card and as a badge on the tab.
 - **Audit trail.** Who confirmed or undid each meeting, and when, is stored permanently (`show_confirmation_events`).

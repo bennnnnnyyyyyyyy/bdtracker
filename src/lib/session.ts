@@ -69,6 +69,11 @@ export async function readSessionValue(value: string | undefined, now = Date.now
   }
 }
 
+/** Who may upload the daily Ultatel reports: managers, admins and the uploader role (otherwise view-only). */
+export function canUpload(role: UserRole | undefined): boolean {
+  return role === 'admin' || role === 'manager' || role === 'uploader';
+}
+
 export function canConfirm(role: UserRole | undefined): boolean {
   return role === 'admin' || role === 'manager';
 }

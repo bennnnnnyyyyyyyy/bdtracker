@@ -5,7 +5,7 @@ import { hashPassword, validateNewPassword } from '@/lib/password';
 import type { UserRole } from '@/types/dashboard';
 
 export const runtime = 'nodejs';
-const ROLES: UserRole[] = ['admin', 'manager', 'viewer'];
+const ROLES: UserRole[] = ['admin', 'manager', 'uploader', 'viewer'];
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireUser(request, ['admin']);
