@@ -67,6 +67,8 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = mem
     const v = (obj[key] as number) ?? 0;
     if (key === 'presentDays') return v > 0 ? String(v) : '—';
     if (key === 'callsPerPresentDay') return v > 0 ? String(v) : '—';
+    // A show rate needs at least one attended or no-show meeting; until then it is blank, not 0%.
+    if (key === 'showRate' && ((obj.attended as number) ?? 0) + ((obj.noShow as number) ?? 0) === 0) return '—';
     return isRate ? formatPercent(v) : v.toLocaleString();
   };
 

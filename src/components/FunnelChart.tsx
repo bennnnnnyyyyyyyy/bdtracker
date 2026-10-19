@@ -20,7 +20,7 @@ export const FunnelChart: React.FC<{ totals: OrgTotals }> = React.memo(({ totals
     { label: 'Calls', value: totals.calls },
     { label: 'Answered', value: totals.answered },
     { label: 'Meetings booked', value: totals.booked },
-    { label: 'Attended', value: totals.attended },
+    { label: 'Attended (confirmed)', value: totals.attended },
     { label: 'Onboarded', value: totals.onboarded },
   ];
   const max = Math.max(1, steps[0].value);
@@ -29,7 +29,7 @@ export const FunnelChart: React.FC<{ totals: OrgTotals }> = React.memo(({ totals
     <section aria-labelledby="funnel-heading" className="card p-5">
       <div className="mb-4">
         <h3 id="funnel-heading" className="font-serif text-base font-bold text-white">Conversion funnel</h3>
-        <p className="text-xs text-text-dim mt-0.5">From calls to closed deals. Percentages show the step from the stage before, with the overall share of calls on the right.</p>
+        <p className="text-xs text-text-dim mt-0.5">From calls to closed deals. Percentages show the step from the stage before, with the overall share of calls on the right.{totals.awaitingConfirmation > 0 ? ` ${totals.awaitingConfirmation} meeting${totals.awaitingConfirmation === 1 ? ' is' : 's are'} still waiting for show confirmation, so Attended is not final.` : ''}</p>
       </div>
       <ol className="space-y-3">
         {steps.map((step, i) => {

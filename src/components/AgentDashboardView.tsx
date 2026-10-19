@@ -70,7 +70,7 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, te
   const productivity = agent.presentDays > 0
     ? `${agent.callsPerPresentDay} calls/day · ${agent.presentDays} present days`
     : `${agent.callsPerCalendarDay ?? 0} calls/calendar day`;
-  const showDelta = agent.booked > 0 && teamShowRate > 0 ? Math.round((agent.showRate - teamShowRate) * 100) : null;
+  const showDelta = agent.attended + agent.noShow > 0 && teamShowRate > 0 ? Math.round((agent.showRate - teamShowRate) * 100) : null;
 
   return (
     <article className={`card ${isTop ? 'card-gold' : ''} overflow-hidden`}>

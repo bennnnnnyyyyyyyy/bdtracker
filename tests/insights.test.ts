@@ -66,3 +66,17 @@ describe('topPerformers', () => {
     expect(top.map(o => o.opener)).toEqual(['C', 'B', 'A']);
   });
 });
+
+describe('show rate needs settled results', () => {
+  it('does not flag a low show rate while meetings are waiting for confirmation, but says they are waiting', () => {
+    const items = needsAttention([agent({ attended: 0, noShow: 3, showRate: 0, awaitingConfirmation: 2 })], { targets: null, ...week });
+    expect(items).toHaveLength(1);
+    expect(items[0].severity).toBe('medium');
+    expect(items[0].reasons.join(' ')).toContain('waiting for show confirmation');
+    expect(items[0].reasons.join(' ')).not.toContain('Show rate');
+  });
+  it('flags a low show rate once everything is settled', () => {
+    const items = needsAttention([agent({ attended: 1, noShow: 4, showRate: 0.2, awaitingConfirmation: 0 })], { targets: null, ...week });
+    expect(items[0].severity).toBe('high');
+  });
+});

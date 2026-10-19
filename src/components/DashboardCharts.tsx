@@ -54,8 +54,9 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily
   // Data formatted for Chart 2: Show Rate vs Close Rate
   const ratesData = openers.map(o => ({
     opener: o.opener,
-    'Show Rate (%)': Number((o.showRate * 100).toFixed(1)),
-    'Close Rate (%)': Number((o.closeRate * 100).toFixed(1))
+    // No bar when there is nothing to measure (no results yet / no rated meetings), instead of a misleading 0.
+    'Show Rate (%)': o.attended + o.noShow > 0 ? Number((o.showRate * 100).toFixed(1)) : null,
+    'Close Rate (%)': o.ratedMeetings > 0 ? Number((o.closeRate * 100).toFixed(1)) : null
   }));
 
   // Data formatted for Chart 3: Pipeline stages
@@ -70,7 +71,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily
   // Data formatted for Chart 4: Calls per Meeting (Efficiency)
   const efficiencyData = openers.map(o => ({
     opener: o.opener,
-    'Calls per Meeting': o.callsPerMeeting || 0
+    'Calls per Meeting': o.callsPerMeeting > 0 ? o.callsPerMeeting : null
   }));
 
   const trendData = [...daily].sort((a, b) => a.periodKey.localeCompare(b.periodKey)).map(d => ({
@@ -135,7 +136,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily
         <div className="card p-5">
           <div className="mb-4">
             <h3 className="font-serif text-base font-bold text-white">Show Rate vs Close Rate</h3>
-            <p className="text-xs text-text-dim mt-0.5">Meeting attendance rate vs final deal onboarding close rate (%)</p>
+            <p className="text-xs text-text-dim mt-0.5">Confirmed show rate vs close rate (%). Agents with no results yet have no bar.</p>
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -163,7 +164,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ openers, daily
         <div className="lg:col-span-2 card p-5">
           <div className="mb-4">
             <h3 className="font-serif text-base font-bold text-white">Pipeline Stage Breakdown by Opener</h3>
-            <p className="text-xs text-text-dim mt-0.5">Distribution of leads across all 8 pipeline stages from BD Tracker</p>
+            <p className="text-xs text-text-dim mt-0.5">Distribution of leads across all {CONFIG.BD_TABS.length} tracker tabs</p>
           </div>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">

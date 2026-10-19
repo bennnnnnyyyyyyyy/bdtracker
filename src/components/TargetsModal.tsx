@@ -22,7 +22,8 @@ export const TargetsModal: React.FC<Props> = ({ isOpen, current, onClose, onSave
 
   useEffect(() => {
     if (!isOpen) return;
-    setValues({ calls: String(current?.calls || ''), meetings: String(current?.meetings || ''), onboarded: String(current?.onboarded || '') });
+    const t = window.setTimeout(() => setValues({ calls: String(current?.calls || ''), meetings: String(current?.meetings || ''), onboarded: String(current?.onboarded || '') }), 0);
+    return () => window.clearTimeout(t);
   }, [isOpen, current]);
 
   useEffect(() => {

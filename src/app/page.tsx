@@ -9,6 +9,7 @@ import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
 import { DashboardCharts } from '@/components/DashboardCharts';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
+import { DailyCallsView } from '@/components/DailyCallsView';
 import { AgentsModal } from '@/components/AgentsModal';
 import { SheetToolsModal } from '@/components/SheetToolsModal';
 import { ConfirmationsView } from '@/components/ConfirmationsView';
@@ -588,13 +589,11 @@ export default function DashboardPage() {
               />
             )}
             {activeTab === 'calls' && (
-              callsLoaded ? (
-                <CallLogsView calls={callLogs.calls} />
-              ) : (
-                <div className="card p-6 text-sm text-[#a1a1aa]" role="status">
-                  {callLogsError ?? 'Loading call logs…'}
-                </div>
-              )
+              <div className="space-y-6">
+                <DailyCallsView daily={data.dailyBreakdown || []} />
+                {callsLoaded && callLogs.calls.length > 0 && <CallLogsView calls={callLogs.calls} />}
+                {!callsLoaded && callLogsError && <div className="card p-6 text-sm text-[#a1a1aa]" role="status">{callLogsError}</div>}
+              </div>
             )}
           </>
         )}

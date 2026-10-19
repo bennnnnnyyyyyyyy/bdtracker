@@ -33,10 +33,12 @@ export function needsAttention(openers: OpenerStats[], ctx: Context): AttentionI
     }
 
     const rated = o.attended + o.noShow;
-    if (rated >= 3 && o.showRate < 0.4) {
+    // Judged only on settled results: a meeting waiting for confirmation is neither a show nor a no-show yet.
+    if (rated >= 3 && o.awaitingConfirmation === 0 && o.showRate < 0.4) {
       reasons.push(`Show rate ${pct(o.showRate)} (${o.attended} of ${rated})`);
       severity = 'high';
     }
+    if (o.awaitingConfirmation > 0) reasons.push(`${o.awaitingConfirmation} meeting${o.awaitingConfirmation === 1 ? '' : 's'} waiting for show confirmation`);
 
     // Only judge against targets once enough of the period has passed for pace to mean something.
     if (ctx.targets && elapsed >= 0.3) {

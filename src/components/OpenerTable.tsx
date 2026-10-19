@@ -52,14 +52,15 @@ const COLUMNS: Column[] = [
   { key: 'totalTalkSec', label: 'Talk time', group: 'activity', cell: o => formatMinutes(o.totalTalkSec), total: t => formatMinutes(t.totalTalkSec) },
   { key: 'avgCallSec', label: 'Avg call', group: 'activity', cell: o => `${o.avgCallSec}s`, total: t => `${t.avgCallSec}s` },
   { key: 'booked', label: 'Booked', group: 'meetings', strong: true, cell: o => o.booked, total: t => t.booked.toLocaleString() },
-  { key: 'medBRate', label: 'Med B %', group: 'meetings', title: 'Med B share of booked meetings', cell: o => o.booked > 0 ? `${(o.medBRate || 0).toFixed(1)}%` : '—', total: t => t.booked > 0 ? `${(t.medBRate || 0).toFixed(1)}%` : '—', cellTitle: o => `${o.medBCount || 0} Med B meetings` },
-  { key: 'ppoRate', label: 'PPO %', group: 'meetings', title: 'PPO share of booked meetings', cell: o => o.booked > 0 ? `${(o.ppoRate || 0).toFixed(1)}%` : '—', total: t => t.booked > 0 ? `${(t.ppoRate || 0).toFixed(1)}%` : '—', cellTitle: o => `${o.ppoCount || 0} PPO meetings` },
+  { key: 'medBRate', label: 'Med B %', group: 'meetings', title: 'Med B share of rated meetings (booked, excluding CANCELLED and DISQUALIFIED)', cell: o => o.ratedMeetings > 0 ? `${(o.medBRate || 0).toFixed(1)}%` : '—', total: t => t.ratedMeetings > 0 ? `${(t.medBRate || 0).toFixed(1)}%` : '—', cellTitle: o => `${o.medBCount || 0} Med B meetings` },
+  { key: 'ppoRate', label: 'PPO %', group: 'meetings', title: 'PPO share of rated meetings (booked, excluding CANCELLED and DISQUALIFIED)', cell: o => o.ratedMeetings > 0 ? `${(o.ppoRate || 0).toFixed(1)}%` : '—', total: t => t.ratedMeetings > 0 ? `${(t.ppoRate || 0).toFixed(1)}%` : '—', cellTitle: o => `${o.ppoCount || 0} PPO meetings` },
   { key: 'attended', label: 'Attended', group: 'meetings', cell: o => o.attended, total: t => t.attended.toLocaleString() },
+  { key: 'awaitingConfirmation', label: 'To confirm', group: 'meetings', title: 'Meetings waiting for management to confirm the show', cell: o => o.awaitingConfirmation || '—', total: t => t.awaitingConfirmation > 0 ? t.awaitingConfirmation.toLocaleString() : '—' },
   { key: 'noShow', label: 'No-show', group: 'meetings', cell: o => o.noShow, total: t => t.noShow.toLocaleString() },
-  { key: 'showRate', label: 'Show %', group: 'meetings', strong: true, cell: o => formatPercent(o.showRate), total: t => formatPercent(t.showRate) },
+  { key: 'showRate', label: 'Show %', group: 'meetings', strong: true, title: 'Attended ÷ (attended + no-show). Blank until a meeting has a result.', cell: o => o.attended + o.noShow > 0 ? formatPercent(o.showRate) : '—', total: t => t.attended + t.noShow > 0 ? formatPercent(t.showRate) : '—' },
   { key: 'onboarded', label: 'Onboarded', group: 'meetings', strong: true, cell: o => o.onboarded, total: t => t.onboarded.toLocaleString() },
-  { key: 'closeRate', label: 'Close %', group: 'meetings', strong: true, cell: o => formatPercent(o.closeRate), total: t => formatPercent(t.closeRate) },
-  { key: 'callsPerMeeting', label: 'Calls / meeting', group: 'meetings', cell: o => o.callsPerMeeting, total: t => t.callsPerMeeting },
+  { key: 'closeRate', label: 'Close %', group: 'meetings', strong: true, title: 'Onboarded ÷ rated meetings', cell: o => o.ratedMeetings > 0 ? formatPercent(o.closeRate) : '—', total: t => t.ratedMeetings > 0 ? formatPercent(t.closeRate) : '—' },
+  { key: 'callsPerMeeting', label: 'Calls / meeting', group: 'meetings', cell: o => o.callsPerMeeting || '—', total: t => t.callsPerMeeting || '—' },
 ];
 
 export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }) => {
@@ -111,7 +112,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
   const exportCSV = () => {
     const headers = [
       'Opener', 'Calls Made', 'Present Days', 'Calls / Pres. Day', 'Calls / Day (As-Is)', 'Outbound', 'Inbound', 'Answered', 'No Answer', 'Answer Rate',
-      'Total Talk (min)', 'Avg Call (sec)', 'Meetings Booked', 'Med B Count', 'Med B %', 'PPO Count', 'PPO %', 'No-Show', 'Attended', 'Show Rate',
+      'Total Talk (min)', 'Avg Call (sec)', 'Meetings Booked', 'Med B Count', 'Med B %', 'PPO Count', 'PPO %', 'Awaiting Confirmation', 'No-Show', 'Attended', 'Show Rate',
       'Onboarded', 'Close Rate', 'Calls per Meeting', ...CONFIG.BD_TABS
     ];
 
@@ -133,6 +134,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
       `"${(o.medBRate || 0).toFixed(1)}%"`,
       o.ppoCount || 0,
       `"${(o.ppoRate || 0).toFixed(1)}%"`,
+      o.awaitingConfirmation || 0,
       o.noShow,
       o.attended,
       `"${(o.showRate * 100).toFixed(1)}%"`,
@@ -160,6 +162,7 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
       `"${(totals.medBRate || 0).toFixed(1)}%"`,
       totals.ppoCount || 0,
       `"${(totals.ppoRate || 0).toFixed(1)}%"`,
+      totals.awaitingConfirmation || 0,
       totals.noShow,
       totals.attended,
       `"${(totals.showRate * 100).toFixed(1)}%"`,

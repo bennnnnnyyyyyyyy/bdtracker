@@ -127,6 +127,7 @@ export interface PeriodicGroupSummary {
     connectionRate: number;
     meetings: number;
     attended: number;
+    noShow: number;
     showRate: number;
     onboarded: number;
     closeRate: number;

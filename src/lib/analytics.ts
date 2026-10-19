@@ -915,6 +915,7 @@ function buildPeriodicBreakdown(
         connectionRate: totConnectionRate,
         meetings: totMeetings,
         attended: totAttended,
+        noShow: totNoShow,
         showRate: totShowRate,
         onboarded: totOnboarded,
         closeRate: totCloseRate,

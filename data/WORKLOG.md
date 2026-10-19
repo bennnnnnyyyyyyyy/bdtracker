@@ -237,3 +237,10 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 53. Manage agents (retire)
 - Actions > Manage agents (admin/manager): give an agent who has left a last working day. They stop appearing in date ranges that start after it; earlier ranges keep their history. Reinstate undoes it. Stored in the new Supabase table `agent_retirements` (run the latest `supabase_schema.sql`); API `/api/agents`.
+
+## 54. Tab review
+- **Calls tab** was empty for every uploaded day (daily totals have no individual calls). It now shows a Daily call totals table (day x agent, with CSV export); the per-call drill-down only appears when individual calls exist.
+- **Team table**: Med B / PPO % use rated meetings (booked minus CANCELLED / DISQUALIFIED); added a To confirm column; Show %, Close % and Calls / meeting show a dash instead of 0 when there is nothing to measure; CSV has Awaiting Confirmation.
+- **Needs attention**: no low show-rate flag while meetings await confirmation; it says how many are waiting.
+- **Charts / funnel / periods**: no bars for agents without results, stage text no longer says 8 stages, funnel notes pending confirmations, period tables show a dash for show % with no results.
+- Fixed the TargetsModal lint error.
