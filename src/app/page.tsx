@@ -4,12 +4,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from '@/components/Header';
 import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
-import { CallLogsView } from '@/components/CallLogsView';
-import { PeriodicBreakdownTable } from '@/components/PeriodicBreakdownTable';
+import { TrendsView } from '@/components/TrendsView';
 import { DashboardCharts } from '@/components/DashboardCharts';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
 import { FileImportModal } from '@/components/FileImportModal';
-import { DailyCallsView } from '@/components/DailyCallsView';
 import { AgentsModal } from '@/components/AgentsModal';
 import { SheetToolsModal } from '@/components/SheetToolsModal';
 import { ConfirmationsView } from '@/components/ConfirmationsView';
@@ -20,12 +18,12 @@ import { PrintReport } from '@/components/PrintReport';
 import { needsAttention } from '@/lib/insights';
 import { Targets, loadTargets, saveTargets, periodDays, scaledTarget, activeAgents } from '@/lib/targets';
 import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXlsx';
-import { FilterState, DashboardResponse, CallRecord, OrgTotals } from '@/types/dashboard';
-import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, PhoneCall, BarChart3, CheckCircle2, PieChart, Clock } from 'lucide-react';
+import { FilterState, DashboardResponse, OrgTotals } from '@/types/dashboard';
+import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, BarChart3, CheckCircle2, PieChart, Clock } from 'lucide-react';
 
 const canUpload = (role?: string) => role === 'admin' || role === 'manager' || role === 'uploader';
 
-type ActiveTab = 'overview' | 'agents' | 'periods' | 'table' | 'confirm' | 'calls';
+type ActiveTab = 'overview' | 'agents' | 'periods' | 'table' | 'confirm';
 
 // Live updates: the open dashboard re-reads the server every 30 s (the server caches sheet reads for ~30 s).
 const LIVE_POLL_MS = 30_000;
@@ -40,11 +38,6 @@ type DashboardUiCache = {
 };
 
 type PeriodView = 'daily' | 'weekly' | 'monthly';
-const PERIOD_VIEWS: { id: PeriodView; label: string; title: string }[] = [
-  { id: 'daily', label: 'Daily', title: 'Daily performance' },
-  { id: 'weekly', label: 'Weekly', title: 'Weekly performance' },
-  { id: 'monthly', label: 'Monthly', title: 'Monthly performance' },
-];
 
 const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Overview', icon: <PieChart className="w-4 h-4" /> },
@@ -52,7 +45,6 @@ const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
   { id: 'periods', label: 'Trends', icon: <BarChart3 className="w-4 h-4" /> },
   { id: 'table', label: 'Details', icon: <TableIcon className="w-4 h-4" /> },
   { id: 'confirm', label: 'Confirm shows', icon: <CheckCircle2 className="w-4 h-4" /> },
-  { id: 'calls', label: 'Call Logs', icon: <PhoneCall className="w-4 h-4" /> },
 ];
 
 function getThisWeekRange(): Pick<FilterState, 'startDate' | 'endDate'> {
@@ -90,7 +82,7 @@ function shiftToPreviousRange(startDate: string, endDate: string): { startDate: 
   return { startDate: fmt(prevStart), endDate: fmt(prevEnd) };
 }
 
-const VALID_TABS: ActiveTab[] = ['overview', 'agents', 'periods', 'table', 'confirm', 'calls'];
+const VALID_TABS: ActiveTab[] = ['overview', 'agents', 'periods', 'table', 'confirm'];
 const VALID_PRESETS = ['yesterday', 'this_week', 'this_month', 'last_30_days', 'custom'] as const;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const STALE_AFTER_MS = 30 * 60 * 1000;
@@ -189,8 +181,6 @@ export default function DashboardPage() {
   const [sheetToolsOpen, setSheetToolsOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
-  const [callLogs, setCallLogs] = useState<{ key: string; calls: CallRecord[] } | null>(null);
-  const [callLogsError, setCallLogsError] = useState<string | null>(null);
   const [pollFailed, setPollFailed] = useState(false);
   const [targets, setTargets] = useState<Targets | null>(null);
   const [targetsOpen, setTargetsOpen] = useState(false);
@@ -203,7 +193,7 @@ export default function DashboardPage() {
       if (cachedUi?.filters) {
         setFilters(cachedUi.filters);
       }
-      if (cachedUi?.activeTab) {
+      if (cachedUi?.activeTab && VALID_TABS.includes(cachedUi.activeTab)) {
         setActiveTab(cachedUi.activeTab);
       }
       // A shared link wins over whatever this browser last had open.
@@ -345,41 +335,6 @@ export default function DashboardPage() {
 
     return () => window.cancelAnimationFrame(frame);
   }, [fetchData, hasHydrated]);
-
-  // The Call Logs tab needs every call record, which is large; load it only when that tab is opened.
-  const hasData = Boolean(data);
-  const lastUpdated = data?.dataAsOf ?? data?.lastUpdated;
-  const callsKey = `${filters.startDate}|${filters.endDate}|${filters.selectedOpener}|${lastUpdated}`;
-  const callsLoaded = callLogs?.key === callsKey;
-  useEffect(() => {
-    if (activeTab !== 'calls' || !hasData || callsLoaded) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const params = new URLSearchParams({ includeCalls: 'true' });
-        if (filters.startDate) params.set('startDate', filters.startDate);
-        if (filters.endDate) params.set('endDate', filters.endDate);
-        if (filters.selectedOpener && filters.selectedOpener !== 'ALL') params.set('opener', filters.selectedOpener);
-        const res = await fetch('/api/dashboard?' + params.toString(), { cache: 'no-store' });
-        if (res.status === 401) {
-          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-          window.location.href = '/login';
-          return;
-        }
-        if (!res.ok) throw new Error('Failed to load call logs');
-        const json: DashboardResponse = await res.json();
-        if (!cancelled) {
-          setCallLogs({ key: callsKey, calls: json.calls });
-          setCallLogsError(null);
-        }
-      } catch (err: unknown) {
-        if (!cancelled) setCallLogsError(err instanceof Error ? err.message : 'Failed to load call logs');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, hasData, callsLoaded, callsKey, filters.startDate, filters.endDate, filters.selectedOpener]);
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
     setFilters(prev => ({ ...prev, ...newFilters }));
@@ -557,25 +512,7 @@ export default function DashboardPage() {
               />
             )}
             {activeTab === 'periods' && (
-              <section className="space-y-4" aria-labelledby="trends-heading">
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div>
-                    <p className="sec-tag mb-1">Trends</p>
-                    <h2 id="trends-heading" className="font-serif text-xl font-bold text-white">{PERIOD_VIEWS.find(v => v.id === periodView)?.title}</h2>
-                    <p className="text-xs text-text-dim mt-1">Click a row to expand the per-agent breakdown</p>
-                  </div>
-                  <div className="seg" role="group" aria-label="Period granularity">
-                    {PERIOD_VIEWS.map(v => (
-                      <button key={v.id} type="button" className="seg-item" aria-pressed={periodView === v.id} onClick={() => setPeriodView(v.id)}>{v.label}</button>
-                    ))}
-                  </div>
-                </div>
-                <PeriodicBreakdownTable
-                  key={periodView}
-                  data={periodView === 'daily' ? data.dailyBreakdown : periodView === 'weekly' ? data.weeklyBreakdown : data.monthlyBreakdown}
-                  emptyLabel={`No ${periodView} activity in this period`}
-                />
-              </section>
+              <TrendsView daily={data.dailyBreakdown} weekly={data.weeklyBreakdown} monthly={data.monthlyBreakdown} view={periodView} onViewChange={setPeriodView} />
             )}
             {activeTab === 'table' && (
               <OpenerTable openers={data.openers} totals={data.totals} />
@@ -587,13 +524,6 @@ export default function DashboardPage() {
                 confirmationsAvailable={data.confirmationsAvailable !== false}
                 onChanged={() => fetchData(false, true)}
               />
-            )}
-            {activeTab === 'calls' && (
-              <div className="space-y-6">
-                <DailyCallsView daily={data.dailyBreakdown || []} />
-                {callsLoaded && callLogs.calls.length > 0 && <CallLogsView calls={callLogs.calls} />}
-                {!callsLoaded && callLogsError && <div className="card p-6 text-sm text-[#a1a1aa]" role="status">{callLogsError}</div>}
-              </div>
             )}
           </>
         )}

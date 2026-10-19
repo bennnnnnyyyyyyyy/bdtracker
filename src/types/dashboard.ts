@@ -122,6 +122,8 @@ export interface PeriodicGroupSummary {
   periodLabel: string;
   totals: {
     calls: number;
+    outbound: number;
+    inbound: number;
     answered: number;
     noAnswer: number;
     connectionRate: number;

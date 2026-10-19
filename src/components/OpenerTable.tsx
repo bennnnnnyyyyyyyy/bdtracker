@@ -32,6 +32,12 @@ interface Column {
   cell: (o: OpenerStats) => React.ReactNode;
   total: (t: OrgTotals) => React.ReactNode;
   cellTitle?: (o: OpenerStats) => string;
+  /** Numeric value used to highlight the best agent in this column (higher is better). Null = nothing to compare. */
+  best?: (o: OpenerStats) => number | null;
+  /** Colour class for a cell, e.g. red/green for rates. */
+  tone?: (o: OpenerStats) => string;
+  /** Draw a small bar under the number, relative to the largest value in the column. */
+  bar?: (o: OpenerStats) => number;
 }
 
 const GROUPS: { id: ColumnGroup; label: string }[] = [
@@ -41,25 +47,25 @@ const GROUPS: { id: ColumnGroup; label: string }[] = [
 ];
 
 const COLUMNS: Column[] = [
-  { key: 'calls', label: 'Calls', group: 'activity', strong: true, cell: o => o.calls.toLocaleString(), total: t => t.calls.toLocaleString() },
+  { key: 'calls', label: 'Calls', group: 'activity', strong: true, best: o => o.calls || null, bar: o => o.calls, cell: o => o.calls.toLocaleString(), total: t => t.calls.toLocaleString() },
   { key: 'presentDays', label: 'Present days', group: 'activity', title: 'Weighted present days from Attendance Sheet', cell: o => o.presentDays > 0 ? o.presentDays : '—', total: t => t.totalPresentDays.toLocaleString() },
-  { key: 'callsPerPresentDay', label: 'Calls / day', group: 'activity', strong: true, title: 'Total calls / present days', cell: o => o.presentDays > 0 ? o.callsPerPresentDay : '—', total: t => t.callsPerPresentDay },
+  { key: 'callsPerPresentDay', label: 'Calls / day', group: 'activity', strong: true, best: o => (o.presentDays > 0 ? o.callsPerPresentDay : null), tone: o => (o.presentDays > 0 && o.callsPerPresentDay < 10 ? 'text-warn' : ''), title: 'Total calls / present days', cell: o => o.presentDays > 0 ? o.callsPerPresentDay : '—', total: t => t.callsPerPresentDay },
   { key: 'outbound', label: 'Out', group: 'activity', cell: o => o.outbound, total: t => t.outbound.toLocaleString() },
   { key: 'inbound', label: 'In', group: 'activity', cell: o => o.inbound, total: t => t.inbound.toLocaleString() },
   { key: 'answered', label: 'Answered', group: 'activity', cell: o => o.answered, total: t => t.answered.toLocaleString() },
   { key: 'noAnswer', label: 'No answer', group: 'activity', cell: o => o.noAnswer, total: t => t.noAnswer.toLocaleString() },
-  { key: 'answerRate', label: 'Answer %', group: 'activity', strong: true, cell: o => formatPercent(o.answerRate), total: t => formatPercent(t.answerRate) },
+  { key: 'answerRate', label: 'Answer %', group: 'activity', strong: true, best: o => (o.calls > 0 ? o.answerRate : null), cell: o => formatPercent(o.answerRate), total: t => formatPercent(t.answerRate) },
   { key: 'totalTalkSec', label: 'Talk time', group: 'activity', cell: o => formatMinutes(o.totalTalkSec), total: t => formatMinutes(t.totalTalkSec) },
   { key: 'avgCallSec', label: 'Avg call', group: 'activity', cell: o => `${o.avgCallSec}s`, total: t => `${t.avgCallSec}s` },
-  { key: 'booked', label: 'Booked', group: 'meetings', strong: true, cell: o => o.booked, total: t => t.booked.toLocaleString() },
+  { key: 'booked', label: 'Booked', group: 'meetings', strong: true, best: o => o.booked || null, bar: o => o.booked, cell: o => o.booked, total: t => t.booked.toLocaleString() },
   { key: 'medBRate', label: 'Med B %', group: 'meetings', title: 'Med B share of rated meetings (booked, excluding CANCELLED and DISQUALIFIED)', cell: o => o.ratedMeetings > 0 ? `${(o.medBRate || 0).toFixed(1)}%` : '—', total: t => t.ratedMeetings > 0 ? `${(t.medBRate || 0).toFixed(1)}%` : '—', cellTitle: o => `${o.medBCount || 0} Med B meetings` },
   { key: 'ppoRate', label: 'PPO %', group: 'meetings', title: 'PPO share of rated meetings (booked, excluding CANCELLED and DISQUALIFIED)', cell: o => o.ratedMeetings > 0 ? `${(o.ppoRate || 0).toFixed(1)}%` : '—', total: t => t.ratedMeetings > 0 ? `${(t.ppoRate || 0).toFixed(1)}%` : '—', cellTitle: o => `${o.ppoCount || 0} PPO meetings` },
   { key: 'attended', label: 'Attended', group: 'meetings', cell: o => o.attended, total: t => t.attended.toLocaleString() },
   { key: 'awaitingConfirmation', label: 'To confirm', group: 'meetings', title: 'Meetings waiting for management to confirm the show', cell: o => o.awaitingConfirmation || '—', total: t => t.awaitingConfirmation > 0 ? t.awaitingConfirmation.toLocaleString() : '—' },
   { key: 'noShow', label: 'No-show', group: 'meetings', cell: o => o.noShow, total: t => t.noShow.toLocaleString() },
-  { key: 'showRate', label: 'Show %', group: 'meetings', strong: true, title: 'Attended ÷ (attended + no-show). Blank until a meeting has a result.', cell: o => o.attended + o.noShow > 0 ? formatPercent(o.showRate) : '—', total: t => t.attended + t.noShow > 0 ? formatPercent(t.showRate) : '—' },
-  { key: 'onboarded', label: 'Onboarded', group: 'meetings', strong: true, cell: o => o.onboarded, total: t => t.onboarded.toLocaleString() },
-  { key: 'closeRate', label: 'Close %', group: 'meetings', strong: true, title: 'Onboarded ÷ rated meetings', cell: o => o.ratedMeetings > 0 ? formatPercent(o.closeRate) : '—', total: t => t.ratedMeetings > 0 ? formatPercent(t.closeRate) : '—' },
+  { key: 'showRate', label: 'Show %', group: 'meetings', strong: true, best: o => (o.attended + o.noShow >= 3 ? o.showRate : null), tone: o => (o.attended + o.noShow < 3 || o.awaitingConfirmation > 0 ? '' : o.showRate >= 0.6 ? 'text-success' : o.showRate < 0.4 ? 'text-danger' : ''), title: 'Attended ÷ (attended + no-show). Blank until a meeting has a result.', cell: o => o.attended + o.noShow > 0 ? formatPercent(o.showRate) : '—', total: t => t.attended + t.noShow > 0 ? formatPercent(t.showRate) : '—' },
+  { key: 'onboarded', label: 'Onboarded', group: 'meetings', strong: true, best: o => o.onboarded || null, cell: o => o.onboarded, total: t => t.onboarded.toLocaleString() },
+  { key: 'closeRate', label: 'Close %', group: 'meetings', strong: true, best: o => (o.ratedMeetings > 0 && o.onboarded > 0 ? o.closeRate : null), title: 'Onboarded ÷ rated meetings', cell: o => o.ratedMeetings > 0 ? formatPercent(o.closeRate) : '—', total: t => t.ratedMeetings > 0 ? formatPercent(t.closeRate) : '—' },
   { key: 'callsPerMeeting', label: 'Calls / meeting', group: 'meetings', cell: o => o.callsPerMeeting || '—', total: t => t.callsPerMeeting || '—' },
 ];
 
@@ -193,6 +199,21 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
   };
 
   const visibleColumns = COLUMNS.filter(c => visibleGroups.has(c.group));
+  // Best value per column among the agents shown (only when at least two agents can be compared), and the largest bar value.
+  const bestByCol = useMemo(() => {
+    const out: Record<string, number> = {};
+    COLUMNS.forEach(c => {
+      if (!c.best) return;
+      const vals = openers.map(o => c.best!(o)).filter((v): v is number => v !== null);
+      if (vals.length >= 2) out[c.key] = Math.max(...vals);
+    });
+    return out;
+  }, [openers]);
+  const barMax = useMemo(() => {
+    const out: Record<string, number> = {};
+    COLUMNS.forEach(c => { if (c.bar) out[c.key] = Math.max(1, ...openers.map(o => c.bar!(o))); });
+    return out;
+  }, [openers]);
   const stageColumns = visibleGroups.has('pipeline') ? CONFIG.BD_TABS : [];
 
   const toggleGroup = (g: ColumnGroup) => setVisibleGroups(prev => {
@@ -246,6 +267,15 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
         </div>
       </div>
 
+      <div className="px-4 sm:px-6 py-2.5 flex flex-wrap gap-x-5 gap-y-1 text-xs text-text-dim border-b border-white/7">
+        <span><strong className="font-num text-white">{openers.length}</strong> agents</span>
+        <span><strong className="font-num text-white">{totals.calls.toLocaleString()}</strong> calls</span>
+        <span><strong className="font-num text-white">{totals.booked.toLocaleString()}</strong> meetings</span>
+        <span><strong className="font-num text-white">{totals.onboarded.toLocaleString()}</strong> onboarded</span>
+        {totals.awaitingConfirmation > 0 && <span className="text-gold-light"><strong className="font-num">{totals.awaitingConfirmation}</strong> shows awaiting confirmation</span>}
+        <span className="ml-auto"><span className="text-gold-light">Gold</span> = best in column · click a header to sort</span>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-left text-[13px] whitespace-nowrap font-num">
           <thead className="bg-surface text-text-dim text-[11px] uppercase tracking-wider border-b border-white/7 font-medium">
@@ -267,15 +297,23 @@ export const OpenerTable: React.FC<OpenerTableProps> = memo(({ openers, totals }
           </thead>
           <tbody className="divide-y divide-white/5 text-text-primary">
             {sorted.map((o, idx) => (
-              <tr key={o.opener} className="hover:bg-white/3 transition-colors">
+              <tr key={o.opener} className={`hover:bg-white/5 transition-colors ${idx % 2 === 1 ? 'bg-white/[0.02]' : ''}`}>
                 <td className="py-3 px-4 font-semibold text-white sticky left-0 bg-card z-10 border-r border-white/6">
                   <span className="text-text-dim font-normal mr-2">{idx + 1}</span>{o.opener}
                 </td>
-                {visibleColumns.map(c => (
-                  <td key={c.key} className={`py-3 px-3 text-right ${c.strong ? 'font-bold text-white' : 'text-text-muted'}`} title={c.cellTitle?.(o)}>
-                    {c.cell(o)}
-                  </td>
-                ))}
+                {visibleColumns.map(c => {
+                  const bv = c.best?.(o);
+                  const isBest = bv !== null && bv !== undefined && bestByCol[c.key] !== undefined && bv === bestByCol[c.key];
+                  const tone = c.tone?.(o);
+                  return (
+                    <td key={c.key} className={`py-3 px-3 text-right ${isBest ? 'font-bold text-gold-light' : tone ? `font-bold ${tone}` : c.strong ? 'font-bold text-white' : 'text-text-muted'}`} title={c.cellTitle?.(o)}>
+                      {c.cell(o)}
+                      {c.bar && (
+                        <div className="bar-track mt-1 !h-1" aria-hidden="true"><div className="bar-fill bar-fill-white" style={{ width: `${Math.min(100, (c.bar(o) / barMax[c.key]) * 100)}%` }} /></div>
+                      )}
+                    </td>
+                  );
+                })}
                 {stageColumns.map(tab => (
                   <td key={tab} className="py-3 px-3 text-right text-text-muted">{o.stageCounts[tab] || 0}</td>
                 ))}

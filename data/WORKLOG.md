@@ -244,3 +244,9 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - **Needs attention**: no low show-rate flag while meetings await confirmation; it says how many are waiting.
 - **Charts / funnel / periods**: no bars for agents without results, stage text no longer says 8 stages, funnel notes pending confirmations, period tables show a dash for show % with no results.
 - Fixed the TargetsModal lint error.
+
+## 55. Trends and Details rework, Call Logs tab removed
+- Call Logs tab removed (it was empty for daily-total days; per-day call numbers are now in Trends, with Out / In / Answered columns).
+- Trends: period toggle, latest-vs-previous stat cards, calls/meetings/closed chart per day/week/month, and the breakdown table with change arrows.
+- Details: best value per column in gold, red/green show rate, calls and booked bars, zebra rows and a summary line.
+- A saved tab that no longer exists (calls) falls back to Overview.

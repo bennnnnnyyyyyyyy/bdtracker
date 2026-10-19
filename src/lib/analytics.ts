@@ -839,6 +839,8 @@ function buildPeriodicBreakdown(
     const entry = periodMap.get(k)!;
     let totCalls = 0;
     let totAnswered = 0;
+    let totOut = 0;
+    let totIn = 0;
     let totNoAnswer = 0;
     let totMeetings = 0;
     let totRated = 0;
@@ -854,6 +856,8 @@ function buildPeriodicBreakdown(
 
       totCalls += raw.calls;
       totAnswered += raw.answered;
+      totOut += raw.out;
+      totIn += raw.in;
       totNoAnswer += raw.noAnswer;
       totMeetings += raw.meetings;
       totRated += raw.rated;
@@ -910,6 +914,8 @@ function buildPeriodicBreakdown(
       periodLabel: entry.label,
       totals: {
         calls: totCalls,
+        outbound: totOut,
+        inbound: totIn,
         answered: totAnswered,
         noAnswer: totNoAnswer,
         connectionRate: totConnectionRate,

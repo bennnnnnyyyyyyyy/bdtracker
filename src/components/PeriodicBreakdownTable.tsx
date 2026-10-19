@@ -20,10 +20,12 @@ interface MetricCol {
 
 const METRIC_COLS: MetricCol[] = [
   { key: 'calls', label: 'Calls', color: 'text-text-muted' },
+  { key: 'outbound', label: 'Out', color: 'text-text-muted' },
+  { key: 'inbound', label: 'In', color: 'text-text-muted' },
+  { key: 'answered', label: 'Answered', color: 'text-text-muted' },
+  { key: 'connectionRate', label: 'Answer %', color: 'text-text-muted', isRate: true },
   { key: 'presentDays', label: 'Pres. Days', color: 'text-text-muted' },
   { key: 'callsPerPresentDay', label: 'Calls / Day', color: 'text-text-muted' },
-  { key: 'connectionRate', label: 'Connection %', color: 'text-text-muted', isRate: true },
-  { key: 'noAnswer', label: 'No Answer', color: 'text-text-muted' },
   { key: 'meetings', label: 'Meetings', color: 'text-text-muted' },
   { key: 'showRate', label: 'Show %', color: 'text-text-muted', isRate: true },
   { key: 'onboarded', label: 'Closed', color: 'text-text-muted' },
@@ -92,8 +94,11 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = mem
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 text-text-primary">
-            {paginatedData.map(period => {
+            {paginatedData.map((period, pi) => {
               const isOpen = expanded.has(period.periodKey);
+              // Data is newest first, so the next row is the previous period.
+              const prevCalls = data[(currentPage - 1) * pageSize + pi + 1]?.totals.calls;
+              const callsDelta = prevCalls && prevCalls > 0 ? Math.round(((period.totals.calls - prevCalls) / prevCalls) * 100) : null;
               return (
                 <React.Fragment key={period.periodKey}>
                   {/* Period header row */}
@@ -119,6 +124,11 @@ export const PeriodicBreakdownTable: React.FC<PeriodicBreakdownTableProps> = mem
                     {METRIC_COLS.map(c => (
                       <td key={c.key} className={`py-3 px-3 text-right font-bold text-white`}>
                         {getVal(period.totals as unknown as Record<string, unknown>, c.key, c.isRate)}
+                        {c.key === 'calls' && callsDelta !== null && (
+                          <span className={`ml-1.5 text-[10px] font-bold ${callsDelta > 0 ? 'text-success' : callsDelta < 0 ? 'text-danger' : 'text-text-dim'}`} title="Compared with the previous period">
+                            {callsDelta > 0 ? '▲' : callsDelta < 0 ? '▼' : '●'}{Math.abs(callsDelta)}%
+                          </span>
+                        )}
                       </td>
                     ))}
                   </tr>
