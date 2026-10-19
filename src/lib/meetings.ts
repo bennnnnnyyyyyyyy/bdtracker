@@ -4,6 +4,9 @@ import { MeetingRecord } from '../types/dashboard';
 export interface ConfirmationInfo {
   confirmedBy: string;
   confirmedAt: string;
+  /** Absent means 'show' (older confirmations). Null = no outcome chosen, only a stage change. */
+  outcome?: 'show' | 'no_show' | null;
+  stageOverride?: string | null;
 }
 
 function part(value: unknown): string {
@@ -33,10 +36,16 @@ export function annotateMeetings(
   const keys = buildMeetingKeys(meetings);
   return meetings.map((m, i) => {
     const info = confirmations.get(keys[i]);
+    const outcome = info ? (info.outcome === undefined ? 'show' : info.outcome) : null;
+    // A manager's decision wins over the tracker sheet: a no-show is always the No-Show stage; otherwise an explicit stage.
+    const stage = outcome === 'no_show' ? 'No-Show' : info?.stageOverride || m.stage;
     return {
       ...m,
+      stage,
+      sheetStage: stage !== m.stage ? m.stage : undefined,
       meetingKey: keys[i],
-      showConfirmed: Boolean(info),
+      decision: outcome ?? undefined,
+      showConfirmed: outcome === 'show',
       confirmedBy: info?.confirmedBy,
       confirmedAt: info?.confirmedAt,
     };
@@ -104,19 +113,20 @@ export function isLegacyMeeting(m: MeetingRecord): boolean {
  * No-Show never counts, and neither does an unconfirmed new meeting, whatever tab it moves to.
  */
 export function isConfirmedShow(m: MeetingRecord): boolean {
-  if (m.stage === 'No-Show') return false;
+  if (m.decision === 'no_show' || m.stage === 'No-Show') return false;
+  if (m.decision === 'show') return true;
   if (isLegacyMeeting(m)) return LEGACY_SHOW_STAGES.includes(m.stage);
-  return m.showConfirmed === true;
+  return false;
 }
 
 /** The confirmation queue: a new meeting that moved from New Meetings to any other tab except No-Show and is not confirmed yet. */
 export function isAwaitingConfirmation(m: MeetingRecord): boolean {
-  return !isLegacyMeeting(m) && m.showConfirmed !== true && m.stage !== 'New Meetings' && m.stage !== 'No-Show';
+  return !isLegacyMeeting(m) && !m.decision && m.stage !== 'New Meetings' && m.stage !== 'No-Show';
 }
 
-/** May management confirm this row? New meetings (or rescheduled ones) in any tab except New Meetings and No-Show. */
+/** Management can decide any real meeting (show, no-show, or a different stage than the sheet). */
 export function canBeConfirmed(m: MeetingRecord): boolean {
-  return !isLegacyMeeting(m) && m.stage !== 'New Meetings' && m.stage !== 'No-Show';
+  return Boolean(m.meetingKey) && !isRescheduledStatus(m.status);
 }
 
 /** Confirmed as a show, but the row is back in New Meetings: management should decide if it became a no-show. */

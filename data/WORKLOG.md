@@ -250,3 +250,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Trends: period toggle, latest-vs-previous stat cards, calls/meetings/closed chart per day/week/month, and the breakdown table with change arrows.
 - Details: best value per column in gold, red/green show rate, calls and booked bars, zebra rows and a summary line.
 - A saved tab that no longer exists (calls) falls back to Overview.
+
+## 56. Manager decisions in Confirm shows
+- Managers mark any meeting Show or No-show and can move it to another stage than the sheet shows (per row or in bulk); Clear decision undoes it. Stored in `show_confirmations` (new columns `outcome`, `stage_override`; run the latest `supabase_schema.sql`). Stage counts, onboarded and rated meetings follow the effective stage. API: `/api/confirmations` actions confirm / revoke / set. Without the new columns the app still reads old confirmations (as shows).

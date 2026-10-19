@@ -165,3 +165,11 @@ CREATE TABLE IF NOT EXISTS public.agent_retirements (
 ALTER TABLE public.agent_retirements ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Service role only" ON public.agent_retirements;
 CREATE POLICY "Service role only" ON public.agent_retirements FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- Manager decisions: a meeting can be marked a show or a no-show, and moved to a different stage than the tracker sheet shows.
+ALTER TABLE public.show_confirmations ADD COLUMN IF NOT EXISTS outcome TEXT DEFAULT 'show';
+ALTER TABLE public.show_confirmations ADD COLUMN IF NOT EXISTS stage_override TEXT;
+ALTER TABLE public.show_confirmations DROP CONSTRAINT IF EXISTS show_confirmations_outcome_check;
+ALTER TABLE public.show_confirmations ADD CONSTRAINT show_confirmations_outcome_check CHECK (outcome IS NULL OR outcome IN ('show', 'no_show'));
+ALTER TABLE public.show_confirmation_events DROP CONSTRAINT IF EXISTS show_confirmation_events_action_check;
+ALTER TABLE public.show_confirmation_events ADD CONSTRAINT show_confirmation_events_action_check CHECK (action IN ('confirm', 'revoke', 'set'));

@@ -37,6 +37,10 @@ export interface MeetingRecord {
   meetingKey?: string;
   /** True once management confirmed the meeting was a show (never inferred from the stage). */
   showConfirmed?: boolean;
+  /** Manager decision: marked a show or a no-show (absent = undecided). */
+  decision?: 'show' | 'no_show';
+  /** The stage the tracker sheet has, when a manager moved the meeting to another stage in the app. */
+  sheetStage?: string;
   confirmedBy?: string;
   confirmedAt?: string;
 }

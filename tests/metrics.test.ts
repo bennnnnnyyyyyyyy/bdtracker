@@ -193,9 +193,9 @@ describe('shows after the confirmation start date require management confirmatio
     expect(run(annotateMeetings(raw, confirmations)).openers[0].attended).toBe(0);
   });
 
-  it('only new meetings in a show tab can be confirmed; old ones already count by their tab', () => {
+  it('any real meeting can be decided; old ones already count by their tab', () => {
     const m = annotateMeetings([...raw, meeting('Follow Ups', 'Ben', '2026-09-20', { companyName: 'OLD' })], new Map());
-    expect(m.map((x) => canBeConfirmed(x))).toEqual([true, true, false, false, false, false]);
+    expect(m.map((x) => canBeConfirmed(x))).toEqual([true, true, true, true, false, true]); // the rescheduled row cannot be decided
     expect(isConfirmedShow(m[5])).toBe(true);      // old meeting in Follow Ups
     expect(isAwaitingConfirmation(m[1])).toBe(true); // skipped Follow Ups, after 9/28: queued
   });
@@ -318,5 +318,41 @@ describe('retired agents', () => {
     expect(run('2026-08-13').openers.map((o) => o.opener)).not.toContain('Jimmy');
     expect(run('2026-08-12').openers.map((o) => o.opener)).toContain('Jimmy');
     expect(run('2026-08-01').openers.map((o) => o.opener)).toContain('Jimmy');
+  });
+});
+
+describe('manager decisions', () => {
+  const info = (outcome: 'show' | 'no_show' | null, stageOverride: string | null = null) => ({ confirmedBy: 'Boss', confirmedAt: '2026-10-14T00:00:00Z', outcome, stageOverride });
+  const base = () => [meeting('Follow Ups', 'Ben', '2026-10-13', { companyName: 'Z' })];
+  const keyOf = () => buildMeetingKeys(base())[0];
+
+  it('marking a no-show makes it the No-Show stage and never a show', () => {
+    const [m] = annotateMeetings(base(), new Map([[keyOf(), info('no_show')]]));
+    expect(m.stage).toBe('No-Show');
+    expect(m.sheetStage).toBe('Follow Ups');
+    expect(isConfirmedShow(m)).toBe(false);
+    expect(isAwaitingConfirmation(m)).toBe(false);
+  });
+
+  it('a stage chosen in the app replaces the sheet stage and drives the stage counts and rules', () => {
+    const [m] = annotateMeetings(base(), new Map([[keyOf(), info(null, 'Onboarded')]]));
+    expect(m.stage).toBe('Onboarded');
+    expect(m.sheetStage).toBe('Follow Ups');
+    expect(isConfirmedShow(m)).toBe(false);     // still needs its show decision
+    expect(isAwaitingConfirmation(m)).toBe(true);
+  });
+
+  it('a show decision counts even for an old meeting the tab rules would not count, but not in the No-Show stage', () => {
+    const old = [meeting('New Meetings', 'Ben', '2026-09-01', { companyName: 'Old' })];
+    const k = buildMeetingKeys(old)[0];
+    expect(isConfirmedShow(annotateMeetings(old, new Map())[0])).toBe(false);
+    expect(isConfirmedShow(annotateMeetings(old, new Map([[k, info('show')]]))[0])).toBe(true);
+    expect(isConfirmedShow(annotateMeetings(old, new Map([[k, info('show', 'No-Show')]]))[0])).toBe(false);
+  });
+
+  it('older confirmations without an outcome still mean show', () => {
+    const [m] = annotateMeetings(base(), new Map([[keyOf(), { confirmedBy: 'Boss', confirmedAt: '2026-10-14T00:00:00Z' }]]));
+    expect(m.decision).toBe('show');
+    expect(isConfirmedShow(m)).toBe(true);
   });
 });

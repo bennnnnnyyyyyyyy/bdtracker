@@ -102,8 +102,15 @@ export async function loadDashboardInputs(
   if (editedMarks.size > 0) void renameStoredKeys('rescheduled_meetings', Array.from(editedMarks, ([n, o]) => [o, n] as [string, string])).catch((e) => console.warn('[Reschedules]', e));
   meetings = meetings.map((m) => (m.rescheduled || isRescheduledStatus(m.status) || remembered?.has(m.meetingKey as string) || editedMarks.has(m.meetingKey as string) ? { ...m, rescheduled: true } : m));
 
+  // Stage counts must follow the managers' stage decisions, not only the tracker tabs.
+  const trackerCounts: Record<string, Record<string, number>> = {};
+  meetings.forEach((m) => {
+    if (isRescheduledStatus(m.status)) return;
+    (trackerCounts[m.opener] ??= {})[m.stage] = (trackerCounts[m.opener][m.stage] || 0) + 1;
+  });
+
   return {
-    rawData: { ...rawData, meetings },
+    rawData: { ...rawData, meetings, trackerCounts },
     attendance: rawData.attendance,
     dataSourceInfo,
     dataAsOf,
