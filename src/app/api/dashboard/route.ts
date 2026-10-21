@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate') || undefined;
     const selectedOpener = searchParams.get('opener') || undefined;
     const includeCalls = searchParams.get('includeCalls') === 'true';
+    // The previous-period comparison only needs the totals, so it skips the heavy lists.
+    const lite = searchParams.get('lite') === 'true';
 
     const inputs = await loadDashboardInputs({ forceRefresh: searchParams.get('refresh') === 'true', startDate, endDate });
     const { rawData } = inputs;
@@ -68,6 +70,14 @@ export async function GET(request: NextRequest) {
       isMockData: rawData.isMockData,
       dataSourceInfo: inputs.dataSourceInfo,
     };
+
+    if (lite) {
+      response.meetings = [];
+      response.confirmationQueue = undefined;
+      response.dailyBreakdown = [];
+      response.weeklyBreakdown = [];
+      response.monthlyBreakdown = [];
+    }
 
     return NextResponse.json(response, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (error: unknown) {

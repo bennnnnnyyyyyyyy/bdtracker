@@ -260,3 +260,10 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 58. Qualified shows follows the selected dates
 - The team card headline is now the qualified shows in the selected dates. The monthly per-agent target is scaled to the selected days (share of the month containing the end date; a full month gives the whole target). The separate calendar-month figure was removed.
+
+## 59. Full review pass
+- `npm run lint` now passes: Apps Script and one-off CommonJS helper scripts are ignored by eslint.
+- The previous-period comparison request is `lite` (totals only), so each live refresh transfers far less.
+- Retirements are cached for 15 s (the Manage agents window always reads fresh).
+- Exports: Qualified Shows column, Manager Decision and Sheet Stage columns.
+- "Weekly targets" renamed to "Targets" in the menu and hint.

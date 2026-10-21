@@ -292,6 +292,7 @@ export default function DashboardPage() {
         prevParams.set('startDate', prev.startDate);
         prevParams.set('endDate', prev.endDate);
         prevParams.delete('refresh');
+        prevParams.set('lite', 'true');
         fetch('/api/dashboard?' + prevParams.toString(), { cache: 'no-store' })
           .then(r => (r.ok ? r.json() : null))
           .then((prevJson: DashboardResponse | null) => setPrevTotals(prevJson?.totals ?? null))

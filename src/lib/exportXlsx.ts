@@ -70,6 +70,7 @@ export function buildOverviewTable(data: DashboardResponse): ExportTable {
     'PPO Count',
     'PPO %',
     'Confirmed Shows',
+    'Qualified Shows',
     'Awaiting Confirmation',
     'Show Rate %',
     'Onboarded',
@@ -101,6 +102,7 @@ export function buildOverviewTable(data: DashboardResponse): ExportTable {
       op.ppoCount || 0,
       `${(op.ppoRate || 0).toFixed(1)}%`,
       op.attended,
+      op.qualifiedShows || 0,
       op.awaitingConfirmation || 0,
       `${(op.showRate * 100).toFixed(1)}%`,
       op.onboarded,
@@ -132,6 +134,7 @@ export function buildOverviewTable(data: DashboardResponse): ExportTable {
       tot.ppoCount || 0,
       `${(tot.ppoRate || 0).toFixed(1)}%`,
       tot.attended,
+      tot.qualifiedShows || 0,
       tot.awaitingConfirmation || 0,
       `${(tot.showRate * 100).toFixed(1)}%`,
       tot.onboarded,
@@ -149,7 +152,7 @@ export function buildOverviewTable(data: DashboardResponse): ExportTable {
 
 /** Meetings in the selected range, with whether management confirmed the show. */
 export function buildMeetingsTable(data: DashboardResponse): ExportTable {
-  const headers = ['Date Added', 'Opener', 'Stage', 'Company Name', 'Authorized Person', 'Med B', 'PPO', 'Show Confirmed', 'Confirmed By', 'Confirmed At', 'Counts As Show'];
+  const headers = ['Date Added', 'Opener', 'Stage', 'Company Name', 'Authorized Person', 'Med B', 'PPO', 'Show Confirmed', 'Confirmed By', 'Confirmed At', 'Counts As Show', 'Manager Decision', 'Sheet Stage'];
   const rows = (data.meetings || []).map((m) => [
     m.dateAdded || '',
     m.opener || '',
@@ -162,6 +165,8 @@ export function buildMeetingsTable(data: DashboardResponse): ExportTable {
     m.confirmedBy || '',
     m.confirmedAt || '',
     isConfirmedShow(m) ? 'Yes' : 'No',
+    m.decision === 'show' ? 'Show' : m.decision === 'no_show' ? 'No-show' : '',
+    m.sheetStage || m.stage || '',
   ]);
   return { headers, rows };
 }

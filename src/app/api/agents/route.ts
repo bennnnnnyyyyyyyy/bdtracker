@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const guard = await requireUser(request, ['admin', 'manager'], { read: true });
   if (guard.response) return guard.response;
   try {
-    const [names, retired] = await Promise.all([roster(), loadRetirements()]);
+    const [names, retired] = await Promise.all([roster(), loadRetirements({ fresh: true })]);
     return NextResponse.json({
       available: retired !== null,
       agents: names.map((opener) => ({ opener, lastDay: retired?.[opener.toLowerCase()] ?? null })),

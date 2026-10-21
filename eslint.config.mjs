@@ -11,6 +11,10 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     ".agents/**",
+    // Google Apps Script (not part of the Next.js app) and one-off CommonJS helper scripts.
+    "apps-script/**",
+    "scripts/**/*.js",
+    "scripts/test_sheets.ts",
   ]),
 ]);
 

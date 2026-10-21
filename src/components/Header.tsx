@@ -104,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({ filters, onFilterChange, openers
                       </>
                     )}
                     {onCopyLink && <button role="menuitem" onClick={runAction(onCopyLink)} className={itemClass}><Link2 className="w-4 h-4 text-text-muted" />Copy link to this view</button>}
-                    {onOpenTargets && <button role="menuitem" onClick={runAction(onOpenTargets)} className={itemClass}><Target className="w-4 h-4 text-gold-light" />Weekly targets</button>}
+                    {onOpenTargets && <button role="menuitem" onClick={runAction(onOpenTargets)} className={itemClass}><Target className="w-4 h-4 text-gold-light" />Targets</button>}
                     {onPrint && <button role="menuitem" onClick={runAction(onPrint)} className={itemClass}><Printer className="w-4 h-4 text-text-muted" />Print / Save PDF</button>}
                     {onOpenSheetTools && <button role="menuitem" onClick={runAction(onOpenSheetTools)} className={itemClass}><Wrench className="w-4 h-4 text-gold-light" />Call log maintenance</button>}
                     {onOpenAgents && <button role="menuitem" onClick={runAction(onOpenAgents)} className={itemClass}><UserMinus className="w-4 h-4 text-gold-light" />Manage agents</button>}

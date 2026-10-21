@@ -37,7 +37,7 @@ export const AttentionPanel: React.FC<Props> = React.memo(({ openers, attention,
             {attention.length > 5 && <li className="text-xs text-text-dim">+ {attention.length - 5} more in the Team tab</li>}
           </ul>
         )}
-        {!targetsSet && <p className="mt-3 text-xs text-text-dim">Set weekly targets (Actions → Weekly targets) to also flag agents who are behind pace.</p>}
+        {!targetsSet && <p className="mt-3 text-xs text-text-dim">Set targets (Actions → Targets) to also flag agents who are behind pace.</p>}
       </div>
 
       {top.length > 0 && (
