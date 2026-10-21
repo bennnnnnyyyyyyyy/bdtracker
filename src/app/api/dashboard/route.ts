@@ -6,6 +6,7 @@ import { CONFIG } from '@/lib/config';
 import { DashboardResponse } from '@/types/dashboard';
 import { getErrorMessage, isQuotaExceededError } from '@/lib/errors';
 import { loadDashboardInputs } from '@/lib/dashboard-data';
+import { loadSharedTargets } from '@/lib/sharedTargets';
 import { loadRetirements } from '@/lib/retirements';
 import { getRequestUser } from '@/lib/api-auth';
 import { canBeConfirmed, isRescheduledStatus } from '@/lib/meetings';
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
       callsIncluded: includeCalls,
       callsTotal: filteredCalls.reduce((sum, c) => sum + (c.weight ?? 1), 0),
       meetings: filteredMeetings,
+      targets: lite ? undefined : await loadSharedTargets(),
       confirmationQueue: rawData.meetings.filter((m) => m.meetingKey && !isRescheduledStatus(m.status) && (canBeConfirmed(m) || m.showConfirmed)),
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,

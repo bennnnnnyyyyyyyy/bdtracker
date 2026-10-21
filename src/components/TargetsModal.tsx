@@ -65,7 +65,7 @@ export const TargetsModal: React.FC<Props> = ({ isOpen, current, onClose, onSave
                 placeholder="Not set" className="field w-28 text-right" />
             </label>
           ))}
-          <p className="text-xs text-text-dim">Targets are saved in this browser only. Leave all fields empty to turn targets off.</p>
+          <p className="text-xs text-text-dim">Targets are shared with every manager (stored in Supabase); if that store is unavailable they stay in this browser only. Leave all fields empty to turn targets off.</p>
         </div>
         <div className="flex items-center justify-between gap-2.5 px-6 py-4 bg-white/2 border-t border-white/8">
           <button type="button" className="btn btn-danger" onClick={() => { onSave(null); onClose(); }}>Clear targets</button>

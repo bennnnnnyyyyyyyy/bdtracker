@@ -184,7 +184,8 @@ export default function DashboardPage() {
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [pollFailed, setPollFailed] = useState(false);
-  const [targets, setTargets] = useState<Targets | null>(null);
+  // This browser's own copy: used only while the shared store is unavailable, and migrated to it once.
+  const [localTargets, setLocalTargets] = useState<Targets | null>(null);
   const [targetsOpen, setTargetsOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [toast, setToast] = useState<string | null>(null);
@@ -204,7 +205,7 @@ export default function DashboardPage() {
         if (Object.keys(fromUrl.filters).length) setFilters(prev => ({ ...(cachedUi?.filters ?? prev), ...fromUrl.filters }));
         if (fromUrl.tab) setActiveTab(fromUrl.tab);
       }
-      setTargets(loadTargets());
+      setLocalTargets(loadTargets());
       setHasHydrated(true);
     });
 
@@ -243,11 +244,6 @@ export default function DashboardPage() {
       setToast('Could not copy automatically — copy the address bar instead');
     }
   }, [filters, activeTab]);
-
-  const handleSaveTargets = useCallback((t: Targets | null) => {
-    setTargets(t);
-    saveTargets(t);
-  }, []);
 
   const fetchData = useCallback(async (forceRefresh = false, silent = false) => {
     // Silent (background) refreshes keep the current screen; only manual loads show the spinner.
@@ -347,6 +343,35 @@ export default function DashboardPage() {
     setActiveTab(tab);
   };
 
+  // Targets are shared by all managers (stored in Supabase). Without the shared store, fall back to this browser's copy.
+  const sharedTargetsAvailable = data?.targets !== undefined;
+  const targets: Targets | null = data?.targets !== undefined ? data.targets : localTargets;
+  const isManager = data?.viewer?.role === 'admin' || data?.viewer?.role === 'manager';
+  const handleSaveTargets = async (t: Targets | null) => {
+    if (sharedTargetsAvailable) {
+      try {
+        const res = await fetch('/api/targets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets: t }) });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Could not save targets');
+        void fetchData(false, true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not save targets');
+      }
+      return;
+    }
+    setLocalTargets(t);
+    saveTargets(t);
+  };
+
+  // Targets saved in this browser before they were shared move to the shared store once (only if it has none yet).
+  const migratedTargets = useRef(false);
+  useEffect(() => {
+    if (migratedTargets.current || !isManager || data?.targets !== null || !localTargets) return;
+    migratedTargets.current = true;
+    fetch('/api/targets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets: localTargets }) })
+      .then((r) => { if (r.ok) { saveTargets(null); void fetchRef.current(false, true); } })
+      .catch(() => { migratedTargets.current = false; });
+  }, [data?.targets, isManager, localTargets]);
+
   const agentsInView = data ? activeAgents(data.openers) : [];
   const days = periodDays(filters.startDate, filters.endDate);
   const agentGoals = targets
@@ -376,7 +401,7 @@ export default function DashboardPage() {
         onOpenAgents={data?.viewer && (data.viewer.role === 'admin' || data.viewer.role === 'manager') ? () => setAgentsOpen(true) : undefined}
         onPrint={() => window.print()}
         onCopyLink={handleCopyLink}
-        onOpenTargets={() => setTargetsOpen(true)}
+        onOpenTargets={!sharedTargetsAvailable || isManager ? () => setTargetsOpen(true) : undefined}
         onExportXlsx={data ? () => exportDashboardAnalyticsXlsx(data, filters) : undefined}
         onExportCsv={data ? (kind) => exportDashboardCsv(data, filters, kind) : undefined}
         loading={loading}

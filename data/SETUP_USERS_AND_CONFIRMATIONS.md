@@ -59,3 +59,6 @@ Repair keeps one hidden backup sheet (`Call Logs backup (web repair)`) that is r
 
 ## BD Dashboard sheet mirror
 In the Apps Script editor open Project Settings > Script properties and add `DASHBOARD_URL` = the dashboard address (for example `https://your-app.vercel.app`, no trailing slash). The mirror then pulls official meeting numbers from `/api/mirror`, authenticated with `IMPORT_SECRET` (which must equal `IMPORT_WEBHOOK_SECRET` in Vercel). Run any function once from the editor to approve the new "connect to an external service" permission, then deploy a new version.
+
+## Targets
+Team targets live in the Supabase table `app_settings` (created by `supabase_schema.sql`) and are shared by everyone. Admins and managers edit them in Actions > Targets.

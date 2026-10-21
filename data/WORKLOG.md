@@ -267,3 +267,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 - Retirements are cached for 15 s (the Manage agents window always reads fresh).
 - Exports: Qualified Shows column, Manager Decision and Sheet Stage columns.
 - "Weekly targets" renamed to "Targets" in the menu and hint.
+
+## 60. Shared targets
+- Targets (calls, meetings, onboarded weekly; qualified shows monthly) are stored in Supabase (`app_settings`, key `targets`; run the latest `supabase_schema.sql`) and delivered with the dashboard data, so every manager and viewer sees the same targets and changes appear within the 30 s live refresh. Only admins and managers can change them (`/api/targets`). Targets previously saved in a manager's browser are moved to the shared store once, if it has none. If the table is missing, the app falls back to the browser copy.

@@ -198,6 +198,8 @@ export interface DashboardResponse {
   meetings?: MeetingRecord[];
   /** Every reviewable meeting regardless of the selected dates (the Confirm shows tab). */
   confirmationQueue?: MeetingRecord[];
+  /** Team targets shared by all managers. null = none set; undefined = the shared store is unavailable. */
+  targets?: { calls: number; meetings: number; onboarded: number; qualifiedShows?: number } | null;
   agentMappings: AgentMapping[];
   stages: string[];
   lastUpdated: string;

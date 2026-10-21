@@ -173,3 +173,14 @@ ALTER TABLE public.show_confirmations DROP CONSTRAINT IF EXISTS show_confirmatio
 ALTER TABLE public.show_confirmations ADD CONSTRAINT show_confirmations_outcome_check CHECK (outcome IS NULL OR outcome IN ('show', 'no_show'));
 ALTER TABLE public.show_confirmation_events DROP CONSTRAINT IF EXISTS show_confirmation_events_action_check;
 ALTER TABLE public.show_confirmation_events ADD CONSTRAINT show_confirmation_events_action_check CHECK (action IN ('confirm', 'revoke', 'set'));
+
+-- Settings shared by every manager (currently the team targets).
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Service role only" ON public.app_settings;
+CREATE POLICY "Service role only" ON public.app_settings FOR ALL TO service_role USING (true) WITH CHECK (true);
