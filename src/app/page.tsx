@@ -17,7 +17,7 @@ import { AttentionPanel } from '@/components/AttentionPanel';
 import { TargetsModal } from '@/components/TargetsModal';
 import { PrintReport } from '@/components/PrintReport';
 import { needsAttention } from '@/lib/insights';
-import { Targets, loadTargets, saveTargets, periodDays, scaledTarget, activeAgents } from '@/lib/targets';
+import { Targets, loadTargets, saveTargets, periodDays, scaledTarget, activeAgents, monthlyTargetForPeriod } from '@/lib/targets';
 import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse, OrgTotals } from '@/types/dashboard';
 import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, BarChart3, CalendarCheck, CheckCircle2, PieChart, Clock } from 'lucide-react';
@@ -512,8 +512,7 @@ export default function DashboardPage() {
                 openers={data.openers}
                 filters={filters}
                 agentGoals={agentGoals}
-                qualifiedMonth={data.qualifiedMonth}
-                monthlyTarget={targets?.qualifiedShows}
+                qualifiedTarget={targets?.qualifiedShows ? monthlyTargetForPeriod(targets.qualifiedShows, filters.startDate, filters.endDate) : undefined}
               />
             )}
             {activeTab === 'periods' && (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { needsAttention, topPerformers } from '../src/lib/insights';
-import { periodDays, periodElapsed, scaledTarget } from '../src/lib/targets';
+import { monthlyTargetForPeriod, periodDays, periodElapsed, scaledTarget } from '../src/lib/targets';
 import type { OpenerStats } from '../src/types/dashboard';
 
 function agent(over: Partial<OpenerStats>): OpenerStats {
@@ -64,6 +64,14 @@ describe('topPerformers', () => {
       agent({ opener: 'Idle', onboarded: 9, calls: 0 }),
     ], 3);
     expect(top.map(o => o.opener)).toEqual(['C', 'B', 'A']);
+  });
+});
+
+describe('monthly target scaling', () => {
+  it('gives the whole monthly goal for a full calendar month and a share for shorter ranges', () => {
+    expect(monthlyTargetForPeriod(31, '2026-10-01', '2026-10-31')).toBe(31);
+    expect(monthlyTargetForPeriod(31, '2026-10-12', '2026-10-18')).toBe(7);
+    expect(monthlyTargetForPeriod(1, '2026-10-12', '2026-10-12')).toBe(1);
   });
 });
 

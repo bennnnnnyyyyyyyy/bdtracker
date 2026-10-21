@@ -939,27 +939,3 @@ function buildPeriodicBreakdown(
 
   return result;
 }
-
-/**
- * Qualified shows (counted shows that are not in the DISQUALIFIED tab) per canonical opener for one calendar month,
- * by Date Added. This is the figure the monthly target is measured against.
- */
-export function qualifiedShowsForMonth(
-  meetings: MeetingRecord[],
-  agentMappings: AgentMapping[],
-  month: string
-): { month: string; byOpener: Record<string, number>; total: number } {
-  const byOpener: Record<string, number> = {};
-  let total = 0;
-  meetings.forEach((m) => {
-    if (isRescheduledStatus(m.status)) return;
-    const iso = parseDateToISO(m.dateAdded);
-    if (!iso || !iso.startsWith(month)) return;
-    const opener = resolveOpener(m.opener, agentMappings);
-    if (!opener || isExcludedAgent(opener)) return;
-    if (!isConfirmedShow(m) || QUALIFIED_EXCLUDED_STAGES.includes(m.stage)) return;
-    byOpener[opener] = (byOpener[opener] || 0) + 1;
-    total++;
-  });
-  return { month, byOpener, total };
-}

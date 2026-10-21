@@ -9,10 +9,8 @@ interface AgentDashboardViewProps {
   filters: FilterState;
   /** Per-agent goals for the selected period, if targets are set. */
   agentGoals?: { calls: number; meetings: number; onboarded: number } | null;
-  /** Qualified shows per agent in the month of the selected end date. */
-  qualifiedMonth?: { month: string; byOpener: Record<string, number>; total: number };
-  /** Monthly qualified-show target per agent. */
-  monthlyTarget?: number;
+  /** Qualified-show target per agent for the selected dates (the monthly target scaled to the period). */
+  qualifiedTarget?: number;
 }
 
 type SortKey = 'calls' | 'booked' | 'qualifiedShows' | 'showRate' | 'closeRate';
@@ -62,11 +60,9 @@ function Metric({ label, value, ratio, tone = 'neutral', hint }: { label: string
   );
 }
 
-const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, teamShowRate, goals, monthQualified, monthLabel, monthlyTarget }: {
+const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, teamShowRate, goals, qualifiedTarget }: {
   goals?: { calls: number; meetings: number; onboarded: number } | null;
-  monthQualified: number;
-  monthLabel: string;
-  monthlyTarget?: number;
+  qualifiedTarget?: number;
   agent: OpenerStats;
   rank: number;
   maxCalls: number;
@@ -97,9 +93,9 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, te
 
       <div className="grid grid-cols-2 gap-px bg-white/5">
         <div className="col-span-2">
-          <Metric label={`Qualified shows · ${monthLabel}`} value={monthQualified.toLocaleString()} tone={monthlyTarget && monthQualified >= monthlyTarget ? 'success' : 'gold'}
-            ratio={monthlyTarget ? monthQualified / monthlyTarget : undefined}
-            hint={`${monthlyTarget ? `${Math.round((monthQualified / monthlyTarget) * 100)}% of the ${monthlyTarget} monthly target · ` : 'No monthly target set · '}${agent.qualifiedShows} in the selected dates`} />
+          <Metric label="Qualified shows" value={agent.qualifiedShows.toLocaleString()} tone={qualifiedTarget && agent.qualifiedShows >= qualifiedTarget ? 'success' : 'gold'}
+            ratio={qualifiedTarget ? agent.qualifiedShows / qualifiedTarget : undefined}
+            hint={qualifiedTarget ? `${Math.round((agent.qualifiedShows / qualifiedTarget) * 100)}% of ${qualifiedTarget} (monthly target scaled to these dates)` : 'Shows not in DISQUALIFIED · set a monthly target in Actions > Targets'} />
         </div>
         <Metric label="Calls" value={agent.calls.toLocaleString()} ratio={goals?.calls ? agent.calls / goals.calls : agent.calls / maxCalls}
           tone={goals?.calls && agent.calls >= goals.calls ? 'success' : 'neutral'} hint={goals?.calls ? `${Math.round((agent.calls / goals.calls) * 100)}% of ${goals.calls.toLocaleString()} target` : undefined} />
@@ -118,8 +114,7 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, te
   );
 });
 
-export function AgentDashboardView({ openers, filters, agentGoals, qualifiedMonth, monthlyTarget }: AgentDashboardViewProps) {
-  const monthLabel = qualifiedMonth ? new Date(`${qualifiedMonth.month}-01T12:00:00`).toLocaleString('en-US', { month: 'short' }) : 'month';
+export function AgentDashboardView({ openers, filters, agentGoals, qualifiedTarget }: AgentDashboardViewProps) {
   const [sortKey, setSortKey] = useState<SortKey>('calls');
 
   const activeOpeners = useMemo(() => openers
@@ -158,7 +153,7 @@ export function AgentDashboardView({ openers, filters, agentGoals, qualifiedMont
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} teamShowRate={teamShowRate} goals={agentGoals} monthQualified={qualifiedMonth?.byOpener[agent.opener] ?? 0} monthLabel={monthLabel} monthlyTarget={monthlyTarget} />)}
+          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} teamShowRate={teamShowRate} goals={agentGoals} qualifiedTarget={qualifiedTarget} />)}
         </div>
       )}
     </section>

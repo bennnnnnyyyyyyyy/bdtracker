@@ -257,3 +257,6 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 ## 57. Today tab and qualified shows
 - New **Today** tab: meetings booked today / yesterday / this week straight from the tracker, with shows, no-shows and awaiting counts and a per-agent breakdown. It ignores the date filter and refreshes with the dashboard's 30 s live updates.
 - New metric **Qualified shows** = counted shows (manager decisions applied) whose stage is not DISQUALIFIED. Shown first on every agent card as the month's count against a monthly per-agent target (Actions > Targets; saved in the browser like the other targets), plus a Details column and a Team sort option. The month is the one containing the selected end date (`qualifiedMonth` in the dashboard response).
+
+## 58. Qualified shows follows the selected dates
+- The team card headline is now the qualified shows in the selected dates. The monthly per-agent target is scaled to the selected days (share of the month containing the end date; a full month gives the whole target). The separate calendar-month figure was removed.

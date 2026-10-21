@@ -50,6 +50,17 @@ export function scaledTarget(perAgentWeek: number, days: number, agents: number)
   return Math.round((perAgentWeek * days * Math.max(1, agents)) / 7);
 }
 
+/**
+ * Goal for the selected dates from a MONTHLY per-agent goal: the daily share of the month containing the end date,
+ * times the days selected. A full calendar month gives exactly the monthly goal.
+ */
+export function monthlyTargetForPeriod(perAgentMonth: number, startDate: string, endDate: string): number {
+  const days = periodDays(startDate, endDate);
+  const end = endDate ? parseYmd(endDate) : new Date();
+  const monthDays = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+  return Math.max(1, Math.round((perAgentMonth * days) / monthDays));
+}
+
 /** How far through the selected period we are (0–1); 1 once the period is over. */
 export function periodElapsed(startDate: string, endDate: string, now = new Date()): number {
   if (!startDate || !endDate) return 1;

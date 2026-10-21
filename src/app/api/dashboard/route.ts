@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { computeDashboardMetrics, parseDateToISO, qualifiedShowsForMonth } from '@/lib/analytics';
+import { computeDashboardMetrics, parseDateToISO } from '@/lib/analytics';
 import { callDayZone } from '@/lib/callKeys';
 import { missingUploadDay } from '@/lib/uploadReminder';
 import { CONFIG } from '@/lib/config';
@@ -53,7 +53,6 @@ export async function GET(request: NextRequest) {
       callsIncluded: includeCalls,
       callsTotal: filteredCalls.reduce((sum, c) => sum + (c.weight ?? 1), 0),
       meetings: filteredMeetings,
-      qualifiedMonth: qualifiedShowsForMonth(rawData.meetings, rawData.agentMappings, (endDate && /^\d{4}-\d{2}/.test(endDate) ? endDate : new Date().toISOString()).slice(0, 7)),
       confirmationQueue: rawData.meetings.filter((m) => m.meetingKey && !isRescheduledStatus(m.status) && (canBeConfirmed(m) || m.showConfirmed)),
       agentMappings: rawData.agentMappings,
       stages: CONFIG.BD_TABS,

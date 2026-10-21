@@ -198,8 +198,6 @@ export interface DashboardResponse {
   meetings?: MeetingRecord[];
   /** Every reviewable meeting regardless of the selected dates (the Confirm shows tab). */
   confirmationQueue?: MeetingRecord[];
-  /** Qualified shows (shows not in DISQUALIFIED) per agent in the calendar month of the selected end date. */
-  qualifiedMonth?: { month: string; byOpener: Record<string, number>; total: number };
   agentMappings: AgentMapping[];
   stages: string[];
   lastUpdated: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeDashboardMetrics, qualifiedShowsForMonth, resolveOpener } from '../src/lib/analytics';
+import { computeDashboardMetrics, resolveOpener } from '../src/lib/analytics';
 import { annotateMeetings, canBeConfirmed, buildMeetingKeys, dedupeMeetings, effectiveStage, findEditedKeys, isAwaitingConfirmation, isConfirmedShow, needsReview } from '../src/lib/meetings';
 import { calculateAgentPresentDays, getAttendanceWeight, parseAttendanceRows } from '../src/lib/attendance';
 import type { AgentMapping, CallRecord, MeetingRecord } from '../src/types/dashboard';
@@ -373,12 +373,10 @@ describe('qualified shows', () => {
     expect(ben.qualifiedShows).toBe(3);
     expect(res.totals.qualifiedShows).toBe(3);
   });
-  it('builds the calendar-month figure and honours manager decisions', () => {
-    const annotated = annotateMeetings(rows, new Map());
-    expect(qualifiedShowsForMonth(annotated, mappings, '2026-08')).toEqual({ month: '2026-08', byOpener: { Ben: 3 }, total: 3 });
-    expect(qualifiedShowsForMonth(annotated, mappings, '2026-07').total).toBe(1);
+  it('drops a meeting a manager marks as no-show', () => {
     const key = buildMeetingKeys(rows)[1];
     const decided = annotateMeetings(rows, new Map([[key, { confirmedBy: 'Boss', confirmedAt: '2026-08-10T00:00:00Z', outcome: 'no_show' as const }]]));
-    expect(qualifiedShowsForMonth(decided, mappings, '2026-08').total).toBe(2);
+    const ben = computeDashboardMetrics([], decided, {}, mappings, { startDate: '2026-08-01', endDate: '2026-08-31' }).openers.find((o) => o.opener === 'Ben')!;
+    expect(ben.qualifiedShows).toBe(2);
   });
 });
