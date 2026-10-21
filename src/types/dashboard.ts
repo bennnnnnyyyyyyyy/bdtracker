@@ -74,6 +74,7 @@ export interface OpenerStats {
   noShow: number;
   attended: number; // Meetings confirmed as shows by management
   awaitingConfirmation: number; // Meetings in likely-show stages not yet confirmed
+  qualifiedShows: number; // Shows that are not in the DISQUALIFIED tab (the number managers target monthly)
   showRate: number; // Attended / (Attended + No-Show); pending records excluded
   onboarded: number;
   closeRate: number; // Onboarded / Booked
@@ -163,6 +164,7 @@ export interface OrgTotals {
   attended: number;
   /** Meetings in likely-show stages that management has not confirmed yet. */
   awaitingConfirmation: number;
+  qualifiedShows: number;
   showRate: number;
   onboarded: number;
   closeRate: number;
@@ -196,6 +198,8 @@ export interface DashboardResponse {
   meetings?: MeetingRecord[];
   /** Every reviewable meeting regardless of the selected dates (the Confirm shows tab). */
   confirmationQueue?: MeetingRecord[];
+  /** Qualified shows (shows not in DISQUALIFIED) per agent in the calendar month of the selected end date. */
+  qualifiedMonth?: { month: string; byOpener: Record<string, number>; total: number };
   agentMappings: AgentMapping[];
   stages: string[];
   lastUpdated: string;

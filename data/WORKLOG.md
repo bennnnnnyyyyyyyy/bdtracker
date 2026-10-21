@@ -253,3 +253,7 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 56. Manager decisions in Confirm shows
 - Managers mark any meeting Show or No-show and can move it to another stage than the sheet shows (per row or in bulk); Clear decision undoes it. Stored in `show_confirmations` (new columns `outcome`, `stage_override`; run the latest `supabase_schema.sql`). Stage counts, onboarded and rated meetings follow the effective stage. API: `/api/confirmations` actions confirm / revoke / set. Without the new columns the app still reads old confirmations (as shows).
+
+## 57. Today tab and qualified shows
+- New **Today** tab: meetings booked today / yesterday / this week straight from the tracker, with shows, no-shows and awaiting counts and a per-agent breakdown. It ignores the date filter and refreshes with the dashboard's 30 s live updates.
+- New metric **Qualified shows** = counted shows (manager decisions applied) whose stage is not DISQUALIFIED. Shown first on every agent card as the month's count against a monthly per-agent target (Actions > Targets; saved in the browser like the other targets), plus a Details column and a Team sort option. The month is the one containing the selected end date (`qualifiedMonth` in the dashboard response).

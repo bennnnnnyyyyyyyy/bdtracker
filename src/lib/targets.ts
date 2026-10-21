@@ -1,10 +1,12 @@
 import { OpenerStats } from '@/types/dashboard';
 
-/** Weekly goals, per agent. Team goals are the sum over the agents in view. */
+/** Weekly goals, per agent (qualified shows are a MONTHLY goal per agent). Team goals are the sum over the agents in view. */
 export interface Targets {
   calls: number;
   meetings: number;
   onboarded: number;
+  /** Qualified shows per agent, per calendar month. */
+  qualifiedShows?: number;
 }
 
 const TARGETS_KEY = 'bd-tracker-targets-v1';
@@ -15,8 +17,8 @@ export function loadTargets(): Targets | null {
     const raw = window.localStorage.getItem(TARGETS_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<Targets>;
-    const t = { calls: Number(parsed.calls) || 0, meetings: Number(parsed.meetings) || 0, onboarded: Number(parsed.onboarded) || 0 };
-    return t.calls || t.meetings || t.onboarded ? t : null;
+    const t = { calls: Number(parsed.calls) || 0, meetings: Number(parsed.meetings) || 0, onboarded: Number(parsed.onboarded) || 0, qualifiedShows: Number(parsed.qualifiedShows) || 0 };
+    return t.calls || t.meetings || t.onboarded || t.qualifiedShows ? t : null;
   } catch {
     return null;
   }

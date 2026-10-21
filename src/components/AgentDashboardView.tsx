@@ -9,13 +9,18 @@ interface AgentDashboardViewProps {
   filters: FilterState;
   /** Per-agent goals for the selected period, if targets are set. */
   agentGoals?: { calls: number; meetings: number; onboarded: number } | null;
+  /** Qualified shows per agent in the month of the selected end date. */
+  qualifiedMonth?: { month: string; byOpener: Record<string, number>; total: number };
+  /** Monthly qualified-show target per agent. */
+  monthlyTarget?: number;
 }
 
-type SortKey = 'calls' | 'booked' | 'showRate' | 'closeRate';
+type SortKey = 'calls' | 'booked' | 'qualifiedShows' | 'showRate' | 'closeRate';
 
 const SORTS: { id: SortKey; label: string }[] = [
   { id: 'calls', label: 'Calls' },
   { id: 'booked', label: 'Booked' },
+  { id: 'qualifiedShows', label: 'Qualified shows' },
   { id: 'showRate', label: 'Show rate' },
   { id: 'closeRate', label: 'Close rate' },
 ];
@@ -57,8 +62,11 @@ function Metric({ label, value, ratio, tone = 'neutral', hint }: { label: string
   );
 }
 
-const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, teamShowRate, goals }: {
+const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, teamShowRate, goals, monthQualified, monthLabel, monthlyTarget }: {
   goals?: { calls: number; meetings: number; onboarded: number } | null;
+  monthQualified: number;
+  monthLabel: string;
+  monthlyTarget?: number;
   agent: OpenerStats;
   rank: number;
   maxCalls: number;
@@ -88,6 +96,11 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, te
       </header>
 
       <div className="grid grid-cols-2 gap-px bg-white/5">
+        <div className="col-span-2">
+          <Metric label={`Qualified shows · ${monthLabel}`} value={monthQualified.toLocaleString()} tone={monthlyTarget && monthQualified >= monthlyTarget ? 'success' : 'gold'}
+            ratio={monthlyTarget ? monthQualified / monthlyTarget : undefined}
+            hint={`${monthlyTarget ? `${Math.round((monthQualified / monthlyTarget) * 100)}% of the ${monthlyTarget} monthly target · ` : 'No monthly target set · '}${agent.qualifiedShows} in the selected dates`} />
+        </div>
         <Metric label="Calls" value={agent.calls.toLocaleString()} ratio={goals?.calls ? agent.calls / goals.calls : agent.calls / maxCalls}
           tone={goals?.calls && agent.calls >= goals.calls ? 'success' : 'neutral'} hint={goals?.calls ? `${Math.round((agent.calls / goals.calls) * 100)}% of ${goals.calls.toLocaleString()} target` : undefined} />
         <Metric label="Booked" value={agent.booked.toLocaleString()} ratio={goals?.meetings ? agent.booked / goals.meetings : agent.booked / maxBooked}
@@ -105,7 +118,8 @@ const AgentCard = memo(function AgentCard({ agent, rank, maxCalls, maxBooked, te
   );
 });
 
-export function AgentDashboardView({ openers, filters, agentGoals }: AgentDashboardViewProps) {
+export function AgentDashboardView({ openers, filters, agentGoals, qualifiedMonth, monthlyTarget }: AgentDashboardViewProps) {
+  const monthLabel = qualifiedMonth ? new Date(`${qualifiedMonth.month}-01T12:00:00`).toLocaleString('en-US', { month: 'short' }) : 'month';
   const [sortKey, setSortKey] = useState<SortKey>('calls');
 
   const activeOpeners = useMemo(() => openers
@@ -144,7 +158,7 @@ export function AgentDashboardView({ openers, filters, agentGoals }: AgentDashbo
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} teamShowRate={teamShowRate} goals={agentGoals} />)}
+          {activeOpeners.map((agent, index) => <AgentCard key={agent.opener} agent={agent} rank={index + 1} maxCalls={maxCalls} maxBooked={maxBooked} teamShowRate={teamShowRate} goals={agentGoals} monthQualified={qualifiedMonth?.byOpener[agent.opener] ?? 0} monthLabel={monthLabel} monthlyTarget={monthlyTarget} />)}
         </div>
       )}
     </section>

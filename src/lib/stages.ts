@@ -32,3 +32,6 @@ export const STAGE_RANK: Record<string, number> = {
 
 /** Meetings in these tabs still count as booked meetings, but are left out of close, Med B and PPO rates and calls per meeting. */
 export const RATE_EXCLUDED_STAGES: readonly string[] = ['DISQUALIFIED', 'CANCELLED'];
+
+/** A qualified show-up is a meeting that counts as a show and is not in one of these tabs. */
+export const QUALIFIED_EXCLUDED_STAGES: readonly string[] = ['DISQUALIFIED'];

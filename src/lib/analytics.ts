@@ -9,7 +9,7 @@ import {
   PeriodicAgentMetrics
 } from '../types/dashboard';
 import { AttendanceDataset, calculateAgentPresentDays } from './attendance';
-import { RATE_EXCLUDED_STAGES } from './stages';
+import { QUALIFIED_EXCLUDED_STAGES, RATE_EXCLUDED_STAGES } from './stages';
 import { isAwaitingConfirmation, isConfirmedShow, isRescheduledStatus } from './meetings';
 
 /**
@@ -506,10 +506,12 @@ export function computeDashboardMetrics(
   const openerPPOCounts: Record<string, number> = {};
   const openerShows: Record<string, number> = {};
   const openerAwaiting: Record<string, number> = {};
+  const openerQualified: Record<string, number> = {};
   filteredMeetings.forEach(m => {
     if (!m.opener) return;
     // A show exists only once management confirmed it; stages alone never create one.
     if (isConfirmedShow(m)) openerShows[m.opener] = (openerShows[m.opener] || 0) + 1;
+    if (isConfirmedShow(m) && !QUALIFIED_EXCLUDED_STAGES.includes(m.stage)) openerQualified[m.opener] = (openerQualified[m.opener] || 0) + 1;
     if (isAwaitingConfirmation(m)) openerAwaiting[m.opener] = (openerAwaiting[m.opener] || 0) + 1;
     if (m.medB && !RATE_EXCLUDED_STAGES.includes(m.stage)) {
       openerMedBCounts[m.opener] = (openerMedBCounts[m.opener] || 0) + 1;
@@ -594,6 +596,7 @@ export function computeDashboardMetrics(
       noShow,
       attended,
       awaitingConfirmation,
+      qualifiedShows: openerQualified[op] || 0,
       showRate,
       onboarded,
       closeRate,
@@ -642,6 +645,7 @@ export function computeDashboardMetrics(
     noShow: 0,
     attended: 0,
     awaitingConfirmation: 0,
+    qualifiedShows: 0,
     showRate: 0,
     onboarded: 0,
     closeRate: 0,
@@ -670,6 +674,7 @@ export function computeDashboardMetrics(
     totals.noShow += o.noShow;
     totals.attended += o.attended;
     totals.awaitingConfirmation += o.awaitingConfirmation;
+    totals.qualifiedShows += o.qualifiedShows;
     totals.onboarded += o.onboarded;
     CONFIG.BD_TABS.forEach(tab => {
       totals.stageCounts[tab] = (totals.stageCounts[tab] || 0) + (o.stageCounts[tab] || 0);
@@ -933,4 +938,28 @@ function buildPeriodicBreakdown(
   });
 
   return result;
+}
+
+/**
+ * Qualified shows (counted shows that are not in the DISQUALIFIED tab) per canonical opener for one calendar month,
+ * by Date Added. This is the figure the monthly target is measured against.
+ */
+export function qualifiedShowsForMonth(
+  meetings: MeetingRecord[],
+  agentMappings: AgentMapping[],
+  month: string
+): { month: string; byOpener: Record<string, number>; total: number } {
+  const byOpener: Record<string, number> = {};
+  let total = 0;
+  meetings.forEach((m) => {
+    if (isRescheduledStatus(m.status)) return;
+    const iso = parseDateToISO(m.dateAdded);
+    if (!iso || !iso.startsWith(month)) return;
+    const opener = resolveOpener(m.opener, agentMappings);
+    if (!opener || isExcludedAgent(opener)) return;
+    if (!isConfirmedShow(m) || QUALIFIED_EXCLUDED_STAGES.includes(m.stage)) return;
+    byOpener[opener] = (byOpener[opener] || 0) + 1;
+    total++;
+  });
+  return { month, byOpener, total };
 }

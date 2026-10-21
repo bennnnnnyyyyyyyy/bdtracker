@@ -15,14 +15,15 @@ const FIELDS: { key: keyof Targets; label: string; hint: string }[] = [
   { key: 'calls', label: 'Calls', hint: 'per agent, per week' },
   { key: 'meetings', label: 'Meetings booked', hint: 'per agent, per week' },
   { key: 'onboarded', label: 'Onboarded', hint: 'per agent, per week' },
+  { key: 'qualifiedShows', label: 'Qualified shows', hint: 'per agent, per month (shows not in DISQUALIFIED)' },
 ];
 
 export const TargetsModal: React.FC<Props> = ({ isOpen, current, onClose, onSave }) => {
-  const [values, setValues] = useState<Record<keyof Targets, string>>({ calls: '', meetings: '', onboarded: '' });
+  const [values, setValues] = useState<Record<keyof Targets, string>>({ calls: '', meetings: '', onboarded: '', qualifiedShows: '' });
 
   useEffect(() => {
     if (!isOpen) return;
-    const t = window.setTimeout(() => setValues({ calls: String(current?.calls || ''), meetings: String(current?.meetings || ''), onboarded: String(current?.onboarded || '') }), 0);
+    const t = window.setTimeout(() => setValues({ calls: String(current?.calls || ''), meetings: String(current?.meetings || ''), onboarded: String(current?.onboarded || ''), qualifiedShows: String(current?.qualifiedShows || '') }), 0);
     return () => window.clearTimeout(t);
   }, [isOpen, current]);
 
@@ -37,8 +38,8 @@ export const TargetsModal: React.FC<Props> = ({ isOpen, current, onClose, onSave
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const t: Targets = { calls: Math.max(0, Number(values.calls) || 0), meetings: Math.max(0, Number(values.meetings) || 0), onboarded: Math.max(0, Number(values.onboarded) || 0) };
-    onSave(t.calls || t.meetings || t.onboarded ? t : null);
+    const t: Targets = { calls: Math.max(0, Number(values.calls) || 0), meetings: Math.max(0, Number(values.meetings) || 0), onboarded: Math.max(0, Number(values.onboarded) || 0), qualifiedShows: Math.max(0, Number(values.qualifiedShows) || 0) };
+    onSave(t.calls || t.meetings || t.onboarded || t.qualifiedShows ? t : null);
     onClose();
   };
 
@@ -50,8 +51,8 @@ export const TargetsModal: React.FC<Props> = ({ isOpen, current, onClose, onSave
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gold-dim border border-gold-border"><Target className="w-4 h-4 text-gold-light" /></div>
             <div>
-              <h2 id="targets-title" className="font-serif text-lg font-bold text-white">Weekly targets</h2>
-              <p className="text-xs text-text-dim mt-0.5">Per agent. Scaled to the selected period and team size.</p>
+              <h2 id="targets-title" className="font-serif text-lg font-bold text-white">Targets</h2>
+              <p className="text-xs text-text-dim mt-0.5">Per agent. Weekly goals scale to the selected period and team size; qualified shows are monthly.</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="btn btn-icon border-transparent bg-transparent text-text-dim hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>

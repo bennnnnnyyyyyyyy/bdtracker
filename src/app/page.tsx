@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from '@/components/Header';
 import { KpiGrid } from '@/components/KpiGrid';
 import { OpenerTable } from '@/components/OpenerTable';
+import { TodayView } from '@/components/TodayView';
 import { TrendsView } from '@/components/TrendsView';
 import { DashboardCharts } from '@/components/DashboardCharts';
 import { AgentDashboardView } from '@/components/AgentDashboardView';
@@ -19,11 +20,11 @@ import { needsAttention } from '@/lib/insights';
 import { Targets, loadTargets, saveTargets, periodDays, scaledTarget, activeAgents } from '@/lib/targets';
 import { exportDashboardAnalyticsXlsx, exportDashboardCsv } from '@/lib/exportXlsx';
 import { FilterState, DashboardResponse, OrgTotals } from '@/types/dashboard';
-import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, BarChart3, CheckCircle2, PieChart, Clock } from 'lucide-react';
+import { AlertCircle, RefreshCw, LayoutGrid, Table as TableIcon, BarChart3, CalendarCheck, CheckCircle2, PieChart, Clock } from 'lucide-react';
 
 const canUpload = (role?: string) => role === 'admin' || role === 'manager' || role === 'uploader';
 
-type ActiveTab = 'overview' | 'agents' | 'periods' | 'table' | 'confirm';
+type ActiveTab = 'today' | 'overview' | 'agents' | 'periods' | 'table' | 'confirm';
 
 // Live updates: the open dashboard re-reads the server every 30 s (the server caches sheet reads for ~30 s).
 const LIVE_POLL_MS = 30_000;
@@ -40,6 +41,7 @@ type DashboardUiCache = {
 type PeriodView = 'daily' | 'weekly' | 'monthly';
 
 const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'today', label: 'Today', icon: <CalendarCheck className="w-4 h-4" /> },
   { id: 'overview', label: 'Overview', icon: <PieChart className="w-4 h-4" /> },
   { id: 'agents', label: 'Team', icon: <LayoutGrid className="w-4 h-4" /> },
   { id: 'periods', label: 'Trends', icon: <BarChart3 className="w-4 h-4" /> },
@@ -82,7 +84,7 @@ function shiftToPreviousRange(startDate: string, endDate: string): { startDate: 
   return { startDate: fmt(prevStart), endDate: fmt(prevEnd) };
 }
 
-const VALID_TABS: ActiveTab[] = ['overview', 'agents', 'periods', 'table', 'confirm'];
+const VALID_TABS: ActiveTab[] = ['today', 'overview', 'agents', 'periods', 'table', 'confirm'];
 const VALID_PRESETS = ['yesterday', 'this_week', 'this_month', 'last_30_days', 'custom'] as const;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const STALE_AFTER_MS = 30 * 60 * 1000;
@@ -495,6 +497,7 @@ export default function DashboardPage() {
               ))}
             </div>
 
+            {activeTab === 'today' && <TodayView meetings={data.confirmationQueue || []} dataAsOf={data.dataAsOf} pollFailed={pollFailed} />}
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -509,6 +512,8 @@ export default function DashboardPage() {
                 openers={data.openers}
                 filters={filters}
                 agentGoals={agentGoals}
+                qualifiedMonth={data.qualifiedMonth}
+                monthlyTarget={targets?.qualifiedShows}
               />
             )}
             {activeTab === 'periods' && (
