@@ -270,3 +270,7 @@ This document chronicles all engineering changes, performance fixes, algorithm i
 
 ## 60. Shared targets
 - Targets (calls, meetings, onboarded weekly; qualified shows monthly) are stored in Supabase (`app_settings`, key `targets`; run the latest `supabase_schema.sql`) and delivered with the dashboard data, so every manager and viewer sees the same targets and changes appear within the 30 s live refresh. Only admins and managers can change them (`/api/targets`). Targets previously saved in a manager's browser are moved to the shared store once, if it has none. If the table is missing, the app falls back to the browser copy.
+
+## 61. Prospector call table (proposed, not applied)
+- Drafted SQL to host the DME Desk Prospector's call log in this Supabase project, because the Prospector's own project is over the free 500 MB limit: `supabase_prospector_call_records.sql` (table `prospector_call_records`, service role only), an optional `supabase_prospector_call_stats_rpc.sql` (`prospector_call_stats(text[])`), and read-only checks in `supabase_prospector_call_records_verify.sql`.
+- Nothing has been run against any database. These files are deliberately separate from `supabase_schema.sql` until the owner approves them. Nothing in the dashboard reads the table.
