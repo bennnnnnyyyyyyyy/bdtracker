@@ -11,15 +11,15 @@ select pg_size_pretty(pg_database_size(current_database())) as db_size,
 select table_schema, table_name
 from information_schema.tables
 where table_schema = 'public'
-  and table_name in ('prospector_taps', 'prospector_lead_intel', 'prospector_lead_notes', 'prospector_user_map',
-                     'prospector_tap_outcomes', 'call_records', 'prospector_call_records');
+  and table_name in ('prospector_taps', 'prospector_lead_intel', 'prospector_lead_notes', 'prospector_lead_tags',
+                     'prospector_user_map', 'prospector_tap_outcomes', 'call_records', 'prospector_call_records');
 
 -- ---------- Part B: after ----------
--- B1. All four tables exist with RLS on (expect 4 rows, rowsecurity = true).
+-- B1. All five tables exist with RLS on (expect 5 rows, rowsecurity = true).
 select tablename, rowsecurity
 from pg_tables
 where schemaname = 'public'
-  and tablename in ('prospector_taps', 'prospector_lead_intel', 'prospector_lead_notes', 'prospector_user_map')
+  and tablename in ('prospector_taps', 'prospector_lead_intel', 'prospector_lead_notes', 'prospector_lead_tags', 'prospector_user_map')
 order by tablename;
 
 -- B2. No privileges for anon/authenticated/public on tables or the view (expect ZERO rows).
@@ -45,10 +45,11 @@ order by tablename, indexname;
 select conrelid::regclass as table_name, conname, contype, pg_get_constraintdef(oid) as definition
 from pg_constraint
 where conrelid in ('public.prospector_taps'::regclass, 'public.prospector_lead_intel'::regclass,
-                   'public.prospector_lead_notes'::regclass, 'public.prospector_user_map'::regclass)
+                   'public.prospector_lead_notes'::regclass, 'public.prospector_lead_tags'::regclass,
+                   'public.prospector_user_map'::regclass)
 order by conrelid::regclass::text, contype, conname;
 
--- B6. Policies (expect "Service role only" on each of the four tables).
+-- B6. Policies (expect "Service role only" on each of the five tables).
 select tablename, policyname, roles, cmd
 from pg_policies
 where schemaname = 'public' and tablename like 'prospector\_%'
@@ -63,6 +64,7 @@ where n.nspname = 'public' and c.relname = 'prospector_tap_outcomes';
 select (select count(*) from public.prospector_taps) as taps,
        (select count(*) from public.prospector_lead_intel) as intel,
        (select count(*) from public.prospector_lead_notes) as notes,
+       (select count(*) from public.prospector_lead_tags) as tags,
        (select count(*) from public.prospector_user_map) as user_map;
 
 -- B9. After the first sync: how many taps found a call (read-only; matched share by day).

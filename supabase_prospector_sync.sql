@@ -57,6 +57,17 @@ create table if not exists public.prospector_lead_notes (
 create index if not exists prospector_lead_notes_npi on public.prospector_lead_notes (npi);
 create index if not exists prospector_lead_notes_time on public.prospector_lead_notes (created_at desc);
 
+-- Analysis copy of the Prospector's lead_tags (short labels, 1 to 24 characters, same check). One row per lead and tag.
+create table if not exists public.prospector_lead_tags (
+  npi text not null check (char_length(npi) between 1 and 20),
+  tag text not null check (char_length(tag) between 1 and 24),
+  user_id uuid not null,
+  created_at timestamptz not null,
+  synced_at timestamptz not null default now(),
+  primary key (npi, tag)
+);
+create index if not exists prospector_lead_tags_tag on public.prospector_lead_tags (tag);
+
 -- Prospector user id -> BD Tracker opener name. Filled by hand; empty until then.
 create table if not exists public.prospector_user_map (
   user_id uuid primary key,
@@ -69,7 +80,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['prospector_taps', 'prospector_lead_intel', 'prospector_lead_notes', 'prospector_user_map'] loop
+  foreach t in array array['prospector_taps', 'prospector_lead_intel', 'prospector_lead_notes', 'prospector_lead_tags', 'prospector_user_map'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on table public.%I from public, anon, authenticated', t);
     execute format('grant select, insert, update, delete on table public.%I to service_role', t);
