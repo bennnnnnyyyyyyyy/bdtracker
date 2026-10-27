@@ -1,3 +1,4 @@
+-- SUPERSEDED: do not run. It reads prospector_call_records, which is no longer proposed.
 -- ============================================================
 -- OPTIONAL. FOR REVIEW. NOT APPLIED. Run only after supabase_prospector_call_records.sql.
 -- Returns total and answered call counts for a list of phone numbers (one row per number that has calls).

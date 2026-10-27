@@ -1,3 +1,4 @@
+-- SUPERSEDED: do not run. Replaced by supabase_prospector_sync.sql (the Prospector records taps, not a call log).
 -- ============================================================
 -- DME Desk Prospector: call log table (hosted in the BD Tracker project)
 -- Status: FOR REVIEW. NOT APPLIED. Do not run until the owner says so.

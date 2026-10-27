@@ -1,3 +1,4 @@
+-- SUPERSEDED: use supabase_prospector_sync_verify.sql instead.
 -- ============================================================
 -- READ-ONLY checks for the Prospector call table. Safe to run any time in the BD Tracker project's SQL editor.
 -- Part A: before applying. Part B: after applying.
